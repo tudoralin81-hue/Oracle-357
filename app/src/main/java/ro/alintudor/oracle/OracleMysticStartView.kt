@@ -38,7 +38,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun buildConstellations(): List<Constellation> {
         val rnd = java.util.Random(357202601L) // fixed seed: pattern stays stable across frames
         val clusters = mutableListOf<Constellation>()
-        repeat(13) { idx ->
+        repeat(20) { idx ->
             var cx = 0.05f + rnd.nextFloat() * 0.90f
             var cy = 0.04f + rnd.nextFloat() * 0.88f
             val count = 4 + rnd.nextInt(4)
@@ -62,19 +62,31 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1120f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
-        stars(c,w,h,time); shootingStar(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
+        stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
         text(c,"ORACLE",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
         val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0; val introDuration=0.7
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(12.5f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,145f,385f,225f,110f,18f,time,true) else drawCards(c,18f,475f,162f,118f,10f,time,false)
+        hit.clear(); if(wide)drawCards(c,110f,380f,250f,125f,20f,time,true) else drawCards(c,8f,470f,170f,126f,8f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
         p.style=Paint.Style.FILL
-        for(i in 0 until 110){val x=((i*83+41)%1000)/1000f*w;val y=((i*149+17)%1000)/1000f*h;val q=(.5+.5*sin(time*.7+i)).toFloat();p.color=Color.argb((70+140*q).toInt(),225,235,255);c.drawCircle(x,y,S(.6f+(i%3)*.4f),p)}
+        for(i in 0 until 110){
+            val x=((i*83+41)%1000)/1000f*w;val y=((i*149+17)%1000)/1000f*h
+            if(i%9==0){
+                // Twinkling stars: sharper flicker plus a size pulse.
+                val flicker=sin(time*2.3+i*1.7).toFloat()
+                val q=(0.5f+0.5f*flicker).coerceIn(0f,1f)
+                val flash=if(flicker>0.85f) 1f else 0f
+                p.color=Color.argb((90+150*q).toInt(),235,240,255)
+                c.drawCircle(x,y,S(0.9f+1.7f*q+1.3f*flash),p)
+            } else {
+                val q=(.5+.5*sin(time*.7+i)).toFloat();p.color=Color.argb((70+140*q).toInt(),225,235,255);c.drawCircle(x,y,S(.6f+(i%3)*.4f),p)
+            }
+        }
         for(cst in constellations){
             val rgb = when(cst.hue){1->Triple(90,255,140);2->Triple(255,95,95);else->Triple(175,205,255)}
             val lineRgb = when(cst.hue){1->Triple(80,220,130);2->Triple(230,90,90);else->Triple(150,190,255)}
@@ -86,6 +98,26 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                 p.color=Color.argb((40+55*q).toInt(),rgb.first,rgb.second,rgb.third);c.drawCircle(star.nx*w,star.ny*h,S(3.6f+1.3f*q),p)
                 p.color=Color.argb((175+80*q).toInt(),240,245,255);c.drawCircle(star.nx*w,star.ny*h,S(1.7f+0.7f*q),p)
             }
+        }
+    }
+    private val satelliteTrajectories = listOf(
+        floatArrayOf(0.02f, 0.14f, 0.98f, 0.34f),
+        floatArrayOf(0.96f, 0.58f, 0.04f, 0.78f),
+        floatArrayOf(0.10f, 0.92f, 0.90f, 0.62f)
+    )
+    private fun satellites(c:Canvas,w:Float,h:Float,time:Double){
+        satelliteTrajectories.forEachIndexed { idx, traj ->
+            val period=24.0+idx*8.5
+            val t=(((time+idx*7.3)%period)/period).toFloat()
+            val x=traj[0]*w+(traj[2]-traj[0])*w*t
+            val y=traj[1]*h+(traj[3]-traj[1])*h*t
+            val angle=Math.atan2((traj[3]-traj[1]).toDouble(),(traj[2]-traj[0]).toDouble())
+            val dx=cos(angle).toFloat();val dy=sin(angle).toFloat()
+            p.style=Paint.Style.STROKE;p.strokeWidth=S(.7f);p.color=Color.argb(150,190,205,225)
+            c.drawLine(x-dy*S(4.5f),y+dx*S(4.5f),x+dy*S(4.5f),y-dx*S(4.5f),p)
+            p.style=Paint.Style.FILL;p.color=Color.argb(230,215,222,235);c.drawCircle(x,y,S(1.5f),p)
+            val blink=sin(time*3.2+idx*2.1)
+            if(blink>0.6){p.color=Color.argb(230,255,95,95);c.drawCircle(x-dx*S(3f),y-dy*S(3f),S(1f),p)}
         }
     }
     private val shootingTrajectories = listOf(

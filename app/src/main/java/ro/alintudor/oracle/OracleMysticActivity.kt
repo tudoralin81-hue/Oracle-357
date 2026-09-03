@@ -151,43 +151,13 @@ class OracleMysticActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(Color.rgb(3, 4, 12)) }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(44), dp(8), dp(22))
+            setPadding(dp(8), dp(40), dp(8), dp(20))
         }
         val hero = OracleMysticStartView(this) { openModule(it) }
-        val heroHeight = (resources.displayMetrics.heightPixels * 0.70f).toInt().coerceAtLeast(dp(610))
+        val heroHeight = (resources.displayMetrics.heightPixels * 0.86f).toInt().coerceAtLeast(dp(660))
         page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
-        page.addView(makeStatus(), LinearLayout.LayoutParams(-1, dp(32)).apply { setMargins(0, dp(8), 0, dp(8)) })
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-    }
-
-    private fun makeStatus() = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), 0, dp(12), 0)
-        setBackgroundColor(Color.rgb(8, 12, 25))
-        addView(View(this@OracleMysticActivity).apply { setBackgroundColor(Color.rgb(63, 235, 137)) }, LinearLayout.LayoutParams(dp(6), dp(6)))
-        val readyText = TextView(this@OracleMysticActivity).apply { text = "  ORACLE READY"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }
-        addView(readyText, LinearLayout.LayoutParams(0, -2, 1f))
-        addView(TextView(this@OracleMysticActivity).apply { text = "LOCAL INTELLIGENCE"; textSize = 9f; setTextColor(Color.rgb(145, 154, 178)) })
-        animateReadyColor(readyText)
-    }
-
-    /** Cycles the "ORACLE READY" label continuously through a smooth hue rotation.
-     *  Self-terminates once its TextView is detached (e.g. when showHub() rebuilds the page). */
-    private fun animateReadyColor(view: TextView) {
-        val startNanos = System.nanoTime()
-        val hsv = floatArrayOf(0f, 0.5f, 1f)
-        val step = object : Runnable {
-            override fun run() {
-                if (!view.isAttachedToWindow) return
-                val elapsed = (System.nanoTime() - startNanos) / 1_000_000_000.0
-                hsv[0] = ((elapsed / 6.0) % 1.0 * 360.0).toFloat()
-                view.setTextColor(Color.HSVToColor(hsv))
-                mainHandler.postDelayed(this, 50L)
-            }
-        }
-        mainHandler.post(step)
     }
 
     private fun openModule(key: String) {

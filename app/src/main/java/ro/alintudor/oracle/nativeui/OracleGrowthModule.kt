@@ -307,8 +307,8 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         }
         header.addView(text("LATEST RECOMMENDATIONS", 15f, Typeface.DEFAULT_BOLD, cyan, 0, 0), LinearLayout.LayoutParams(-2, -2))
 
-        // Arrow sits right next to the title. Hidden/inert unless there is more than
-        // COLLAPSED_COUNT entries to reveal — shown further down once we know the count.
+        // Arrow sits right next to the title. Collapsed by default (nothing shown);
+        // hidden entirely only if there are no recent recommendations at all.
         val arrow = TextView(host.root.context).apply {
             text = "⌄"
             textSize = 23f
@@ -348,40 +348,28 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             .filter { it.referenceTimestamp > 0L && it.referenceTimestamp >= startHistoryTimestamp() }
             .sortedWith(compareByDescending<OracleGrowthRecommendation> { it.referenceTimestamp }
                 .thenBy { horizonOrder(it.horizon) }.thenBy { it.ticker })
-        val rows = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
+            .take(15)
+        val rows = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         card.addView(rows)
 
         if (all.isEmpty()) {
             arrow.visibility = View.GONE
+            rows.visibility = View.VISIBLE
             rows.addView(historyRow(null), LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
             host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
             return
         }
 
-        val collapsedCount = 3
-        val visible = all.take(collapsedCount)
-        visible.forEach { item ->
+        all.forEach { item ->
             rows.addView(historyRow(item), LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
         }
-        val remaining = all.drop(collapsedCount)
-        if (remaining.isEmpty()) {
-            // Nothing more to reveal — the toggle would be a dead control, so remove it.
-            arrow.visibility = View.GONE
-        } else {
-            val expandedViews = remaining.map { item ->
-                val row = historyRow(item)
-                row.visibility = View.GONE
-                rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
-                row
-            }
-            var expanded = false
-            val toggle: () -> Unit = {
-                expanded = !expanded
-                arrow.text = if (expanded) "⌃" else "⌄"
-                expandedViews.forEach { it.visibility = if (expanded) View.VISIBLE else View.GONE }
-            }
-            arrow.setOnClickListener { toggle() }
+        var expanded = false
+        val toggle: () -> Unit = {
+            expanded = !expanded
+            arrow.text = if (expanded) "⌃" else "⌄"
+            rows.visibility = if (expanded) View.VISIBLE else View.GONE
         }
+        arrow.setOnClickListener { toggle() }
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
     }
 
@@ -420,7 +408,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun startHistoryTimestamp(): Long {
         val f = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ro", "RO"))
         f.timeZone = TimeZone.getTimeZone("Europe/Bucharest")
-        return f.parse("31.08.2026 00:00")?.time ?: 0L
+        return f.parse("01.09.2026 00:00")?.time ?: 0L
     }
 
     private fun horizonOrder(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> 0; "MEDIUM" -> 1; else -> 2 }
