@@ -793,11 +793,10 @@ host.content.addView(TextView(host.root.context).apply {
         })
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
 
-        // One large, densely-filled card: classical Greek/Roman busts and
-        // scattered mathematical notation, like a scholar's crowded notebook page.
-        // Height fills down toward the bottom of the screen rather than a small
-        // fixed box, so it reads as one full page, not a little tile.
-        host.addSectionLabel("SYMBOLS OF KNOWLEDGE")
+        // One large, densely-filled card: classical Greek/Roman busts, geometric
+        // instruments and structures, and scattered mathematical notation — like
+        // a scholar's crowded notebook page. Height fills down toward the bottom
+        // of the screen rather than a small fixed box.
         val bigCard = FrameLayout(host.root.context).apply {
             background = GradientDrawable().apply {
                 setColor(Color.rgb(10, 10, 10))
@@ -832,13 +831,22 @@ host.content.addView(TextView(host.root.context).apply {
         // Gravity-anchored (not fixed topMargin), so these two land near the
         // real middle and bottom of the card no matter how tall it ends up —
         // the card's height is computed from the actual screen at runtime.
-        val bust4 = ClassicalBustView(host.root.context, hasLaurel = false)
-        bigCard.addView(bust4, FrameLayout.LayoutParams(host.dp(95), host.dp(118)).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            topMargin = host.dp(340)
+        val column = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COLUMN)
+        bigCard.addView(column, FrameLayout.LayoutParams(host.dp(65), host.dp(150)).apply {
+            leftMargin = host.dp(12); topMargin = host.dp(380)
         })
-        bust4.rotation = 4f
-        bust4.scaleX = -1f
+
+        val compass = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COMPASS)
+        bigCard.addView(compass, FrameLayout.LayoutParams(host.dp(85), host.dp(105)).apply {
+            leftMargin = host.dp(100); topMargin = host.dp(400)
+        })
+        compass.rotation = -6f
+
+        val scale = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_SCALE)
+        bigCard.addView(scale, FrameLayout.LayoutParams(host.dp(110), host.dp(125)).apply {
+            leftMargin = host.dp(205); topMargin = host.dp(390)
+        })
+        scale.rotation = 3f
 
         val bust5 = ClassicalBustView(host.root.context, hasLaurel = true)
         bigCard.addView(bust5, FrameLayout.LayoutParams(host.dp(110), host.dp(138)).apply {
@@ -1074,6 +1082,70 @@ host.content.addView(TextView(host.root.context).apply {
                     val leafRad = rad + Math.toRadians(35.0)
                     val len = w * 0.06f
                     canvas.drawLine(px, py, px + len * kotlin.math.cos(leafRad).toFloat(), py + len * kotlin.math.sin(leafRad).toFloat(), paint)
+                }
+            }
+        }
+    }
+
+    /** A handful of other classical/scholarly line drawings, for variety
+     *  alongside the busts: a Doric column, a pair of compasses (geometry),
+     *  and a balance scale. Same dignified single-stroke style. */
+    private class KnowledgeMotifView(context: android.content.Context, private val kind: Int) : android.view.View(context) {
+        companion object { const val KIND_COLUMN = 0; const val KIND_COMPASS = 1; const val KIND_SCALE = 2 }
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        private val ink = Color.rgb(205, 202, 195)
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
+            val cx = w * 0.5f
+            paint.color = ink; paint.alpha = 205
+
+            when (kind) {
+                KIND_COLUMN -> {
+                    val baseH = h * 0.07f; val baseW = w * 0.62f
+                    val capH = h * 0.08f
+                    val shaftW = w * 0.34f
+                    paint.strokeWidth = w * 0.03f
+                    canvas.drawRect(cx - baseW / 2f, h * 0.93f - baseH, cx + baseW / 2f, h * 0.93f, paint)
+                    canvas.drawRect(cx - shaftW / 2f, h * 0.14f + capH, cx + shaftW / 2f, h * 0.93f - baseH, paint)
+                    canvas.drawRect(cx - baseW * 0.46f, h * 0.14f, cx + baseW * 0.46f, h * 0.14f + capH, paint)
+                    paint.strokeWidth = w * 0.014f; paint.alpha = 120
+                    for (i in -1..1) canvas.drawLine(cx + i * shaftW * 0.32f, h * 0.14f + capH + h * 0.02f, cx + i * shaftW * 0.32f, h * 0.93f - baseH - h * 0.02f, paint)
+                }
+                KIND_COMPASS -> {
+                    val pivotY = h * 0.10f
+                    val footY = h * 0.90f
+                    val spread = w * 0.34f
+                    paint.strokeWidth = w * 0.028f
+                    canvas.drawCircle(cx, pivotY, w * 0.035f, paint)
+                    canvas.drawLine(cx, pivotY, cx - spread, footY, paint)
+                    canvas.drawLine(cx, pivotY, cx + spread, footY, paint)
+                    paint.strokeWidth = w * 0.02f; paint.alpha = 160
+                    canvas.drawLine(cx - spread * 0.7f, h * 0.62f, cx + spread * 0.7f, h * 0.62f, paint)
+                }
+                else -> { // KIND_SCALE
+                    val topY = h * 0.10f
+                    val postBottomY = h * 0.88f
+                    val beamW = w * 0.78f
+                    val beamY = topY + h * 0.06f
+                    paint.strokeWidth = w * 0.022f
+                    canvas.drawLine(cx, topY, cx, postBottomY, paint)
+                    canvas.drawLine(cx - beamW / 2f, beamY, cx + beamW / 2f, beamY, paint)
+                    canvas.drawLine(cx - w * 0.16f, postBottomY, cx + w * 0.16f, postBottomY, paint)
+                    paint.strokeWidth = w * 0.014f
+                    canvas.drawLine(cx - beamW / 2f, beamY, cx - beamW / 2f, beamY + h * 0.22f, paint)
+                    canvas.drawLine(cx + beamW / 2f, beamY, cx + beamW / 2f, beamY + h * 0.22f, paint)
+                    canvas.drawArc(android.graphics.RectF(cx - beamW / 2f - w * 0.13f, beamY + h * 0.22f, cx - beamW / 2f + w * 0.13f, beamY + h * 0.22f + h * 0.09f), 0f, 180f, false, paint)
+                    canvas.drawArc(android.graphics.RectF(cx + beamW / 2f - w * 0.13f, beamY + h * 0.22f, cx + beamW / 2f + w * 0.13f, beamY + h * 0.22f + h * 0.09f), 0f, 180f, false, paint)
+                    paint.style = android.graphics.Paint.Style.FILL
+                    canvas.drawCircle(cx, beamY, w * 0.022f, paint)
+                    paint.style = android.graphics.Paint.Style.STROKE
                 }
             }
         }

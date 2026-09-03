@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:theme="@style/AppTheme"
-        android:label="Oracle 2.1"
+        android:label="Oracle2.1"
         android:icon="@drawable/ic_oracle"
         android:roundIcon="@drawable/ic_oracle"
         android:allowBackup="false"
