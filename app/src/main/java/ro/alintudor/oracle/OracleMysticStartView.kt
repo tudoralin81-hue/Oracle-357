@@ -38,7 +38,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun buildConstellations(): List<Constellation> {
         val rnd = java.util.Random(357202601L) // fixed seed: pattern stays stable across frames
         val clusters = mutableListOf<Constellation>()
-        repeat(20) { idx ->
+        repeat(30) { idx ->
             var cx = 0.05f + rnd.nextFloat() * 0.90f
             var cy = 0.04f + rnd.nextFloat() * 0.88f
             val count = 4 + rnd.nextInt(4)

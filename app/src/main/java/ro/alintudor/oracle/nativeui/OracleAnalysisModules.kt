@@ -793,30 +793,56 @@ host.content.addView(TextView(host.root.context).apply {
         })
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
 
-        // Fills the space below the header card with clean, monochrome classical
-        // emblems of knowledge — a book, a laurel wreath, a quill and inkwell —
-        // drawn with precise single strokes (no sketchy jitter, no figures).
+        // One large, densely-filled card: classical Greek/Roman busts and
+        // scattered mathematical notation, like a scholar's crowded notebook page.
         host.addSectionLabel("SYMBOLS OF KNOWLEDGE")
-        val sketchRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
-        host.content.addView(sketchRow, LinearLayout.LayoutParams(-1, host.dp(150)).apply { setMargins(0, 0, 0, host.dp(10)) })
-        val sketchKinds = listOf(KnowledgeSketchView.KIND_BOOK, KnowledgeSketchView.KIND_WREATH, KnowledgeSketchView.KIND_QUILL)
-        sketchKinds.forEachIndexed { index, kind ->
-            val panel = LinearLayout(host.root.context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.rgb(10, 10, 10))
-                    cornerRadius = host.dp(14).toFloat()
-                    setStroke(host.dp(1), Color.rgb(90, 90, 90))
-                }
+        val bigCard = FrameLayout(host.root.context).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(10, 10, 10))
+                cornerRadius = host.dp(14).toFloat()
+                setStroke(host.dp(1), Color.rgb(90, 90, 90))
             }
-            panel.addView(KnowledgeSketchView(host.root.context, kind), LinearLayout.LayoutParams(-1, -1))
-            sketchRow.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply {
-                setMargins(if (index == 0) 0 else host.dp(5), 0, if (index == sketchKinds.size - 1) 0 else host.dp(5), 0)
-            })
-            panel.alpha = 0f
-            panel.animate().alpha(1f).setStartDelay(index * 160L).setDuration(500L).start()
         }
+        host.content.addView(bigCard, LinearLayout.LayoutParams(-1, host.dp(260)).apply { setMargins(0, 0, 0, host.dp(10)) })
+
+        val bust1 = ClassicalBustView(host.root.context, hasLaurel = true)
+        bigCard.addView(bust1, FrameLayout.LayoutParams(host.dp(120), host.dp(150)).apply {
+            leftMargin = host.dp(14); topMargin = host.dp(16)
+        })
+        bust1.rotation = -5f
+
+        val bust2 = ClassicalBustView(host.root.context, hasLaurel = false)
+        bigCard.addView(bust2, FrameLayout.LayoutParams(host.dp(105), host.dp(130)).apply {
+            gravity = Gravity.END or Gravity.BOTTOM
+            rightMargin = host.dp(16); bottomMargin = host.dp(14)
+        })
+        bust2.rotation = 6f
+        bust2.scaleX = -1f
+
+        data class Formula(val text: String, val leftDp: Int, val topDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
+        val formulas = listOf(
+            Formula("a² + b² = c²", 140, 16, 13f, -4f, 0.85f),
+            Formula("π", 205, 55, 26f, 8f, 0.70f),
+            Formula("Σ", 95, 165, 22f, -10f, 0.60f),
+            Formula("φ = 1.618…", 130, 205, 11f, 3f, 0.75f),
+            Formula("θ", 235, 145, 20f, -6f, 0.55f),
+            Formula("√2", 40, 130, 16f, 12f, 0.65f),
+            Formula("Δ", 175, 130, 18f, -3f, 0.60f),
+            Formula("∞", 250, 90, 20f, 5f, 0.50f),
+            Formula("C = 2πr", 30, 195, 12f, 7f, 0.60f)
+        )
+        formulas.forEach { f ->
+            val tv = TextView(host.root.context).apply {
+                text = f.text
+                textSize = f.sizeSp
+                typeface = Typeface.SERIF
+                setTextColor(Color.argb((235 * f.a).toInt(), 200, 198, 192))
+                rotation = f.rot
+            }
+            bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply { leftMargin = host.dp(f.leftDp); topMargin = host.dp(f.topDp) })
+        }
+        bigCard.alpha = 0f
+        bigCard.animate().alpha(1f).setDuration(550L).start()
 
         if (items.isEmpty()) return
         items.sortedByDescending { it.publishedAt }.forEach { addItem(it.title, "${it.category}\n${it.content}") }
@@ -940,107 +966,56 @@ host.content.addView(TextView(host.root.context).apply {
         }
     }
 
-    /** Clean, monochrome classical emblems of knowledge: a book, a laurel wreath,
-     *  and a quill with an inkwell. Precise single-stroke geometry (no jittery
-     *  "sketch" doubling, no attempted figures) — meant to read as dignified,
-     *  not playful. Only brightness shimmers slowly; the linework stays still. */
-    private class KnowledgeSketchView(context: android.content.Context, private val kind: Int) : android.view.View(context) {
-        companion object { const val KIND_BOOK = 0; const val KIND_WREATH = 1; const val KIND_QUILL = 2 }
+    /** Faceless classical bust silhouette (Greek laurel-crowned or plain Roman
+     *  style) — a rounded head, draped shoulders, optional laurel band. No
+     *  facial features are drawn, which keeps it dignified and low-risk to
+     *  render well, rather than attempting a face. */
+    private class ClassicalBustView(context: android.content.Context, private val hasLaurel: Boolean) : android.view.View(context) {
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
             strokeCap = android.graphics.Paint.Cap.ROUND
             strokeJoin = android.graphics.Paint.Join.ROUND
         }
-        private val startNanos = System.nanoTime()
-        private val ink = Color.rgb(200, 198, 192)
+        private val ink = Color.rgb(205, 202, 195)
 
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             val w = width.toFloat(); val h = height.toFloat()
             if (w <= 0f || h <= 0f) return
-            val time = (System.nanoTime() - startNanos) / 1_000_000_000.0
-            val shimmer = (0.85 + 0.15 * kotlin.math.sin(time * 0.7)).toFloat()
-            val a = (220 * shimmer).toInt().coerceIn(180, 235)
-            val cx = w / 2f; val cy = h / 2f
-            paint.color = ink; paint.alpha = a
+            val cx = w * 0.5f
+            val headR = kotlin.math.min(w, h) * 0.22f
+            val headCy = headR * 1.3f
 
-            when (kind) {
-                KIND_BOOK -> {
-                    val bw = w * 0.5f; val bh = h * 0.56f
-                    val left = cx - bw / 2f; val top = h * 0.22f
-                    paint.strokeWidth = w * 0.022f
-                    canvas.drawRoundRect(android.graphics.RectF(left, top, left + bw, top + bh), w * 0.02f, w * 0.02f, paint)
-                    canvas.drawLine(left + bw * 0.14f, top, left + bw * 0.14f, top + bh, paint)
-                    paint.strokeWidth = w * 0.012f; paint.alpha = (a * 0.55f).toInt()
-                    for (i in 0..2) {
-                        val y = top + bh * 0.32f + i * bh * 0.16f
-                        canvas.drawLine(left + bw * 0.26f, y, left + bw * 0.84f, y, paint)
-                    }
-                    paint.alpha = a; paint.strokeWidth = w * 0.02f
-                    val rx = left + bw * 0.7f
-                    val ribbon = android.graphics.Path().apply {
-                        moveTo(rx, top); lineTo(rx, top + bh * 0.5f)
-                        lineTo(rx - w * 0.035f, top + bh * 0.38f)
-                        lineTo(rx + w * 0.035f, top + bh * 0.38f)
-                        close()
-                    }
-                    canvas.drawPath(ribbon, paint)
-                }
-                KIND_WREATH -> {
-                    val r = kotlin.math.min(w, h) * 0.30f
-                    val cyC = cy + h * 0.04f
-                    paint.strokeWidth = w * 0.018f
-                    val bounds = android.graphics.RectF(cx - r, cyC - r, cx + r, cyC + r)
-                    canvas.drawArc(bounds, 100f, 170f, false, paint)
-                    canvas.drawArc(bounds, 80f, -170f, false, paint)
-                    fun leaf(angleDeg: Float, mirror: Boolean) {
-                        val rad = Math.toRadians(angleDeg.toDouble())
-                        val px = cx + r * kotlin.math.cos(rad).toFloat()
-                        val py = cyC + r * kotlin.math.sin(rad).toFloat()
-                        val leafRad = rad + Math.toRadians((if (mirror) -34.0 else 34.0))
-                        val len = w * 0.09f
-                        val ex = px + len * kotlin.math.cos(leafRad).toFloat()
-                        val ey = py + len * kotlin.math.sin(leafRad).toFloat()
-                        canvas.drawLine(px, py, ex, ey, paint)
-                    }
-                    paint.strokeWidth = w * 0.013f
-                    for (deg in intArrayOf(115, 145, 175, 205, 235, 260)) leaf(deg.toFloat(), true)
-                    for (deg in intArrayOf(65, 35, 5, -25, -55, -80)) leaf(deg.toFloat(), false)
-                    // A small star at the heart of the wreath.
-                    paint.strokeWidth = w * 0.014f
-                    val sr = r * 0.28f
-                    val star = android.graphics.Path()
-                    for (i in 0 until 5) {
-                        val ang = Math.toRadians((-90 + i * 144).toDouble())
-                        val px = cx + sr * kotlin.math.cos(ang).toFloat()
-                        val py = cyC + sr * kotlin.math.sin(ang).toFloat()
-                        if (i == 0) star.moveTo(px, py) else star.lineTo(px, py)
-                    }
-                    star.close()
-                    canvas.drawPath(star, paint)
-                }
-                else -> { // KIND_QUILL
-                    val inkX = cx - w * 0.10f; val inkY = h * 0.70f
-                    val inkW = w * 0.24f; val inkH = h * 0.15f
-                    paint.strokeWidth = w * 0.02f
-                    val inkRect = android.graphics.RectF(inkX - inkW / 2f, inkY, inkX + inkW / 2f, inkY + inkH)
-                    canvas.drawRoundRect(inkRect, w * 0.03f, w * 0.03f, paint)
-                    canvas.drawOval(android.graphics.RectF(inkX - inkW * 0.42f, inkY - inkH * 0.16f, inkX + inkW * 0.42f, inkY + inkH * 0.16f), paint)
-                    val nibX = inkX + inkW * 0.08f; val nibY = inkY - inkH * 0.05f
-                    val tipX = cx + w * 0.26f; val tipY = h * 0.16f
-                    canvas.drawLine(nibX, nibY, tipX, tipY, paint)
-                    paint.strokeWidth = w * 0.011f; paint.alpha = (a * 0.85f).toInt()
-                    val steps = 6
-                    for (i in 1..steps) {
-                        val t = i / (steps + 1f)
-                        val bx = nibX + (tipX - nibX) * t
-                        val by = nibY + (tipY - nibY) * t
-                        val side = if (i % 2 == 0) 1f else -1f
-                        canvas.drawLine(bx, by, bx + side * w * 0.045f, by - h * 0.012f, paint)
-                    }
+            paint.color = ink; paint.alpha = 205; paint.strokeWidth = w * 0.035f
+            canvas.drawCircle(cx, headCy, headR, paint)
+
+            val body = android.graphics.Path().apply {
+                moveTo(cx - headR * 0.8f, headCy + headR * 0.75f)
+                cubicTo(cx - w * 0.40f, h * 0.60f, cx - w * 0.42f, h * 0.95f, cx - w * 0.36f, h * 0.97f)
+                lineTo(cx + w * 0.36f, h * 0.97f)
+                cubicTo(cx + w * 0.42f, h * 0.95f, cx + w * 0.40f, h * 0.60f, cx + headR * 0.8f, headCy + headR * 0.75f)
+            }
+            canvas.drawPath(body, paint)
+
+            paint.strokeWidth = w * 0.014f; paint.alpha = 120
+            canvas.drawLine(cx - w * 0.16f, headCy + headR * 1.2f, cx - w * 0.20f, h * 0.90f, paint)
+            canvas.drawLine(cx + w * 0.16f, headCy + headR * 1.2f, cx + w * 0.20f, h * 0.90f, paint)
+
+            if (hasLaurel) {
+                paint.color = ink; paint.alpha = 210; paint.strokeWidth = w * 0.02f
+                val bounds = android.graphics.RectF(cx - headR * 1.05f, headCy - headR * 1.05f, cx + headR * 1.05f, headCy + headR * 1.05f)
+                canvas.drawArc(bounds, 195f, 150f, false, paint)
+                paint.strokeWidth = w * 0.012f
+                for (deg in intArrayOf(205, 230, 255, 280, 305, 330)) {
+                    val rad = Math.toRadians(deg.toDouble())
+                    val r1 = headR * 1.05f
+                    val px = cx + r1 * kotlin.math.cos(rad).toFloat()
+                    val py = headCy + r1 * kotlin.math.sin(rad).toFloat()
+                    val leafRad = rad + Math.toRadians(35.0)
+                    val len = w * 0.06f
+                    canvas.drawLine(px, py, px + len * kotlin.math.cos(leafRad).toFloat(), py + len * kotlin.math.sin(leafRad).toFloat(), paint)
                 }
             }
-            postInvalidateDelayed(120L)
         }
     }
 
