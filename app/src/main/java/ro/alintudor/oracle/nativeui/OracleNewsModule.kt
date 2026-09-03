@@ -135,7 +135,7 @@ class OracleNewsModule(private val host: OracleNativeModule) {
             addUpdateListener{ anim->
                 if(!box.isAttachedToWindow){anim.cancel();return@addUpdateListener}
                 val q=anim.animatedValue as Float
-                boxBg.setStroke(strokePx,Color.argb((140+105*q).toInt(),ar,ag,ab))
+                boxBg.setStroke((strokePx*(1f+0.7f*q)).toInt().coerceAtLeast(1),Color.argb((140+105*q).toInt(),ar,ag,ab))
             }
         }.start()
     }

@@ -217,7 +217,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 addUpdateListener { anim ->
                     if (!top.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
                     val q = anim.animatedValue as Float
-                    topBg.setStroke(strokePx, Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
+                    topBg.setStroke((strokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
                 }
             }.start()
         }
@@ -755,7 +755,7 @@ host.content.addView(TextView(host.root.context).apply {
                     addUpdateListener { anim ->
                         if (!row.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
                         val q = anim.animatedValue as Float
-                        rowBg.setStroke(rowStrokePx, Color.argb((130 + 100 * q).toInt(), 75, 225, 255))
+                        rowBg.setStroke((rowStrokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((130 + 100 * q).toInt(), 75, 225, 255))
                     }
                 }.start()
             }
@@ -793,13 +793,13 @@ host.content.addView(TextView(host.root.context).apply {
         })
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
 
-        // Fills the space below the header card with black-and-white pencil-sketch
-        // style illustrations — books and a classical wise figure — instead of
-        // colored topic tiles.
-        host.addSectionLabel("WISDOM, SKETCHED")
+        // Fills the space below the header card with clean, monochrome classical
+        // emblems of knowledge — a book, a laurel wreath, a quill and inkwell —
+        // drawn with precise single strokes (no sketchy jitter, no figures).
+        host.addSectionLabel("SYMBOLS OF KNOWLEDGE")
         val sketchRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
         host.content.addView(sketchRow, LinearLayout.LayoutParams(-1, host.dp(150)).apply { setMargins(0, 0, 0, host.dp(10)) })
-        val sketchKinds = listOf(KnowledgeSketchView.KIND_SAGE, KnowledgeSketchView.KIND_BOOKS, KnowledgeSketchView.KIND_OWL)
+        val sketchKinds = listOf(KnowledgeSketchView.KIND_BOOK, KnowledgeSketchView.KIND_WREATH, KnowledgeSketchView.KIND_QUILL)
         sketchKinds.forEachIndexed { index, kind ->
             val panel = LinearLayout(host.root.context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -940,135 +940,107 @@ host.content.addView(TextView(host.root.context).apply {
         }
     }
 
-    /** Black-and-white pencil-sketch style illustrations: a classical wise figure,
-     *  a stack of books, and an owl with a scroll. Hand-drawn look via doubled,
-     *  slightly-offset strokes and light diagonal hatching; monochrome only. */
+    /** Clean, monochrome classical emblems of knowledge: a book, a laurel wreath,
+     *  and a quill with an inkwell. Precise single-stroke geometry (no jittery
+     *  "sketch" doubling, no attempted figures) — meant to read as dignified,
+     *  not playful. Only brightness shimmers slowly; the linework stays still. */
     private class KnowledgeSketchView(context: android.content.Context, private val kind: Int) : android.view.View(context) {
-        companion object { const val KIND_SAGE = 0; const val KIND_BOOKS = 1; const val KIND_OWL = 2 }
+        companion object { const val KIND_BOOK = 0; const val KIND_WREATH = 1; const val KIND_QUILL = 2 }
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
             strokeCap = android.graphics.Paint.Cap.ROUND
             strokeJoin = android.graphics.Paint.Join.ROUND
         }
         private val startNanos = System.nanoTime()
-        private val ink = Color.rgb(215, 212, 205) // graphite-on-dark-paper tone
-
-        private fun sketchLine(c: android.graphics.Canvas, x1: Float, y1: Float, x2: Float, y2: Float, w: Float, a: Int, jitter: Float) {
-            paint.strokeWidth = w; paint.color = ink; paint.alpha = a
-            c.drawLine(x1, y1, x2, y2, paint)
-            // A second, faint offset stroke gives the doubled hand-drawn pencil look.
-            paint.alpha = (a * 0.45f).toInt()
-            c.drawLine(x1 + jitter, y1 - jitter, x2 + jitter, y2 - jitter, paint)
-        }
-        private fun sketchPath(c: android.graphics.Canvas, path: android.graphics.Path, w: Float, a: Int) {
-            paint.strokeWidth = w; paint.color = ink; paint.alpha = a
-            c.drawPath(path, paint)
-        }
-        private fun hatch(c: android.graphics.Canvas, cx: Float, cy: Float, r: Float, lines: Int, a: Int) {
-            paint.strokeWidth = 1.2f; paint.color = ink; paint.alpha = a
-            for (i in 0 until lines) {
-                val t = i / lines.toFloat()
-                val x = cx - r + t * 2f * r
-                c.drawLine(x, cy - r * 0.5f, x - r * 0.3f, cy + r * 0.5f, paint)
-            }
-        }
+        private val ink = Color.rgb(200, 198, 192)
 
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             val w = width.toFloat(); val h = height.toFloat()
             if (w <= 0f || h <= 0f) return
             val time = (System.nanoTime() - startNanos) / 1_000_000_000.0
-            // Slow graphite shimmer instead of color — keeps it monochrome.
-            val shimmer = (0.75 + 0.25 * kotlin.math.sin(time * 0.9)).toFloat()
-            val baseAlpha = (215 * shimmer).toInt().coerceIn(150, 235)
-            val cx = w / 2f
+            val shimmer = (0.85 + 0.15 * kotlin.math.sin(time * 0.7)).toFloat()
+            val a = (220 * shimmer).toInt().coerceIn(180, 235)
+            val cx = w / 2f; val cy = h / 2f
+            paint.color = ink; paint.alpha = a
 
             when (kind) {
-                KIND_SAGE -> {
-                    val cy = h * 0.36f; val headR = w * 0.17f
-                    // Head
-                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx, cy, headR, android.graphics.Path.Direction.CW) }, w * 0.028f, baseAlpha)
-                    // Beard
-                    val beard = android.graphics.Path().apply {
-                        moveTo(cx - headR * 0.75f, cy + headR * 0.55f)
-                        cubicTo(cx - headR * 0.5f, cy + headR * 1.9f, cx + headR * 0.5f, cy + headR * 1.9f, cx + headR * 0.75f, cy + headR * 0.55f)
+                KIND_BOOK -> {
+                    val bw = w * 0.5f; val bh = h * 0.56f
+                    val left = cx - bw / 2f; val top = h * 0.22f
+                    paint.strokeWidth = w * 0.022f
+                    canvas.drawRoundRect(android.graphics.RectF(left, top, left + bw, top + bh), w * 0.02f, w * 0.02f, paint)
+                    canvas.drawLine(left + bw * 0.14f, top, left + bw * 0.14f, top + bh, paint)
+                    paint.strokeWidth = w * 0.012f; paint.alpha = (a * 0.55f).toInt()
+                    for (i in 0..2) {
+                        val y = top + bh * 0.32f + i * bh * 0.16f
+                        canvas.drawLine(left + bw * 0.26f, y, left + bw * 0.84f, y, paint)
                     }
-                    sketchPath(canvas, beard, w * 0.024f, baseAlpha)
-                    hatch(canvas, cx, cy + headR * 1.15f, headR * 0.7f, 7, (baseAlpha * 0.5f).toInt())
-                    // Simple hair strokes on top
-                    for (i in -2..2) sketchLine(canvas, cx + i * headR * 0.28f, cy - headR * 0.95f, cx + i * headR * 0.32f, cy - headR * 0.55f, w * 0.014f, (baseAlpha * 0.8f).toInt(), 1.2f)
-                    // Shoulders / toga
-                    val toga = android.graphics.Path().apply {
-                        moveTo(cx - w * 0.34f, h * 0.86f)
-                        lineTo(cx - headR * 0.85f, cy + headR * 1.35f)
-                        lineTo(cx + headR * 0.85f, cy + headR * 1.35f)
-                        lineTo(cx + w * 0.34f, h * 0.86f)
+                    paint.alpha = a; paint.strokeWidth = w * 0.02f
+                    val rx = left + bw * 0.7f
+                    val ribbon = android.graphics.Path().apply {
+                        moveTo(rx, top); lineTo(rx, top + bh * 0.5f)
+                        lineTo(rx - w * 0.035f, top + bh * 0.38f)
+                        lineTo(rx + w * 0.035f, top + bh * 0.38f)
+                        close()
                     }
-                    sketchPath(canvas, toga, w * 0.022f, baseAlpha)
-                    for (i in 0 until 4) sketchLine(canvas, cx - w * 0.18f + i * w * 0.12f, cy + headR * 1.5f, cx - w * 0.14f + i * w * 0.12f, h * 0.83f, w * 0.012f, (baseAlpha * 0.55f).toInt(), 0.8f)
+                    canvas.drawPath(ribbon, paint)
                 }
-                KIND_BOOKS -> {
-                    val baseY = h * 0.80f
-                    val widths = floatArrayOf(0.62f, 0.54f, 0.46f)
-                    var y = baseY
-                    widths.forEachIndexed { i, wf ->
-                        val bw = w * wf; val bh = h * 0.10f
-                        val tilt = if (i % 2 == 0) -0.02f else 0.02f
-                        val rect = android.graphics.Path().apply {
-                            moveTo(cx - bw / 2f, y)
-                            lineTo(cx + bw / 2f + w * tilt, y - h * 0.01f)
-                            lineTo(cx + bw / 2f + w * tilt, y - bh)
-                            lineTo(cx - bw / 2f, y - bh - h * 0.01f)
-                            close()
-                        }
-                        sketchPath(canvas, rect, w * 0.02f, baseAlpha)
-                        sketchLine(canvas, cx - bw / 2f + w * 0.03f, y - bh * 0.5f, cx + bw / 2f - w * 0.03f, y - bh * 0.5f, w * 0.01f, (baseAlpha * 0.5f).toInt(), 0.6f)
-                        y -= bh + h * 0.015f
+                KIND_WREATH -> {
+                    val r = kotlin.math.min(w, h) * 0.30f
+                    val cyC = cy + h * 0.04f
+                    paint.strokeWidth = w * 0.018f
+                    val bounds = android.graphics.RectF(cx - r, cyC - r, cx + r, cyC + r)
+                    canvas.drawArc(bounds, 100f, 170f, false, paint)
+                    canvas.drawArc(bounds, 80f, -170f, false, paint)
+                    fun leaf(angleDeg: Float, mirror: Boolean) {
+                        val rad = Math.toRadians(angleDeg.toDouble())
+                        val px = cx + r * kotlin.math.cos(rad).toFloat()
+                        val py = cyC + r * kotlin.math.sin(rad).toFloat()
+                        val leafRad = rad + Math.toRadians((if (mirror) -34.0 else 34.0))
+                        val len = w * 0.09f
+                        val ex = px + len * kotlin.math.cos(leafRad).toFloat()
+                        val ey = py + len * kotlin.math.sin(leafRad).toFloat()
+                        canvas.drawLine(px, py, ex, ey, paint)
                     }
-                    // Open book on top, pages fanned.
-                    val ocy = y - h * 0.02f
-                    val obw = w * 0.34f; val obh = h * 0.09f
-                    val leftPage = android.graphics.Path().apply {
-                        moveTo(cx, ocy); cubicTo(cx - obw * 0.5f, ocy - obh * 1.4f, cx - obw, ocy - obh * 0.4f, cx - obw, ocy + obh * 0.3f)
-                        cubicTo(cx - obw * 0.5f, ocy + obh * 0.1f, cx - obw * 0.1f, ocy + obh * 0.15f, cx, ocy + obh * 0.4f)
+                    paint.strokeWidth = w * 0.013f
+                    for (deg in intArrayOf(115, 145, 175, 205, 235, 260)) leaf(deg.toFloat(), true)
+                    for (deg in intArrayOf(65, 35, 5, -25, -55, -80)) leaf(deg.toFloat(), false)
+                    // A small star at the heart of the wreath.
+                    paint.strokeWidth = w * 0.014f
+                    val sr = r * 0.28f
+                    val star = android.graphics.Path()
+                    for (i in 0 until 5) {
+                        val ang = Math.toRadians((-90 + i * 144).toDouble())
+                        val px = cx + sr * kotlin.math.cos(ang).toFloat()
+                        val py = cyC + sr * kotlin.math.sin(ang).toFloat()
+                        if (i == 0) star.moveTo(px, py) else star.lineTo(px, py)
                     }
-                    val rightPage = android.graphics.Path().apply {
-                        moveTo(cx, ocy); cubicTo(cx + obw * 0.5f, ocy - obh * 1.4f, cx + obw, ocy - obh * 0.4f, cx + obw, ocy + obh * 0.3f)
-                        cubicTo(cx + obw * 0.5f, ocy + obh * 0.1f, cx + obw * 0.1f, ocy + obh * 0.15f, cx, ocy + obh * 0.4f)
-                    }
-                    sketchPath(canvas, leftPage, w * 0.018f, baseAlpha)
-                    sketchPath(canvas, rightPage, w * 0.018f, baseAlpha)
+                    star.close()
+                    canvas.drawPath(star, paint)
                 }
-                else -> { // KIND_OWL
-                    val cy = h * 0.42f; val bodyRx = w * 0.24f; val bodyRy = h * 0.22f
-                    sketchPath(canvas, android.graphics.Path().apply { addOval(cx - bodyRx, cy - bodyRy, cx + bodyRx, cy + bodyRy, android.graphics.Path.Direction.CW) }, w * 0.024f, baseAlpha)
-                    // Ear tufts
-                    sketchLine(canvas, cx - bodyRx * 0.55f, cy - bodyRy * 0.85f, cx - bodyRx * 0.75f, cy - bodyRy * 1.5f, w * 0.02f, baseAlpha, 1f)
-                    sketchLine(canvas, cx + bodyRx * 0.55f, cy - bodyRy * 0.85f, cx + bodyRx * 0.75f, cy - bodyRy * 1.5f, w * 0.02f, baseAlpha, 1f)
-                    // Eyes
-                    val eyeR = bodyRx * 0.28f
-                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx - bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR, android.graphics.Path.Direction.CW) }, w * 0.016f, baseAlpha)
-                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx + bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR, android.graphics.Path.Direction.CW) }, w * 0.016f, baseAlpha)
-                    paint.style = android.graphics.Paint.Style.FILL; paint.color = ink; paint.alpha = (baseAlpha * 0.8f).toInt()
-                    canvas.drawCircle(cx - bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR * 0.35f, paint)
-                    canvas.drawCircle(cx + bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR * 0.35f, paint)
-                    paint.style = android.graphics.Paint.Style.STROKE
-                    // Beak
-                    val beak = android.graphics.Path().apply {
-                        moveTo(cx - eyeR * 0.4f, cy + bodyRy * 0.05f); lineTo(cx, cy + bodyRy * 0.35f); lineTo(cx + eyeR * 0.4f, cy + bodyRy * 0.05f)
+                else -> { // KIND_QUILL
+                    val inkX = cx - w * 0.10f; val inkY = h * 0.70f
+                    val inkW = w * 0.24f; val inkH = h * 0.15f
+                    paint.strokeWidth = w * 0.02f
+                    val inkRect = android.graphics.RectF(inkX - inkW / 2f, inkY, inkX + inkW / 2f, inkY + inkH)
+                    canvas.drawRoundRect(inkRect, w * 0.03f, w * 0.03f, paint)
+                    canvas.drawOval(android.graphics.RectF(inkX - inkW * 0.42f, inkY - inkH * 0.16f, inkX + inkW * 0.42f, inkY + inkH * 0.16f), paint)
+                    val nibX = inkX + inkW * 0.08f; val nibY = inkY - inkH * 0.05f
+                    val tipX = cx + w * 0.26f; val tipY = h * 0.16f
+                    canvas.drawLine(nibX, nibY, tipX, tipY, paint)
+                    paint.strokeWidth = w * 0.011f; paint.alpha = (a * 0.85f).toInt()
+                    val steps = 6
+                    for (i in 1..steps) {
+                        val t = i / (steps + 1f)
+                        val bx = nibX + (tipX - nibX) * t
+                        val by = nibY + (tipY - nibY) * t
+                        val side = if (i % 2 == 0) 1f else -1f
+                        canvas.drawLine(bx, by, bx + side * w * 0.045f, by - h * 0.012f, paint)
                     }
-                    sketchPath(canvas, beak, w * 0.016f, baseAlpha)
-                    hatch(canvas, cx, cy + bodyRy * 0.4f, bodyRx * 0.55f, 6, (baseAlpha * 0.4f).toInt())
-                    // Scroll beneath the owl.
-                    val sy = h * 0.82f; val sw = w * 0.34f
-                    sketchPath(canvas, android.graphics.Path().apply {
-                        moveTo(cx - sw, sy); cubicTo(cx - sw * 0.6f, sy - h * 0.04f, cx + sw * 0.6f, sy - h * 0.04f, cx + sw, sy)
-                    }, w * 0.02f, baseAlpha)
-                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx - sw, sy, w * 0.025f, android.graphics.Path.Direction.CW) }, w * 0.018f, baseAlpha)
-                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx + sw, sy, w * 0.025f, android.graphics.Path.Direction.CW) }, w * 0.018f, baseAlpha)
                 }
             }
-            postInvalidateDelayed(90L)
+            postInvalidateDelayed(120L)
         }
     }
 

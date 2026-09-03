@@ -111,7 +111,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
             addUpdateListener { anim ->
                 if (!c.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
                 val q = anim.animatedValue as Float
-                cardBg.setStroke(strokePx, Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
+                cardBg.setStroke((strokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
             }
         }.start()
     }

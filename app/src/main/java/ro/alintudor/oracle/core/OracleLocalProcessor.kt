@@ -70,7 +70,15 @@ object OracleLocalProcessor {
     fun refresh(repository: OracleRepository): OracleModuleData {
         OracleBootstrap.ensure(repository)
         val current = repository.snapshot()
-        val normalized = OracleAnalytics.normalize(current.positions)
+        // Positions never carried a live price refresh: normalize() only recomputes
+        // P/L from whatever currentPrice was last stored (initial seed or manual
+        // entry), so gains looked frozen. Pull the latest close for each held
+        // ticker before recalculating, same OHLCV source used elsewhere.
+        val livePositions = current.positions.map { p ->
+            val latestClose = runCatching { OracleMarketData.fetchDaily(p.ticker, "5d") }.getOrNull()?.lastOrNull()?.close
+            if (latestClose != null && latestClose > 0.0) p.copy(currentPrice = latestClose) else p
+        }
+        val normalized = OracleAnalytics.normalize(livePositions)
         val now = System.currentTimeMillis()
         val recentHistory = current.history.filter { now - it.timestamp < 30L * 24L * 60L * 60L * 1000L }
         val newPoints = normalized.map { OracleHistoryPoint(it.ticker, now, it.currentPrice, it.marketValue, it.pnl) }

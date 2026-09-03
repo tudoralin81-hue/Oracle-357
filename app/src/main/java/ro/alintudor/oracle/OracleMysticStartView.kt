@@ -69,7 +69,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,101f,415f,250f,125f,26f,time,true) else drawCards(c,10f,600f,165f,132f,13f,time,false)
+        hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
@@ -143,19 +143,24 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun grid(c:Canvas,cx:Float,cy:Float,first:Float,step:Float){p.style=Paint.Style.STROKE;p.strokeWidth=S(.55f);p.color=Color.argb(48,205,175,65);for(i in 0 until 14)c.drawCircle(cx,cy,first+i*step,p);for(i in 0 until 32){val a=i*Math.PI/16.0;val dx=cos(a).toFloat();val dy=sin(a).toFloat();c.drawLine(cx+dx*(first-S(16f)),cy+dy*(first-S(16f)),cx+dx*(first+S(255f)),cy+dy*(first+S(255f)),p)}}
     private fun eye(c:Canvas,x:Float,y:Float,r:Float,time:Double){val q=(.5+.5*sin(time*1.25)).toFloat();p.style=Paint.Style.STROKE;path.reset();path.moveTo(x-r,y);path.cubicTo(x-r*.58f,y-r*.55f,x+r*.58f,y-r*.55f,x+r,y);path.cubicTo(x+r*.58f,y+r*.55f,x-r*.58f,y+r*.55f,x-r,y);p.color=gold;p.alpha=(180+70*q).toInt();p.strokeWidth=S(2f);c.drawPath(path,p);p.color=green;p.alpha=(55+90*q).toInt();p.strokeWidth=S(1.2f);c.drawCircle(x,y,r*(.48f+.035f*q),p);p.alpha=(160+90*q).toInt();p.strokeWidth=S(2f);c.drawCircle(x,y,r*.29f,p);p.style=Paint.Style.FILL;p.color=Color.rgb(2,10,4);p.alpha=255;c.drawCircle(x,y,r*.275f,p);p.color=green;p.alpha=(165+90*q).toInt();c.drawCircle(x,y,r*(.09f+.035f*q),p);p.color=Color.argb((30+80*q).toInt(),60,255,85);c.drawCircle(x,y,r*(.15f+.05f*q),p);p.style=Paint.Style.STROKE;p.color=Color.rgb(255,105,35);p.alpha=(70+90*q).toInt();p.strokeWidth=S(.8f);for(i in 0 until 28){val a=i*Math.PI/14.0;val inn=r*.40f;val out=r*(.56f+.05f*q);c.drawLine(x+cos(a).toFloat()*inn,y+sin(a).toFloat()*inn,x+cos(a).toFloat()*out,y+sin(a).toFloat()*out,p)}}
     private fun drawCards(c:Canvas,left:Float,top:Float,cw:Float,ch:Float,gap:Float,time:Double,wide:Boolean){
+        val rowGapFactor=if(wide) 2.3f else 2.8f
+        val ampFactor=if(wide) 0.16f else 0.22f
+        val rowGap=gap*rowGapFactor
+        val amp=ch*ampFactor
         for(i in modules.indices){
             val col:Int;val row:Int
             if(i<4){col=i;row=0}else{col=i-4;row=1}
             val count=if(row==0)4 else 3
-            // Row 2 is offset half a card to the right (brick/masonry weave)
-            // instead of centered under row 1 — a clearly different layout.
-            val rowLeft=if(row==0)left else left+(cw+gap)/2f
+            val rowW=count*cw+(count-1)*gap
+            val rowLeft=if(row==0)left else left+(4*cw+3*gap-rowW)/2f
             val l=rowLeft+col*(cw+gap)
-            // The two rows arc in opposite directions, giving an S-shaped flow.
-            val hump=if(count>1) sin(Math.PI*col/(count-1)).toFloat() else 0f
-            val arch=ch*0.22f
-            val direction=if(row==0) 1f else -1f
-            val t=top+row*(ch+gap)-arch*hump*direction
+            // Row 1 stays flat; row 2 zigzags per column, with a generously
+            // wide gap between rows so the two can never collide. A third,
+            // distinct arrangement from the earlier grid and arc attempts.
+            val t=if(row==0) top else {
+                val zigzag=if(col%2==0)-1f else 1f
+                top+ch+rowGap+amp*zigzag
+            }
             val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch))
             hit+=r to modules[i].key
             card(c,r,modules[i],time,i,wide)
