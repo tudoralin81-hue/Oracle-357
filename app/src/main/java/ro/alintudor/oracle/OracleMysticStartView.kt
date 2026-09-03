@@ -41,7 +41,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         repeat(30) { idx ->
             var cx = 0.05f + rnd.nextFloat() * 0.90f
             var cy = 0.04f + rnd.nextFloat() * 0.88f
-            val count = 4 + rnd.nextInt(4)
+            val count = 3 + rnd.nextInt(2)
             val stars = mutableListOf<ConstellationStar>()
             repeat(count) {
                 stars += ConstellationStar(cx.coerceIn(0.02f, 0.98f), cy.coerceIn(0.02f, 0.98f), rnd.nextDouble() * 6.28)
@@ -70,7 +70,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
-        text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
+        p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f;c.drawText("357AT2026",X(if(wide)1180f else 660f),Y(if(wide)775f else 1090f),p); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
         p.style=Paint.Style.FILL

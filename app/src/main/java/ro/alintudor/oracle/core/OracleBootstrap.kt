@@ -1,21 +1,8 @@
 package ro.alintudor.oracle.core
 
-import java.time.Instant
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
-
 /** Canonical local seed and daily Growth snapshot migration. */
 object OracleBootstrap {
     private const val VERSION = 21
-    private val BUCHAREST = ZoneId.of("Europe/Bucharest")
-
-    private fun currentGrowthAnchor(nowMillis: Long): Long {
-        val now = Instant.ofEpochMilli(nowMillis).atZone(BUCHAREST)
-        var date = if (now.toLocalTime().isBefore(LocalTime.of(16, 0))) now.toLocalDate().minusDays(1) else now.toLocalDate()
-        while (!OracleMarketCalendar.isTradingDay(date)) date = date.minusDays(1)
-        return ZonedDateTime.of(date, LocalTime.of(16, 0), BUCHAREST).toInstant().toEpochMilli()
-    }
 
     /** Deterministic fallback used only when live OHLCV is unavailable. */
     fun fallbackRiskAllocation(item: OracleGrowthRecommendation): Pair<String, Double> {
@@ -46,7 +33,7 @@ object OracleBootstrap {
 
     fun ensure(repository: OracleRepository) {
         val previousVersion = repository.bootstrapVersion()
-        val currentAnchor = currentGrowthAnchor(System.currentTimeMillis())
+        val currentAnchor = OracleMarketCalendar.growthAnchor(System.currentTimeMillis())
 
         // B514 Growth reset: all earlier Growth snapshots were intermediate
         // working data. Start this build with a clean current Growth state.

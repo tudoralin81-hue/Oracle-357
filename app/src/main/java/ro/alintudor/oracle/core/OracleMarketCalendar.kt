@@ -16,6 +16,22 @@ object OracleMarketCalendar {
     private val OPEN_TIME = LocalTime.of(9, 30)
     private val CLOSE_TIME = LocalTime.of(16, 0)
     private val EARLY_CLOSE_TIME = LocalTime.of(13, 0)
+    private val BUCHAREST = ZoneId.of("Europe/Bucharest")
+
+    /**
+     * The single canonical Growth snapshot anchor: 16:00 Romania time on the
+     * most recent valid trading day. Every place that needs this value (freeze
+     * checks, bootstrap migration, live-data validation) must call this exact
+     * function — previously three separate files each had their own copy of
+     * this logic, which is a real risk of silent divergence even though they
+     * currently compute the same thing.
+     */
+    fun growthAnchor(nowMillis: Long): Long {
+        val now = Instant.ofEpochMilli(nowMillis).atZone(BUCHAREST)
+        var date = if (now.toLocalTime().isBefore(LocalTime.of(16, 0))) now.toLocalDate().minusDays(1) else now.toLocalDate()
+        while (!isTradingDay(date)) date = date.minusDays(1)
+        return ZonedDateTime.of(date, LocalTime.of(16, 0), BUCHAREST).toInstant().toEpochMilli()
+    }
 
     data class Status(
         val open: Boolean,

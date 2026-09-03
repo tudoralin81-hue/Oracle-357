@@ -795,6 +795,8 @@ host.content.addView(TextView(host.root.context).apply {
 
         // One large, densely-filled card: classical Greek/Roman busts and
         // scattered mathematical notation, like a scholar's crowded notebook page.
+        // Height fills down toward the bottom of the screen rather than a small
+        // fixed box, so it reads as one full page, not a little tile.
         host.addSectionLabel("SYMBOLS OF KNOWLEDGE")
         val bigCard = FrameLayout(host.root.context).apply {
             background = GradientDrawable().apply {
@@ -803,7 +805,9 @@ host.content.addView(TextView(host.root.context).apply {
                 setStroke(host.dp(1), Color.rgb(90, 90, 90))
             }
         }
-        host.content.addView(bigCard, LinearLayout.LayoutParams(-1, host.dp(260)).apply { setMargins(0, 0, 0, host.dp(10)) })
+        val screenH = host.root.context.resources.displayMetrics.heightPixels
+        val bigCardHeight = (screenH - host.dp(300)).coerceAtLeast(host.dp(420))
+        host.content.addView(bigCard, LinearLayout.LayoutParams(-1, bigCardHeight).apply { setMargins(0, 0, 0, host.dp(10)) })
 
         val bust1 = ClassicalBustView(host.root.context, hasLaurel = true)
         bigCard.addView(bust1, FrameLayout.LayoutParams(host.dp(120), host.dp(150)).apply {
@@ -811,13 +815,19 @@ host.content.addView(TextView(host.root.context).apply {
         })
         bust1.rotation = -5f
 
+        val bust3 = ClassicalBustView(host.root.context, hasLaurel = true)
+        bigCard.addView(bust3, FrameLayout.LayoutParams(host.dp(100), host.dp(125)).apply {
+            gravity = Gravity.END; topMargin = host.dp(210); rightMargin = host.dp(28)
+        })
+        bust3.rotation = -8f
+        bust3.scaleX = -1f
+
         val bust2 = ClassicalBustView(host.root.context, hasLaurel = false)
         bigCard.addView(bust2, FrameLayout.LayoutParams(host.dp(105), host.dp(130)).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            rightMargin = host.dp(16); bottomMargin = host.dp(14)
+            gravity = Gravity.START or Gravity.BOTTOM
+            leftMargin = host.dp(24); bottomMargin = host.dp(20)
         })
         bust2.rotation = 6f
-        bust2.scaleX = -1f
 
         data class Formula(val text: String, val leftDp: Int, val topDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
         val formulas = listOf(
@@ -829,7 +839,14 @@ host.content.addView(TextView(host.root.context).apply {
             Formula("√2", 40, 130, 16f, 12f, 0.65f),
             Formula("Δ", 175, 130, 18f, -3f, 0.60f),
             Formula("∞", 250, 90, 20f, 5f, 0.50f),
-            Formula("C = 2πr", 30, 195, 12f, 7f, 0.60f)
+            Formula("C = 2πr", 30, 195, 12f, 7f, 0.60f),
+            Formula("V = πr²h", 150, 265, 12f, -6f, 0.65f),
+            Formula("Ω", 30, 260, 22f, 9f, 0.55f),
+            Formula("τ = 2π", 210, 300, 12f, 4f, 0.60f),
+            Formula("λ", 100, 320, 20f, -8f, 0.50f),
+            Formula("e^(iπ) + 1 = 0", 30, 355, 12f, 3f, 0.70f),
+            Formula("∑ 1/n²", 190, 355, 11f, -5f, 0.55f),
+            Formula("χ", 260, 250, 20f, 7f, 0.50f)
         )
         formulas.forEach { f ->
             val tv = TextView(host.root.context).apply {

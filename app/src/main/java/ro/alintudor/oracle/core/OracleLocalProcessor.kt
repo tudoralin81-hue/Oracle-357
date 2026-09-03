@@ -1,26 +1,13 @@
 package ro.alintudor.oracle.core
 
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
-
 /** Local orchestration layer. */
 object OracleLocalProcessor {
-    private val BUCHAREST = ZoneId.of("Europe/Bucharest")
-
     /**
      * Single-flight lock for the Growth snapshot. Growth is a daily immutable
      * snapshot; concurrent refreshes from different modules must never be able
      * to calculate two different recommendation sets for the same T0.
      */
     private val growthSnapshotLock = Any()
-
-    private fun currentGrowthAnchor(nowMillis: Long): Long {
-        val z = Instant.ofEpochMilli(nowMillis).atZone(BUCHAREST)
-        var date = if (z.hour < 16) z.toLocalDate().minusDays(1) else z.toLocalDate()
-        while (!OracleMarketCalendar.isTradingDay(date)) date = date.minusDays(1)
-        return ZonedDateTime.of(date, java.time.LocalTime.of(16, 0), BUCHAREST).toInstant().toEpochMilli()
-    }
 
     private fun normalizeGrowthSnapshot(items: List<OracleGrowthRecommendation>, anchor: Long) =
         items.map { it.copy(referenceTimestamp = anchor, generatedAt = anchor) }
@@ -38,7 +25,7 @@ object OracleLocalProcessor {
     private fun currentGrowthSnapshot(repository: OracleRepository, nowMillis: Long): List<OracleGrowthRecommendation> =
         synchronized(growthSnapshotLock) {
             OracleBootstrap.ensure(repository)
-            val anchor = currentGrowthAnchor(nowMillis)
+            val anchor = OracleMarketCalendar.growthAnchor(nowMillis)
             val current = repository.cachedGrowth()
 
             // HARD FREEZE: once a valid snapshot exists for this T0, never rerank
