@@ -48,6 +48,7 @@ object OracleLocalProcessor {
 
             val growth = normalizeGrowthSnapshot(generated, anchor)
             repository.saveGrowth(growth)
+            runCatching { ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(repository.context) }
             growth
         }
 

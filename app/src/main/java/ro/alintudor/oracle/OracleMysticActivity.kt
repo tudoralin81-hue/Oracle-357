@@ -1,6 +1,7 @@
 package ro.alintudor.oracle
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.*
 import android.os.Bundle
 import android.os.Handler
@@ -41,7 +42,7 @@ class OracleMysticActivity : Activity() {
         }
         runCatching {
             OracleBootstrap.ensure(repository)
-            if (bootLoaderShownThisProcess) showHub() else { bootLoaderShownThisProcess = true; showBootLoader() }
+            if (bootLoaderShownThisProcess) { showHub(); consumePendingModuleIntent() } else { bootLoaderShownThisProcess = true; showBootLoader() }
         }.onFailure { showFatalError("Oracle failed to start", it) }
         // GROWTH warm-up starts at Android app launch, not when the user opens GROWTH.
         Thread { runCatching { OracleLocalProcessor.refreshGrowthOnly(repository) } }.start()
@@ -106,10 +107,14 @@ class OracleMysticActivity : Activity() {
         val quoteLabel = TextView(this).apply {
             text = OracleLoaderQuotes.ALL.random()
             textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(gold); setPadding(dp(12), dp(34), dp(12), 0)
+            setTextColor(gold); setPadding(dp(12), 0, dp(12), 0)
             setLineSpacing(0f, 1.2f)
+            maxLines = 4
         }
-        card.addView(quoteLabel)
+        // Fixed height (not wrap_content): a 1-line quote and a 4-line quote
+        // both reserve the same space, so the spinner/percent/bar above never
+        // shift position as the rotating quotes change length.
+        card.addView(quoteLabel, LinearLayout.LayoutParams(-1, dp(150)).apply { topMargin = dp(24) })
 
         root.addView(card, FrameLayout.LayoutParams(-1, -1))
 
@@ -140,7 +145,7 @@ class OracleMysticActivity : Activity() {
 
         mainHandler.postDelayed({
             mainHandler.removeCallbacks(quoteRunnable)
-            if (!isFinishing) showHub()
+            if (!isFinishing) { showHub(); consumePendingModuleIntent() }
         }, bootDurationMs)
     }
 
@@ -157,6 +162,20 @@ class OracleMysticActivity : Activity() {
         page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::root.isInitialized) consumePendingModuleIntent()
+    }
+
+    /** Handles the widget's "open Growth directly" tap. Consumed once so
+     *  rotating the screen or returning to the app later doesn't re-trigger it. */
+    private fun consumePendingModuleIntent() {
+        val module = intent?.getStringExtra("open_module") ?: return
+        intent.removeExtra("open_module")
+        openModule(module)
     }
 
     private fun openModule(key: String) {

@@ -9,7 +9,7 @@
         android:roundIcon="@drawable/ic_oracle"
         android:allowBackup="false"
         android:supportsRtl="true">
-        <activity android:name=".OracleMysticActivity" android:screenOrientation="portrait" android:exported="true">
+        <activity android:name=".OracleMysticActivity" android:screenOrientation="portrait" android:exported="true" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -20,6 +20,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+        </receiver>
+        <receiver android:name=".widget.OracleGrowthWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="ro.alintudor.oracle.widget.ACTION_REFRESH_GROWTH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/oracle_growth_widget_info" />
         </receiver>
     </application>
 </manifest>
