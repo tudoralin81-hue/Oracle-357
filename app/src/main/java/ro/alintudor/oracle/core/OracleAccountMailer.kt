@@ -8,27 +8,29 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Pre-filled email draft notifying that a new Oracle account was created on
- * this device. Same reasoning as OracleAlertMailer: no backend/SMTP, so this
- * cannot send silently — it opens a ready-to-send draft and the person taps
- * Send once in their own mail app.
+ * Notifies that a new Oracle account was created. Sent from the server
+ * (wp_mail() via the /notify endpoint) using the session token from the
+ * registration call that just succeeded — the phone never handles an email
+ * password. Falls back to a tap-to-send draft only if the server call
+ * itself fails (e.g. no connectivity right at that moment).
  */
 object OracleAccountMailer {
-    fun open(context: Context, email: String, username: String) {
+    fun open(context: Context, email: String, username: String, token: String) {
         if (email.isBlank()) return
         val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date())
         val subject = "Oracle — new account created"
-        val body = "A new Oracle account was just created on this device.\n\nUsername: $username\nWhen: $stamp\n\nIf this wasn't you, this device's Oracle app may be accessible to someone else."
-        val settings = OracleServerSettingsStore(context)
-        OracleSmtpMailer.sendOrFallback(context, settings, email, subject, body) {
-            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("mailto:")
-                putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-                putExtra(Intent.EXTRA_SUBJECT, subject)
-                putExtra(Intent.EXTRA_TEXT, body)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val body = "A new Oracle account was just created.\n\nUsername: $username\nWhen: $stamp\n\nIf this wasn't you, someone else may have access to this account."
+        Thread {
+            OracleApiClient.notify(token, subject, body).onFailure {
+                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                    data = Uri.parse("mailto:")
+                    putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_TEXT, body)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { context.startActivity(intent) }
             }
-            runCatching { context.startActivity(intent) }
-        }
+        }.start()
     }
 }

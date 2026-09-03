@@ -10,14 +10,14 @@ import android.os.Looper
 import android.view.*
 import android.widget.*
 import ro.alintudor.oracle.core.OracleAccountMailer
+import ro.alintudor.oracle.core.OracleApiClient
 import ro.alintudor.oracle.core.OracleAuthStore
 import ro.alintudor.oracle.core.OracleBackupManager
 import ro.alintudor.oracle.core.OracleBootstrap
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
-import ro.alintudor.oracle.core.OracleRemoteBackupClient
 import ro.alintudor.oracle.core.OracleRepository
-import ro.alintudor.oracle.core.OracleServerSettingsStore
+import ro.alintudor.oracle.core.OracleSyncManager
 import ro.alintudor.oracle.core.snapshot
 import ro.alintudor.oracle.nativeui.*
 import java.text.SimpleDateFormat
@@ -122,17 +122,18 @@ class OracleMysticActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Local account gate — username/password with security-question recovery
-    // and optional biometric unlock. Runs before the boot loader on every
-    // fresh process start. Everything is stored only on this device
-    // (OracleAuthStore); there is no server, so "forgot password" can only
-    // work through the security question, and biometric unlock uses the
-    // platform BiometricPrompt (API 28+) tied to this device's own hardware.
+    // Account gate — server-backed login/register/recovery on alintudor.ro
+    // (OracleApiClient), with a local session token (OracleAuthStore) and
+    // optional biometric unlock as a shortcut to reusing that token without
+    // retyping the password. Runs before the boot loader on every fresh
+    // process start.
     // ---------------------------------------------------------------------
 
     private fun showAuthGate() {
-        val store = OracleAuthStore(this)
-        if (store.hasAccount()) showLogin(store) else showRegister(store)
+        // Accounts live on the server now — always start at Login (with a
+        // path to Register), the way most server-backed apps work, rather
+        // than deciding locally whether an account "exists".
+        showLogin(OracleAuthStore(this))
     }
 
     @Suppress("DEPRECATION")
@@ -183,7 +184,7 @@ class OracleMysticActivity : Activity() {
             LinearLayout.LayoutParams(dp(64), dp(64)).apply { gravity = Gravity.CENTER; bottomMargin = dp(12) })
         card.addView(TextView(this).apply { text = "CREATE YOUR ACCOUNT"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
         card.addView(TextView(this).apply {
-            text = "Local to this device only — no server, no cloud account."
+            text = "Your account is created on alintudor.ro — log back into it any time, on this device or after a reinstall."
             textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(20), dp(6), dp(20), dp(26))
         })
 
@@ -241,32 +242,50 @@ class OracleMysticActivity : Activity() {
             background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
             setPadding(0, dp(15), 0, dp(15))
             isClickable = true; isFocusable = true
-            setOnClickListener {
-                val username = usernameField.text.toString().trim()
-                val password = passwordField.text.toString()
-                val confirm = confirmField.text.toString()
-                val answeredCount = questionAnswerFields.values.count { it.text.toString().isNotBlank() }
-                error.text = when {
-                    username.isBlank() -> "Enter a username."
-                    password.length < 4 -> "Password needs at least 4 characters."
-                    password != confirm -> "Passwords don't match."
-                    answeredCount < OracleAuthStore.REQUIRED_SECURITY_ANSWERS -> "Answer at least ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} security questions — they're the only way to reset your password later."
-                    !termsCheckbox.isChecked -> "You need to accept the Terms & Conditions to continue."
-                    else -> ""
-                }
-                if (error.text.isNotEmpty()) return@setOnClickListener
-                store.register(username, password)
-                store.setSecurityAnswers(questionAnswerFields.mapValues { it.value.text.toString() })
-                store.setBiometricEnabled(biometricWanted)
-                val notifyEmail = notifyEmailField.text.toString().trim()
-                if (notifyEmail.isNotBlank()) {
-                    store.setNotificationEmail(notifyEmail)
-                    OracleAccountMailer.open(this@OracleMysticActivity, notifyEmail, username)
-                }
-                showBackupCodeReveal(store.generateAndStoreBackupCode())
+        }
+        createButton.setOnClickListener {
+            val username = usernameField.text.toString().trim()
+            val password = passwordField.text.toString()
+            val confirm = confirmField.text.toString()
+            val answeredCount = questionAnswerFields.values.count { it.text.toString().isNotBlank() }
+            error.text = when {
+                username.isBlank() -> "Enter a username."
+                password.length < 4 -> "Password needs at least 4 characters."
+                password != confirm -> "Passwords don't match."
+                answeredCount < OracleAuthStore.REQUIRED_SECURITY_ANSWERS -> "Answer at least ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} security questions — they're the only way to reset your password later."
+                !termsCheckbox.isChecked -> "You need to accept the Terms & Conditions to continue."
+                else -> ""
             }
+            if (error.text.isNotEmpty()) return@setOnClickListener
+            createButton.isEnabled = false; createButton.text = "CREATING ACCOUNT…"
+            val answers = questionAnswerFields.mapValues { entry -> entry.value.text.toString() }.filterValues { it.isNotBlank() }
+            val notifyEmail = notifyEmailField.text.toString().trim()
+            Thread {
+                val result = OracleApiClient.register(username, password, answers, notifyEmail)
+                runOnUiThread {
+                    result.onSuccess { pair ->
+                        val (token, backupCode) = pair
+                        store.saveSession(username, token)
+                        store.setBiometricEnabled(biometricWanted)
+                        if (notifyEmail.isNotBlank()) {
+                            store.setNotificationEmail(notifyEmail)
+                            OracleAccountMailer.open(this@OracleMysticActivity, notifyEmail, username, token)
+                        }
+                        showBackupCodeReveal(backupCode)
+                    }.onFailure {
+                        createButton.isEnabled = true; createButton.text = "CREATE ACCOUNT"
+                        error.text = "Couldn't create the account: ${it.message}"
+                    }
+                }
+            }.start()
         }
         card.addView(createButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+        card.addView(TextView(this).apply {
+            text = "Already have an account? Log in"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showLogin(store) }
+        })
 
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
@@ -282,7 +301,7 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "SAVE YOUR BACKUP CODE"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
         card.addView(TextView(this).apply {
-            text = "This is the only way to reset your password if you ever forget both it and your security answer. It will not be shown again — write it down now."
+            text = "This is the only way to reset your password if you ever forget both it and your security answers. It will not be shown again — write it down now."
             textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(10), dp(10), dp(10), dp(26))
         })
         card.addView(TextView(this).apply {
@@ -314,8 +333,6 @@ class OracleMysticActivity : Activity() {
 
         card.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_oracle); scaleType = ImageView.ScaleType.CENTER_INSIDE
-            // Subtle, slow breathing pulse — just enough movement to feel alive
-            // without being distracting on a login screen.
             val pulseX = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.06f, 1f)
             val pulseY = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.06f, 1f)
             android.animation.ObjectAnimator.ofPropertyValuesHolder(this, pulseX, pulseY).apply {
@@ -326,7 +343,8 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(dp(72), dp(72)).apply { gravity = Gravity.CENTER; bottomMargin = dp(10) })
         card.addView(TextView(this).apply { text = "ORACLE"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
         card.addView(TextView(this).apply {
-            text = "Welcome back, ${store.username()}"; textSize = 13f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(4), 0, dp(28))
+            text = if (store.username().isNotBlank()) "Welcome back, ${store.username()}" else "Log in to your account"
+            textSize = 13f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(4), 0, dp(28))
         })
 
         val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
@@ -335,30 +353,37 @@ class OracleMysticActivity : Activity() {
         val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
         card.addView(error)
 
-        fun attemptLogin() {
-            val username = usernameField.text.toString().trim()
-            val password = passwordField.text.toString()
-            // Local admin override — recovery path baked into this build; see the
-            // security note about this in OracleAuthStore.
-            val isAdminOverride = username.equals("admin", ignoreCase = true) && password == "357AT2026"
-            if (!isAdminOverride && (!username.equals(store.username(), ignoreCase = true) || !store.verifyPassword(password))) {
-                error.text = "Wrong username or password."
-                return
-            }
-            authPassedThisProcess = true
-            proceedPastAuth()
-        }
-
-        card.addView(TextView(this).apply {
+        val loginButton = TextView(this).apply {
             text = "LOG IN"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
             setPadding(0, dp(15), 0, dp(15))
             isClickable = true; isFocusable = true
-            setOnClickListener { attemptLogin() }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        }
+        loginButton.setOnClickListener {
+            val username = usernameField.text.toString().trim()
+            val password = passwordField.text.toString()
+            if (username.isBlank() || password.isBlank()) { error.text = "Enter your username and password."; return@setOnClickListener }
+            loginButton.isEnabled = false; loginButton.text = "LOGGING IN…"
+            Thread {
+                val result = OracleApiClient.login(username, password)
+                runOnUiThread {
+                    result.onSuccess { token ->
+                        store.saveSession(username, token)
+                        OracleSyncManager.pullAll(this@OracleMysticActivity, token) {
+                            authPassedThisProcess = true
+                            proceedPastAuth()
+                        }
+                    }.onFailure {
+                        loginButton.isEnabled = true; loginButton.text = "LOG IN"
+                        error.text = it.message ?: "Wrong username or password."
+                    }
+                }
+            }.start()
+        }
+        card.addView(loginButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
 
-        if (store.biometricEnabled() && biometricAvailable()) {
+        if (store.biometricEnabled() && store.hasSession() && biometricAvailable()) {
             card.addView(TextView(this).apply {
                 text = "🔒  USE BIOMETRIC UNLOCK"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
                 setTextColor(gold)
@@ -370,7 +395,12 @@ class OracleMysticActivity : Activity() {
         }
 
         card.addView(TextView(this).apply {
-            text = "Forgot password?"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+            text = "Don't have an account? Register"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(16), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showRegister(store) }
+        })
+        card.addView(TextView(this).apply {
+            text = "Forgot password?"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, 0)
             isClickable = true; isFocusable = true
             setOnClickListener { showForgotPassword(store) }
         })
@@ -383,9 +413,7 @@ class OracleMysticActivity : Activity() {
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
-        // Returning users with biometric enabled don't have to type anything —
-        // offer it immediately; they can still fall back to the password fields.
-        if (store.biometricEnabled() && biometricAvailable()) {
+        if (store.biometricEnabled() && store.hasSession() && biometricAvailable()) {
             showBiometricPrompt { authPassedThisProcess = true; proceedPastAuth() }
         }
     }
@@ -400,20 +428,18 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "RESET PASSWORD"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
         card.addView(TextView(this).apply {
-            text = "This only works through the security questions you answered when you created your account, or your backup code — Oracle has no server to send a reset link from."
+            text = "Answer the security questions you set at registration, or use your backup code."
             textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(10), dp(8), dp(10), dp(24))
         })
 
-        val answeredIndices = store.answeredSecurityIndices()
-        val answerFields = if (answeredIndices.isEmpty()) {
-            card.addView(TextView(this).apply {
-                text = "No security questions were answered for this account."
-                textSize = 13f; setTextColor(muted); setPadding(0, 0, 0, dp(8))
-            })
-            emptyMap()
-        } else {
-            answeredIndices.associateWith { index -> authField(card, OracleAuthStore.SECURITY_QUESTIONS[index], muted, panel, border) }
-        }
+        val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
+        card.addView(TextView(this).apply {
+            text = "Fill in whichever security questions you answered at registration — leave the rest blank."
+            textSize = 11f; setTextColor(muted); setPadding(0, dp(14), 0, dp(4))
+        })
+        val answerFields = OracleAuthStore.SECURITY_QUESTIONS.mapIndexed { index, question ->
+            index to authField(card, question, muted, panel, border)
+        }.toMap()
 
         card.addView(TextView(this).apply { text = "— OR —"; textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, dp(2)) })
         val backupField = authField(card, "BACKUP CODE (from registration)", muted, panel, border)
@@ -423,31 +449,42 @@ class OracleMysticActivity : Activity() {
         val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
         card.addView(error)
 
-        card.addView(TextView(this).apply {
+        val resetButton = TextView(this).apply {
             text = "RESET PASSWORD"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
             setPadding(0, dp(15), 0, dp(15))
             isClickable = true; isFocusable = true
-            setOnClickListener {
-                val answers = answerFields.mapValues { it.value.text.toString() }
-                val backupCode = backupField.text.toString()
-                val newPassword = newPasswordField.text.toString()
-                val confirm = confirmField.text.toString()
-                val verified = (answers.values.any { it.isNotBlank() } && store.verifySecurityAnswers(answers)) ||
-                    (backupCode.isNotBlank() && store.verifyBackupCode(backupCode))
-                error.text = when {
-                    !verified -> "Those answers or that backup code don't match."
-                    newPassword.length < 4 -> "Password needs at least 4 characters."
-                    newPassword != confirm -> "Passwords don't match."
-                    else -> ""
-                }
-                if (error.text.isNotEmpty()) return@setOnClickListener
-                store.resetPassword(newPassword)
-                Toast.makeText(this@OracleMysticActivity, "Password updated — log in with your new password.", Toast.LENGTH_LONG).show()
-                showLogin(store)
+        }
+        resetButton.setOnClickListener {
+            val username = usernameField.text.toString().trim()
+            val answers = answerFields.mapValues { it.value.text.toString() }.filterValues { it.isNotBlank() }
+            val backupCode = backupField.text.toString()
+            val newPassword = newPasswordField.text.toString()
+            val confirm = confirmField.text.toString()
+            error.text = when {
+                username.isBlank() -> "Enter your username."
+                newPassword.length < 4 -> "Password needs at least 4 characters."
+                newPassword != confirm -> "Passwords don't match."
+                answers.isEmpty() && backupCode.isBlank() -> "Answer at least one security question, or provide your backup code."
+                else -> ""
             }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+            if (error.text.isNotEmpty()) return@setOnClickListener
+            resetButton.isEnabled = false; resetButton.text = "RESETTING…"
+            Thread {
+                val result = OracleApiClient.forgotPassword(username, answers, backupCode, newPassword)
+                runOnUiThread {
+                    result.onSuccess {
+                        Toast.makeText(this@OracleMysticActivity, "Password updated — log in with your new password.", Toast.LENGTH_LONG).show()
+                        showLogin(store)
+                    }.onFailure {
+                        resetButton.isEnabled = true; resetButton.text = "RESET PASSWORD"
+                        error.text = it.message ?: "Those answers or that backup code don't match."
+                    }
+                }
+            }.start()
+        }
+        card.addView(resetButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
 
         card.addView(TextView(this).apply {
             text = "Back to login"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(18), 0, 0)
@@ -585,7 +622,7 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "BACKUP"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
         card.addView(TextView(this).apply {
-            text = "Portfolio, Growth history, Journal, Alerts, News, Knowledge, your login account, and your SMTP email settings. If this app is ever uninstalled, all of that is gone unless you've exported it here first. Save the file somewhere outside this app (Downloads, Drive, email to yourself) and Restore brings it all back.\n\nNot included: the server URL and secret token below — you need those to reach the server in the first place, so keep them saved somewhere outside the app too."
+            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge, as an extra local file you control. Your account itself lives on alintudor.ro now — recover it by logging in again, not by restoring this file."
             textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(26))
         })
 
@@ -630,53 +667,10 @@ class OracleMysticActivity : Activity() {
             }
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
 
-        val serverStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }
-        val remoteSettings = OracleServerSettingsStore(this)
-        if (remoteSettings.remoteBackupConfigured()) {
-            card.addView(TextView(this).apply {
-                text = "UPLOAD TO SERVER (alintudor.ro)"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setTextColor(Color.rgb(75, 225, 255))
-                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
-                setPadding(0, dp(14), 0, dp(14))
-                isClickable = true; isFocusable = true
-                setOnClickListener {
-                    serverStatus.setTextColor(muted); serverStatus.text = "Uploading…"
-                    val json = OracleBackupManager.buildExportJson(this@OracleMysticActivity).toString()
-                    Thread {
-                        val result = OracleRemoteBackupClient.upload(remoteSettings, json)
-                        runOnUiThread {
-                            result.onSuccess {
-                                OracleBackupManager.markExported(this@OracleMysticActivity)
-                                serverStatus.setTextColor(green); serverStatus.text = "Uploaded to alintudor.ro."
-                                statusLabel.text = "Last exported: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date())}"
-                            }.onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Upload failed: ${it.message}" }
-                        }
-                    }.start()
-                }
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
-
-            card.addView(TextView(this).apply {
-                text = "DOWNLOAD FROM SERVER"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setTextColor(Color.rgb(75, 225, 255))
-                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
-                setPadding(0, dp(14), 0, dp(14))
-                isClickable = true; isFocusable = true
-                setOnClickListener {
-                    serverStatus.setTextColor(muted); serverStatus.text = "Downloading…"
-                    Thread {
-                        val result = OracleRemoteBackupClient.download(remoteSettings)
-                        runOnUiThread {
-                            result.onSuccess { text ->
-                                runCatching { OracleBackupManager.restoreFromJson(this@OracleMysticActivity, org.json.JSONObject(text)) }
-                                    .onSuccess { restored -> serverStatus.setTextColor(green); serverStatus.text = "Restored ${restored.size} data sets from the server." }
-                                    .onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Restore failed: ${it.message}" }
-                            }.onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Download failed: ${it.message}" }
-                        }
-                    }.start()
-                }
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-            card.addView(serverStatus)
-        }
+        card.addView(TextView(this).apply {
+            text = "Your data also syncs automatically to alintudor.ro in the background, right after every change — this local file is a second, offline copy under your own control."
+            textSize = 11f; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+        })
 
         card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
@@ -688,87 +682,6 @@ class OracleMysticActivity : Activity() {
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
     }
 
-    private fun showServerSettingsScreen() {
-        root.removeAllViews()
-        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
-        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
-
-        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
-        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
-
-        val settings = OracleServerSettingsStore(this)
-
-        card.addView(TextView(this).apply { text = "SERVER"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
-        card.addView(TextView(this).apply {
-            text = "Optional integration with alintudor.ro. Both sections are off until you fill them in and turn them on."
-            textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(24))
-        })
-
-        fun toggleRow(initial: Boolean, onChange: (Boolean) -> Unit): TextView {
-            var enabled = initial
-            fun style(v: TextView) {
-                v.text = if (enabled) "ENABLED" else "DISABLED"
-                v.setTextColor(if (enabled) green else muted)
-                v.background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), if (enabled) green else border) }
-            }
-            val toggle = TextView(this).apply {
-                textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(0, dp(11), 0, dp(11)); isClickable = true; isFocusable = true
-                style(this)
-                setOnClickListener { enabled = !enabled; style(this); onChange(enabled) }
-            }
-            return toggle
-        }
-
-        card.addView(TextView(this).apply { text = "AUTOMATIC EMAIL (SMTP)"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(green); setPadding(0, 0, 0, dp(8)) })
-        var smtpEnabled = settings.smtpEnabled()
-        card.addView(toggleRow(smtpEnabled) { smtpEnabled = it }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
-        val smtpHostField = authField(card, "SMTP HOST (e.g. mail.alintudor.ro)", muted, panel, border).apply { setText(settings.smtpHost()) }
-        val smtpPortField = authField(card, "SMTP PORT (465 = SSL, 587 = TLS)", muted, panel, border).apply {
-            setText(settings.smtpPort().toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        val smtpUserField = authField(card, "SMTP USERNAME (usually the full email)", muted, panel, border).apply {
-            setText(settings.smtpUsername().ifBlank { "oracle@alintudor.ro" })
-        }
-        val smtpPasswordField = authField(card, "SMTP PASSWORD", muted, panel, border, isPassword = true).apply { setText(settings.smtpPassword()) }
-
-        card.addView(TextView(this).apply { text = "REMOTE BACKUP"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(green); setPadding(0, dp(22), 0, dp(8)) })
-        card.addView(TextView(this).apply {
-            text = "Needs the WordPress snippet installed on alintudor.ro first — it came as a separate file with this update."
-            textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(10))
-        })
-        var backupEnabled = settings.remoteBackupEnabled()
-        card.addView(toggleRow(backupEnabled) { backupEnabled = it }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
-        val backupUrlField = authField(card, "SITE URL", muted, panel, border).apply { setText(settings.remoteBackupUrl()) }
-        val backupTokenField = authField(card, "SECRET TOKEN (must match the WordPress snippet)", muted, panel, border).apply { setText(settings.remoteBackupToken()) }
-
-        val status = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }
-        card.addView(status)
-
-        card.addView(TextView(this).apply {
-            text = "SAVE"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
-            setPadding(0, dp(15), 0, dp(15))
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                val port = smtpPortField.text.toString().toIntOrNull() ?: 465
-                settings.saveSmtp(smtpEnabled, smtpHostField.text.toString(), port, smtpUserField.text.toString(), smtpPasswordField.text.toString())
-                settings.saveRemoteBackup(backupEnabled, backupUrlField.text.toString(), backupTokenField.text.toString())
-                status.setTextColor(green)
-                status.text = "Saved."
-            }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
-
-        card.addView(TextView(this).apply {
-            text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(20), 0, 0)
-            isClickable = true; isFocusable = true
-            setOnClickListener { showHub() }
-        })
-
-        scroll.addView(card)
-        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-    }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -813,7 +726,6 @@ class OracleMysticActivity : Activity() {
     private fun openModule(key: String) {
         if (key == "disclaimer") { showDisclaimerDialog(); return }
         if (key == "backup") { currentModule = "backup"; showBackupScreen(); return }
-        if (key == "server") { currentModule = "server"; showServerSettingsScreen(); return }
         currentModule = key
         if (key == "alerts" && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

@@ -49,21 +49,6 @@ object OracleLocalProcessor {
             val growth = normalizeGrowthSnapshot(generated, anchor)
             repository.saveGrowth(growth)
             runCatching { ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(repository.context) }
-            // Keeps the server copy actually current, not just a manual "press
-            // Upload sometimes" thing — throttled so it doesn't hammer the
-            // server every time this refresh runs.
-            runCatching {
-                val serverSettings = OracleServerSettingsStore(repository.context)
-                if (serverSettings.remoteBackupConfigured()) {
-                    val sixHoursMs = 6L * 60L * 60L * 1000L
-                    if (System.currentTimeMillis() - OracleBackupManager.lastExportTimestamp(repository.context) > sixHoursMs) {
-                        val json = OracleBackupManager.buildExportJson(repository.context).toString()
-                        OracleRemoteBackupClient.upload(serverSettings, json).onSuccess {
-                            OracleBackupManager.markExported(repository.context)
-                        }
-                    }
-                }
-            }
             growth
         }
 
@@ -119,16 +104,16 @@ object OracleLocalProcessor {
         // that alert — see OracleNotifier for why it isn't a silent auto-send.
         if (criticalAlerts.isNotEmpty()) {
             val settings = OracleAlertSettingsStore(repository.context)
-            val serverSettings = OracleServerSettingsStore(repository.context)
+            val auth = OracleAuthStore(repository.context)
             val dayKey = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
             for (alert in criticalAlerts) {
                 val notifyKey = "${alert.ticker}|${alert.kind}|$dayKey"
                 if (!settings.alreadyNotified(notifyKey)) {
                     OracleNotifier.notify(repository.context, alert, settings.email())
-                    if (settings.email().isNotBlank() && serverSettings.smtpConfigured()) {
-                        OracleSmtpMailer.sendOrFallback(repository.context, serverSettings, settings.email(),
+                    if (auth.hasSession()) {
+                        OracleApiClient.notify(auth.token(),
                             "Oracle alert — ${alert.ticker}: ${alert.title}",
-                            "${alert.message}\n\nSent by Oracle. Informational only — not investment advice.") {}
+                            "${alert.message}\n\nSent by Oracle. Informational only — not investment advice.")
                     }
                     settings.markNotified(notifyKey)
                 }

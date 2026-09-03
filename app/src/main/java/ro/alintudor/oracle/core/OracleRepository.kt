@@ -25,15 +25,20 @@ class OracleRepository(val context: Context) {
     fun bootstrapVersion(): Int = prefs.getInt("bootstrap_version", 0)
     fun markBootstrap(version: Int) { prefs.edit().putInt("bootstrap_version", version).apply() }
 
-    fun savePositions(items: List<OraclePosition>) = prefs.edit().putString("positions", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveAlerts(items: List<OracleAlert>) = prefs.edit().putString("alerts", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveNews(items: List<OracleNews>) = prefs.edit().putString("news", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveHistory(items: List<OracleHistoryPoint>) = prefs.edit().putString("history", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveActions(items: List<OracleAction>) = prefs.edit().putString("actions", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveTechnical(items: List<OracleTechnicalSnapshot>) = prefs.edit().putString("technical", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveKnowledge(items: List<OracleKnowledgeItem>) = prefs.edit().putString("knowledge", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveJournal(items: List<OracleJournalEntry>) = prefs.edit().putString("journal", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
-    fun saveGrowth(items: List<OracleGrowthRecommendation>) = prefs.edit().putString("growth", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString()).apply()
+    fun savePositions(items: List<OraclePosition>) = saveAndSync("positions", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveAlerts(items: List<OracleAlert>) = saveAndSync("alerts", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveNews(items: List<OracleNews>) = saveAndSync("news", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveHistory(items: List<OracleHistoryPoint>) = saveAndSync("history", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveActions(items: List<OracleAction>) = saveAndSync("actions", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveTechnical(items: List<OracleTechnicalSnapshot>) = saveAndSync("technical", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveKnowledge(items: List<OracleKnowledgeItem>) = saveAndSync("knowledge", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveJournal(items: List<OracleJournalEntry>) = saveAndSync("journal", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+    fun saveGrowth(items: List<OracleGrowthRecommendation>) = saveAndSync("growth", JSONArray().apply { items.forEach { put(it.toJson()) } }.toString())
+
+    private fun saveAndSync(key: String, json: String) {
+        prefs.edit().putString(key, json).apply()
+        OracleSyncManager.pushDataType(context, key, json)
+    }
 
     private fun parsePositions(s: String) = runCatching { val a=JSONArray(s); List(a.length()){i->positionFromJson(a.getJSONObject(i))} }.getOrDefault(emptyList())
     private fun parseAlerts(s: String) = runCatching { val a=JSONArray(s); List(a.length()){i->alertFromJson(a.getJSONObject(i))} }.getOrDefault(emptyList())

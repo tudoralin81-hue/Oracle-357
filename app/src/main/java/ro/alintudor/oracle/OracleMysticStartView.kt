@@ -82,10 +82,6 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawText("BACKUP",brandX,backupY,p)
         val backupWidth=p.measureText("BACKUP")
         hit+=RectF(brandX-backupWidth-S(8f),backupY-S(18f),brandX+S(8f),backupY+S(8f)) to "backup"
-        val serverY=backupY-S(22f)
-        c.drawText("SERVER",brandX,serverY,p)
-        val serverWidth=p.measureText("SERVER")
-        hit+=RectF(brandX-serverWidth-S(8f),serverY-S(18f),brandX+S(8f),serverY+S(8f)) to "server"
         postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
