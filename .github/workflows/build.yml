@@ -52,6 +52,16 @@ jobs:
             echo "ORACLE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           fi
 
+      - name: Show signing key SHA-1 (for Google Cloud API key restriction)
+        if: env.ORACLE_KEYSTORE_FILE != ''
+        run: |
+          echo "=== SHA-1 fingerprint — paste this into Google Cloud Console ==="
+          keytool -list -v \
+            -keystore "$ORACLE_KEYSTORE_FILE" \
+            -alias "$ORACLE_KEY_ALIAS" \
+            -storepass "$ORACLE_KEYSTORE_PASSWORD" \
+            2>/dev/null | grep "SHA1:"
+
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
