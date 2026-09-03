@@ -15,7 +15,9 @@ import ro.alintudor.oracle.core.OracleBackupManager
 import ro.alintudor.oracle.core.OracleBootstrap
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
+import ro.alintudor.oracle.core.OracleRemoteBackupClient
 import ro.alintudor.oracle.core.OracleRepository
+import ro.alintudor.oracle.core.OracleServerSettingsStore
 import ro.alintudor.oracle.core.snapshot
 import ro.alintudor.oracle.nativeui.*
 import java.text.SimpleDateFormat
@@ -628,8 +630,137 @@ class OracleMysticActivity : Activity() {
             }
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
 
+        val serverStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }
+        val remoteSettings = OracleServerSettingsStore(this)
+        if (remoteSettings.remoteBackupConfigured()) {
+            card.addView(TextView(this).apply {
+                text = "UPLOAD TO SERVER (alintudor.ro)"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(Color.rgb(75, 225, 255))
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    serverStatus.setTextColor(muted); serverStatus.text = "Uploading…"
+                    val json = OracleBackupManager.buildExportJson(this@OracleMysticActivity).toString()
+                    Thread {
+                        val result = OracleRemoteBackupClient.upload(remoteSettings, json)
+                        runOnUiThread {
+                            result.onSuccess {
+                                OracleBackupManager.markExported(this@OracleMysticActivity)
+                                serverStatus.setTextColor(green); serverStatus.text = "Uploaded to alintudor.ro."
+                            }.onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Upload failed: ${it.message}" }
+                        }
+                    }.start()
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+            card.addView(TextView(this).apply {
+                text = "DOWNLOAD FROM SERVER"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(Color.rgb(75, 225, 255))
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    serverStatus.setTextColor(muted); serverStatus.text = "Downloading…"
+                    Thread {
+                        val result = OracleRemoteBackupClient.download(remoteSettings)
+                        runOnUiThread {
+                            result.onSuccess { text ->
+                                runCatching { OracleBackupManager.restoreFromJson(this@OracleMysticActivity, org.json.JSONObject(text)) }
+                                    .onSuccess { restored -> serverStatus.setTextColor(green); serverStatus.text = "Restored ${restored.size} data sets from the server." }
+                                    .onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Restore failed: ${it.message}" }
+                            }.onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Download failed: ${it.message}" }
+                        }
+                    }.start()
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+            card.addView(serverStatus)
+        }
+
         card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showHub() }
+        })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun showServerSettingsScreen() {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        val settings = OracleServerSettingsStore(this)
+
+        card.addView(TextView(this).apply { text = "SERVER"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
+        card.addView(TextView(this).apply {
+            text = "Optional integration with alintudor.ro. Both sections are off until you fill them in and turn them on."
+            textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(24))
+        })
+
+        fun toggleRow(initial: Boolean, onChange: (Boolean) -> Unit): TextView {
+            var enabled = initial
+            fun style(v: TextView) {
+                v.text = if (enabled) "ENABLED" else "DISABLED"
+                v.setTextColor(if (enabled) green else muted)
+                v.background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), if (enabled) green else border) }
+            }
+            val toggle = TextView(this).apply {
+                textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(0, dp(11), 0, dp(11)); isClickable = true; isFocusable = true
+                style(this)
+                setOnClickListener { enabled = !enabled; style(this); onChange(enabled) }
+            }
+            return toggle
+        }
+
+        card.addView(TextView(this).apply { text = "AUTOMATIC EMAIL (SMTP)"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(green); setPadding(0, 0, 0, dp(8)) })
+        var smtpEnabled = settings.smtpEnabled()
+        card.addView(toggleRow(smtpEnabled) { smtpEnabled = it }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        val smtpHostField = authField(card, "SMTP HOST (e.g. mail.alintudor.ro)", muted, panel, border).apply { setText(settings.smtpHost()) }
+        val smtpPortField = authField(card, "SMTP PORT (465 = SSL, 587 = TLS)", muted, panel, border).apply {
+            setText(settings.smtpPort().toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val smtpUserField = authField(card, "SMTP USERNAME (usually the full email)", muted, panel, border).apply {
+            setText(settings.smtpUsername().ifBlank { "oracle@alintudor.ro" })
+        }
+        val smtpPasswordField = authField(card, "SMTP PASSWORD", muted, panel, border, isPassword = true).apply { setText(settings.smtpPassword()) }
+
+        card.addView(TextView(this).apply { text = "REMOTE BACKUP"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(green); setPadding(0, dp(22), 0, dp(8)) })
+        card.addView(TextView(this).apply {
+            text = "Needs the WordPress snippet installed on alintudor.ro first — it came as a separate file with this update."
+            textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(10))
+        })
+        var backupEnabled = settings.remoteBackupEnabled()
+        card.addView(toggleRow(backupEnabled) { backupEnabled = it }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        val backupUrlField = authField(card, "SITE URL", muted, panel, border).apply { setText(settings.remoteBackupUrl()) }
+        val backupTokenField = authField(card, "SECRET TOKEN (must match the WordPress snippet)", muted, panel, border).apply { setText(settings.remoteBackupToken()) }
+
+        val status = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }
+        card.addView(status)
+
+        card.addView(TextView(this).apply {
+            text = "SAVE"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val port = smtpPortField.text.toString().toIntOrNull() ?: 465
+                settings.saveSmtp(smtpEnabled, smtpHostField.text.toString(), port, smtpUserField.text.toString(), smtpPasswordField.text.toString())
+                settings.saveRemoteBackup(backupEnabled, backupUrlField.text.toString(), backupTokenField.text.toString())
+                status.setTextColor(green)
+                status.text = "Saved."
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+
+        card.addView(TextView(this).apply {
+            text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(20), 0, 0)
             isClickable = true; isFocusable = true
             setOnClickListener { showHub() }
         })
@@ -681,6 +812,7 @@ class OracleMysticActivity : Activity() {
     private fun openModule(key: String) {
         if (key == "disclaimer") { showDisclaimerDialog(); return }
         if (key == "backup") { currentModule = "backup"; showBackupScreen(); return }
+        if (key == "server") { currentModule = "server"; showServerSettingsScreen(); return }
         currentModule = key
         if (key == "alerts" && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
