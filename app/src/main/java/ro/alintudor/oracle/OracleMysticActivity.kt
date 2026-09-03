@@ -1,6 +1,7 @@
 package ro.alintudor.oracle
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
@@ -165,9 +166,20 @@ class OracleMysticActivity : Activity() {
         }
     }
 
-    private fun authField(container: LinearLayout, label: String, muted: Int, panel: Int, border: Int, isPassword: Boolean = false): EditText {
+    private fun authField(container: LinearLayout, label: String, muted: Int, panel: Int, border: Int, isPassword: Boolean = false, onAutofilled: ((View) -> Unit)? = null): EditText {
         container.addView(TextView(this).apply { text = label; textSize = 11f; setTextColor(muted); setPadding(dp(2), dp(10), 0, dp(4)) })
-        val edit = EditText(this).apply {
+        // Plain EditText, unless a caller wants to know about genuine system
+        // autofill specifically (as opposed to manual typing) — overriding
+        // View.autofill() is the one hook Android fires only for that.
+        val edit = if (onAutofilled != null) {
+            object : EditText(this) {
+                override fun autofill(value: android.view.autofill.AutofillValue) {
+                    super.autofill(value)
+                    onAutofilled(this)
+                }
+            }
+        } else EditText(this)
+        edit.apply {
             setTextColor(Color.WHITE); textSize = 15f; setSingleLine(true)
             if (isPassword) inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), border) }
@@ -175,6 +187,11 @@ class OracleMysticActivity : Activity() {
         }
         container.addView(edit, LinearLayout.LayoutParams(-1, -2))
         return edit
+    }
+
+    private fun hideKeyboard(view: View) {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
     private fun showRegister(store: OracleAuthStore) {
@@ -354,7 +371,7 @@ class OracleMysticActivity : Activity() {
         })
 
         val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
-        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true)
+        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true, onAutofilled = { view -> hideKeyboard(view) })
 
         val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
         card.addView(error)
