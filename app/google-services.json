@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1050559955927",
+    "project_id": "oracle-6fb11",
+    "storage_bucket": "oracle-6fb11.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1050559955927:android:f6b6093a0529ff8e7d4192",
+        "android_client_info": {
+          "package_name": "ro.alintudor.oracle"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjH3XhNRfbNNLIjr3qoobqRziVTQlsfR4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

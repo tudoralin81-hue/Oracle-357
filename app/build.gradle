@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
 }
 
 android {
@@ -46,3 +47,11 @@ android {
 }
 
 kotlin { jvmToolchain(17) }
+
+dependencies {
+    // Push notifications sent by the server (alintudor.ro) via Firebase
+    // Cloud Messaging. The BOM pins a matching, tested set of Firebase
+    // library versions; only firebase-messaging is actually used.
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-messaging'
+}

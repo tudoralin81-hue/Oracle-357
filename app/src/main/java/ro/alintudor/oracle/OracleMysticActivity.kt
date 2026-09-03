@@ -14,6 +14,7 @@ import ro.alintudor.oracle.core.OracleApiClient
 import ro.alintudor.oracle.core.OracleAuthStore
 import ro.alintudor.oracle.core.OracleBackupManager
 import ro.alintudor.oracle.core.OracleBootstrap
+import ro.alintudor.oracle.core.OracleFirebaseMessagingService
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
 import ro.alintudor.oracle.core.OracleRepository
@@ -267,6 +268,7 @@ class OracleMysticActivity : Activity() {
                         val (token, backupCode) = pair
                         store.saveSession(username, token)
                         store.setBiometricEnabled(biometricWanted)
+                        OracleFirebaseMessagingService.registerCurrentToken(this@OracleMysticActivity)
                         if (notifyEmail.isNotBlank()) {
                             store.setNotificationEmail(notifyEmail)
                             OracleAccountMailer.open(this@OracleMysticActivity, notifyEmail, username, token)
@@ -370,6 +372,7 @@ class OracleMysticActivity : Activity() {
                 runOnUiThread {
                     result.onSuccess { token ->
                         store.saveSession(username, token)
+                        OracleFirebaseMessagingService.registerCurrentToken(this@OracleMysticActivity)
                         OracleSyncManager.pullAll(this@OracleMysticActivity, token) {
                             authPassedThisProcess = true
                             proceedPastAuth()
