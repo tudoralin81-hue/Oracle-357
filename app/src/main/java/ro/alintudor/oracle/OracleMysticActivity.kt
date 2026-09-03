@@ -585,7 +585,7 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "BACKUP"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
         card.addView(TextView(this).apply {
-            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge — everything except your login itself. If this app is ever uninstalled, that data is gone unless you've exported it here first. Save the file somewhere outside this app (Downloads, Drive, email to yourself) and Restore brings it all back."
+            text = "Portfolio, Growth history, Journal, Alerts, News, Knowledge, your login account, and your SMTP email settings. If this app is ever uninstalled, all of that is gone unless you've exported it here first. Save the file somewhere outside this app (Downloads, Drive, email to yourself) and Restore brings it all back.\n\nNot included: the server URL and secret token below — you need those to reach the server in the first place, so keep them saved somewhere outside the app too."
             textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(26))
         })
 
