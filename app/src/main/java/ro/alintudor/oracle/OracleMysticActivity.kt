@@ -3,11 +3,13 @@ package ro.alintudor.oracle
 import android.app.Activity
 import android.content.Intent
 import android.graphics.*
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.*
 import android.widget.*
+import ro.alintudor.oracle.core.OracleAuthStore
 import ro.alintudor.oracle.core.OracleBootstrap
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
