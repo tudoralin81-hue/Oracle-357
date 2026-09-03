@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'ro.alintudor.oracle'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'ro.alintudor.oracle'
+        minSdk 26
+        targetSdk 36
+        versionCode 30
+        versionName 'B540'
+    }
+
+    signingConfigs {
+        release {
+            def storeFilePath = System.getenv('ORACLE_KEYSTORE_FILE')
+            if (storeFilePath != null && !storeFilePath.isBlank()) {
+                storeFile file(storeFilePath)
+                storePassword System.getenv('ORACLE_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ORACLE_KEY_ALIAS')
+                keyPassword System.getenv('ORACLE_KEY_PASSWORD')
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            def storeFilePath = System.getenv('ORACLE_KEYSTORE_FILE')
+            if (storeFilePath != null && !storeFilePath.isBlank()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+            debuggable false
+            minifyEnabled false
+        }
+    }
+}
+
+kotlin { jvmToolchain(17) }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.72" android:scaleY="0.72" android:pivotX="54" android:pivotY="54">
+        <!-- premium gold eye -->
+        <path android:fillColor="#D9A52E" android:pathData="M10,47 C22,25 41,16 54,16 C67,16 86,25 98,47 C86,69 67,78 54,78 C41,78 22,69 10,47 Z" />
+        <path android:fillColor="#07101A" android:pathData="M17,47 C27,31 43,23 54,23 C65,23 81,31 91,47 C81,63 65,71 54,71 C43,71 27,63 17,47 Z" />
+        <path android:fillColor="#B87A16" android:pathData="M20,47 C29,34 42,27 54,27 C66,27 79,34 88,47 C79,60 66,67 54,67 C42,67 29,60 20,47 Z" />
+        <path android:fillColor="#06101A" android:pathData="M27,47 C34,37 44,32 54,32 C64,32 74,37 81,47 C74,57 64,62 54,62 C44,62 34,57 27,47 Z" />
+        <path android:fillColor="#D9A52E" android:pathData="M40,47 C40,39.27 46.27,33 54,33 C61.73,33 68,39.27 68,47 C68,54.73 61.73,61 54,61 C46.27,61 40,54.73 40,47 Z" />
+        <path android:fillColor="#07101A" android:pathData="M45,47 C45,42.03 49.03,38 54,38 C58.97,38 63,42.03 63,47 C63,51.97 58.97,56 54,56 C49.03,56 45,51.97 45,47 Z" />
+        <!-- upward market arrow -->
+        <path android:fillColor="#FFD45A" android:pathData="M34,53 L39,53 L39,49 L44,49 L44,45 L49,45 L49,48 L54,43 L59,46 L70,34 L73,37 L59,51 L54,48 L49,53 L44,50 L39,54 L34,54 Z" />
+        <!-- blue/gold candlesticks -->
+        <path android:fillColor="#46C9FF" android:pathData="M45,42 L46,42 L46,55 L45,55 Z M42.5,45 L48.5,45 L48.5,51 L42.5,51 Z" />
+        <path android:fillColor="#D9A52E" android:pathData="M53,38 L54,38 L54,53 L53,53 Z M50.5,41 L56.5,41 L56.5,49 L50.5,49 Z" />
+        <path android:fillColor="#46C9FF" android:pathData="M61,35 L62,35 L62,50 L61,50 Z M58.5,38 L64.5,38 L64.5,47 L58.5,47 Z" />
+        <path android:fillColor="#D9A52E" android:pathData="M69,31 L70,31 L70,45 L69,45 Z M66.5,34 L72.5,34 L72.5,42 L66.5,42 Z" />
+        <!-- subtle circuit nodes -->
+        <path android:fillColor="#46C9FF" android:pathData="M14,18 L16,18 L16,20 L14,20 Z M92,18 L94,18 L94,20 L92,20 Z M12,75 L14,75 L14,77 L12,77 Z M94,75 L96,75 L96,77 L94,77 Z" />
+    </group>
+</vector>
