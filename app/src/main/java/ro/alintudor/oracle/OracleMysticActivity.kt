@@ -675,6 +675,28 @@ class OracleMysticActivity : Activity() {
             textSize = 11f; setTextColor(muted); setPadding(0, dp(18), 0, 0)
         })
 
+        val pushStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
+        card.addView(TextView(this).apply {
+            text = "SEND TEST NOTIFICATION"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.rgb(75, 225, 255))
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
+            setPadding(0, dp(14), 0, dp(14))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val auth = OracleAuthStore(this@OracleMysticActivity)
+                if (!auth.hasSession()) { pushStatus.setTextColor(Color.rgb(255, 90, 90)); pushStatus.text = "Not logged in."; return@setOnClickListener }
+                pushStatus.setTextColor(muted); pushStatus.text = "Sending…"
+                Thread {
+                    val result = OracleApiClient.notify(auth.token(), "Oracle test notification", "If you see this on your phone, push notifications are working correctly.")
+                    runOnUiThread {
+                        result.onSuccess { pushStatus.setTextColor(green); pushStatus.text = "Sent — check your phone (and your email) in a few seconds." }
+                            .onFailure { pushStatus.setTextColor(Color.rgb(255, 90, 90)); pushStatus.text = "Failed: ${it.message}" }
+                    }
+                }.start()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+        card.addView(pushStatus)
+
         card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
             isClickable = true; isFocusable = true
