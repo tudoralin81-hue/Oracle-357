@@ -23,6 +23,7 @@ object OracleSyncManager {
     }
 
     fun pullAll(context: Context, token: String, onDone: (Boolean) -> Unit) {
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
         Thread {
             val result = OracleApiClient.getAllData(token)
             val success = result.isSuccess
@@ -35,7 +36,9 @@ object OracleSyncManager {
                 }
                 editor.apply()
             }
-            onDone(success)
+            // onDone touches UI (it ultimately calls proceedPastAuth, which
+            // rebuilds the screen) — must run on the main thread, never here.
+            mainHandler.post { onDone(success) }
         }.start()
     }
 }
