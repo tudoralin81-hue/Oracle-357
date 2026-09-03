@@ -153,12 +153,12 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }, LinearLayout.LayoutParams(0, -2, 1f))
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
-        lateinit var watchButton: Button
+        var watchButtonRef: Button? = null
         fun updateWatchUi(present: Boolean, eye: WatchlistEyeView? = null) {
             eye?.setSelectedState(present)
-            if (::watchButton.isInitialized) {
-                watchButton.text = if (present) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
-                watchButton.background = GradientDrawable().apply {
+            watchButtonRef?.apply {
+                text = if (present) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
+                background = GradientDrawable().apply {
                     setColor(if (present) Color.rgb(25, 75, 45) else Color.rgb(95, 55, 10))
                     cornerRadius = host.dp(13).toFloat()
                 }
@@ -270,7 +270,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         addTechnicalChart(r.ticker)
 
         val inWatchNow = watchStore.load().any { it.equals(watchTicker, true) }
-        watchButton = Button(host.root.context).apply {
+        val watchButton = Button(host.root.context).apply {
             text = if (inWatchNow) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
@@ -280,6 +280,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 cornerRadius = host.dp(13).toFloat()
             }
         }
+        watchButtonRef = watchButton
         watchButton.setOnClickListener {
             val current = watchStore.load().toMutableList()
             val present = current.any { it.equals(watchTicker, true) }
