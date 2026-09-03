@@ -77,9 +77,10 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
 
     private fun card(rank: Int, p: OraclePosition, a: OracleAction?, t: OracleTechnicalSnapshot?, journal: List<OracleJournalEntry>) {
         val forecast = when (p.ticker.uppercase(Locale.US)) { "CRM" -> 8.1; "HOOD" -> 23.5; "MELI" -> 16.3; else -> journal.filter { it.ticker.equals(p.ticker, true) && it.action.contains("BUY / OPEN", true) }.minByOrNull { it.timestamp }?.score ?: a?.score ?: 0.0 }
-        val action = decision(a?.action ?: "HOLD", t)
+        val action = decision(a?.action ?: "HOLD", t, p)
         val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); else -> Color.rgb(50, 220, 190) }
-        val reason = when { t == null -> "Insufficient technical data; local monitoring"; t.rsi >= 70 -> "RSI overheating · trend and momentum still acceptable"; t.rsi <= 30 -> "Weak RSI · selling pressure"; action == "BUY" -> "favorable trend and momentum"; action == "SELL" -> "negative signal · rising risk"; else -> "trend and momentum still acceptable" }
+        val urgentSell = t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }
+        val reason = when { urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; t == null -> "Insufficient technical data; local monitoring"; t.rsi >= 70 -> "RSI overheating · trend and momentum still acceptable"; t.rsi <= 30 -> "Weak RSI · selling pressure"; action == "BUY" -> "favorable trend and momentum"; action == "SELL" -> "negative signal · rising risk"; else -> "trend and momentum still acceptable" }
         val cardBg = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), accent, host.dp(1))
         val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = cardBg }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -221,7 +222,13 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         toast("Saved: $fileName"); true
     }.onFailure { toast("Export failed: ${it.message ?: it.javaClass.simpleName}") }.getOrDefault(false)
 
-    private fun decision(action: String, t: OracleTechnicalSnapshot?) = when { (t?.rsi?.takeIf { it.isFinite() } ?: 50.0) >= 70.0 -> "HOLD"; action == "BUY" -> "BUY"; action == "SELL" -> "SELL"; else -> "HOLD" }
+    // Same critical-alert rules Alerts uses (OracleAlertRules) get first say here:
+    // a position can't show HOLD in Portfolio while Alerts is flagging it
+    // URGENT_SELL — that would look like the app disagreeing with itself.
+    private fun decision(action: String, t: OracleTechnicalSnapshot?, p: OraclePosition): String {
+        if (t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }) return "SELL"
+        return when { (t?.rsi?.takeIf { it.isFinite() } ?: 50.0) >= 70.0 -> "HOLD"; action == "BUY" -> "BUY"; action == "SELL" -> "SELL"; else -> "HOLD" }
+    }
     private fun stamp() = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     private fun money(v: Double) = String.format(Locale.US, "%,.2f", v)
     private fun pct(v: Double) = String.format(Locale.US, "%.2f%%", v)

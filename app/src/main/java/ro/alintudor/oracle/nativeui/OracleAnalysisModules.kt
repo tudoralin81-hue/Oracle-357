@@ -809,11 +809,10 @@ host.content.addView(TextView(host.root.context).apply {
         host.content.addView(bigCard, LinearLayout.LayoutParams(-1, bigCardHeight).apply { setMargins(0, 0, 0, host.dp(10)) })
 
         // On wide/tablet layouts the card is far wider than the ~380dp this
-        // composition was designed for, leaving the right portion empty. Detect
-        // the real width and, when there is meaningfully more room, add a
-        // second cluster of drawings out there instead of just leaving it bare.
+        // composition was designed for, leaving the right portion empty. The
+        // real width is measured later, after layout (see bigCard.post below),
+        // since reading it here — before the window has settled — is unreliable.
         val density = host.root.context.resources.displayMetrics.density
-        val cardWidthDp = (host.root.context.resources.displayMetrics.widthPixels / density).toInt()
 
         val bust1 = ClassicalBustView(host.root.context, hasLaurel = true)
         bigCard.addView(bust1, FrameLayout.LayoutParams(host.dp(120), host.dp(150)).apply {
@@ -919,8 +918,18 @@ host.content.addView(TextView(host.root.context).apply {
         // Second cluster: only added when there's real extra width to fill,
         // positioned as fractions of the actual spare space so it never
         // overflows regardless of exactly how wide the screen is.
-        if (cardWidthDp > 700) {
-            val spare = cardWidthDp - 420
+        //
+        // Deferred to bigCard.post{} and re-measured from the view's actual
+        // laid-out width (not the pre-layout displayMetrics estimate) — that
+        // estimate could be read before the window had settled its real size,
+        // which is why this content sometimes appeared on the first render
+        // and silently vanished on the next one.
+        bigCard.post {
+            val realWidthPx = bigCard.width
+            if (realWidthPx <= 0) return@post
+            val realCardWidthDp = (realWidthPx / density).toInt()
+            if (realCardWidthDp <= 700) return@post
+            val spare = realCardWidthDp - 420
             fun atSpare(fraction: Float) = host.dp(420 + (spare * fraction).toInt())
 
             val wideBust = ClassicalBustView(host.root.context, hasLaurel = false)
