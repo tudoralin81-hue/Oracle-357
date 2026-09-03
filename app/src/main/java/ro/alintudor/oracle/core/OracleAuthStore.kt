@@ -6,36 +6,43 @@ import java.security.SecureRandom
 
 /**
  * Local-only account gate: a username + password (hashed and salted) kept on
- * this device, with a security-question recovery path and an optional
- * biometric-unlock flag.
+ * this device, with a security-question recovery path (3 of 5 preset
+ * questions, answered at registration) and an optional biometric-unlock
+ * flag.
  *
  * There is no backend server here — this is a local screen lock for the app,
  * not a real multi-device account system. "Forgot password" can only work
- * through the security question set at registration, since Oracle has
- * nowhere to send a password-reset email from.
+ * through the security questions or the one-time backup code, since Oracle
+ * has nowhere to send a password-reset email from.
  */
 class OracleAuthStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("oracle_auth", Context.MODE_PRIVATE)
+
+    companion object {
+        /** Fixed set of 5 preset questions; exactly 3 must be answered at registration. */
+        val SECURITY_QUESTIONS = listOf(
+            "What was the name of your first pet?",
+            "What city were you born in?",
+            "What was your childhood nickname?",
+            "What is your mother's maiden name?",
+            "What was the name of your first school?"
+        )
+        const val REQUIRED_SECURITY_ANSWERS = 3
+    }
 
     fun hasAccount(): Boolean = prefs.contains("username")
 
     fun username(): String = prefs.getString("username", "") ?: ""
 
-    fun securityQuestion(): String = prefs.getString("security_question", "") ?: ""
-
     fun biometricEnabled(): Boolean = prefs.getBoolean("biometric_enabled", false)
     fun setBiometricEnabled(value: Boolean) { prefs.edit().putBoolean("biometric_enabled", value).apply() }
 
-    fun register(username: String, password: String, securityQuestion: String, securityAnswer: String) {
-        val passwordSalt = randomSalt()
-        val answerSalt = randomSalt()
+    fun register(username: String, password: String) {
+        val salt = randomSalt()
         prefs.edit()
             .putString("username", username.trim())
-            .putString("password_salt", passwordSalt)
-            .putString("password_hash", hash(password, passwordSalt))
-            .putString("security_question", securityQuestion.trim())
-            .putString("answer_salt", answerSalt)
-            .putString("answer_hash", hash(normalizeAnswer(securityAnswer), answerSalt))
+            .putString("password_salt", salt)
+            .putString("password_hash", hash(password, salt))
             .apply()
     }
 
@@ -45,10 +52,42 @@ class OracleAuthStore(context: Context) {
         return hash(password, salt) == stored
     }
 
-    fun verifySecurityAnswer(answer: String): Boolean {
-        val salt = prefs.getString("answer_salt", null) ?: return false
-        val stored = prefs.getString("answer_hash", null) ?: return false
-        return hash(normalizeAnswer(answer), salt) == stored
+    fun resetPassword(newPassword: String) {
+        val salt = randomSalt()
+        prefs.edit().putString("password_salt", salt).putString("password_hash", hash(newPassword, salt)).apply()
+    }
+
+    /** Stores answers for exactly the questions present in [answers] (index into
+     *  SECURITY_QUESTIONS -> plain answer). Call once, at registration, with
+     *  exactly REQUIRED_SECURITY_ANSWERS entries. */
+    fun setSecurityAnswers(answers: Map<Int, String>) {
+        val editor = prefs.edit()
+        for (i in SECURITY_QUESTIONS.indices) {
+            val answer = answers[i]
+            if (!answer.isNullOrBlank()) {
+                val salt = randomSalt()
+                editor.putString("sec_answer_salt_$i", salt)
+                editor.putString("sec_answer_hash_$i", hash(normalizeAnswer(answer), salt))
+            }
+        }
+        editor.apply()
+    }
+
+    /** Which of the 5 preset questions actually have a stored answer — this is
+     *  what the recovery screen should show, so the person isn't guessing
+     *  which 3 out of 5 they originally picked. */
+    fun answeredSecurityIndices(): List<Int> = SECURITY_QUESTIONS.indices.filter { prefs.contains("sec_answer_hash_$it") }
+
+    /** All of the previously-answered questions must be answered correctly now. */
+    fun verifySecurityAnswers(answers: Map<Int, String>): Boolean {
+        val required = answeredSecurityIndices()
+        if (required.isEmpty()) return false
+        return required.all { i ->
+            val salt = prefs.getString("sec_answer_salt_$i", null) ?: return false
+            val stored = prefs.getString("sec_answer_hash_$i", null) ?: return false
+            val given = answers[i] ?: return false
+            hash(normalizeAnswer(given), salt) == stored
+        }
     }
 
     /** One-time backup recovery code, shown exactly once at registration.
@@ -71,12 +110,6 @@ class OracleAuthStore(context: Context) {
     }
 
     private fun normalizeBackupCode(code: String) = code.trim().uppercase().replace("-", "").replace(" ", "")
-
-    fun resetPassword(newPassword: String) {
-        val salt = randomSalt()
-        prefs.edit().putString("password_salt", salt).putString("password_hash", hash(newPassword, salt)).apply()
-    }
-
     private fun normalizeAnswer(answer: String) = answer.trim().lowercase()
 
     private fun randomSalt(): String {

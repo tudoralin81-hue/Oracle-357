@@ -132,8 +132,14 @@ class OracleMysticActivity : Activity() {
         val usernameField = authField(card, "USERNAME", muted, panel, border)
         val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true)
         val confirmField = authField(card, "CONFIRM PASSWORD", muted, panel, border, isPassword = true)
-        val questionField = authField(card, "SECURITY QUESTION (used to reset your password)", muted, panel, border)
-        val answerField = authField(card, "ANSWER", muted, panel, border)
+
+        card.addView(TextView(this).apply {
+            text = "SECURITY QUESTIONS — answer any ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} of the ${OracleAuthStore.SECURITY_QUESTIONS.size} below"
+            textSize = 11f; setTextColor(muted); setPadding(dp(2), dp(18), 0, dp(4))
+        })
+        val questionAnswerFields = OracleAuthStore.SECURITY_QUESTIONS.mapIndexed { index, question ->
+            index to authField(card, question, muted, panel, border)
+        }.toMap()
 
         var biometricWanted = false
         if (biometricAvailable()) {
@@ -165,17 +171,17 @@ class OracleMysticActivity : Activity() {
                 val username = usernameField.text.toString().trim()
                 val password = passwordField.text.toString()
                 val confirm = confirmField.text.toString()
-                val question = questionField.text.toString().trim()
-                val answer = answerField.text.toString().trim()
+                val answeredCount = questionAnswerFields.values.count { it.text.toString().isNotBlank() }
                 error.text = when {
                     username.isBlank() -> "Enter a username."
                     password.length < 4 -> "Password needs at least 4 characters."
                     password != confirm -> "Passwords don't match."
-                    question.isBlank() || answer.isBlank() -> "Set a security question and answer — it's the only way to reset your password later."
+                    answeredCount < OracleAuthStore.REQUIRED_SECURITY_ANSWERS -> "Answer at least ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} security questions — they're the only way to reset your password later."
                     else -> ""
                 }
                 if (error.text.isNotEmpty()) return@setOnClickListener
-                store.register(username, password, question, answer)
+                store.register(username, password)
+                store.setSecurityAnswers(questionAnswerFields.mapValues { it.value.text.toString() })
                 store.setBiometricEnabled(biometricWanted)
                 showBackupCodeReveal(store.generateAndStoreBackupCode())
             }
@@ -299,15 +305,21 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "RESET PASSWORD"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
         card.addView(TextView(this).apply {
-            text = "This only works through the security question you set when you created your account — Oracle has no server to send a reset link from."
+            text = "This only works through the security questions you answered when you created your account, or your backup code — Oracle has no server to send a reset link from."
             textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(10), dp(8), dp(10), dp(24))
         })
-        card.addView(TextView(this).apply {
-            text = store.securityQuestion().ifBlank { "No security question was set for this account." }
-            textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, 0, 0, dp(8))
-        })
 
-        val answerField = authField(card, "YOUR ANSWER (leave blank if using the backup code)", muted, panel, border)
+        val answeredIndices = store.answeredSecurityIndices()
+        val answerFields = if (answeredIndices.isEmpty()) {
+            card.addView(TextView(this).apply {
+                text = "No security questions were answered for this account."
+                textSize = 13f; setTextColor(muted); setPadding(0, 0, 0, dp(8))
+            })
+            emptyMap()
+        } else {
+            answeredIndices.associateWith { index -> authField(card, OracleAuthStore.SECURITY_QUESTIONS[index], muted, panel, border) }
+        }
+
         card.addView(TextView(this).apply { text = "— OR —"; textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, dp(2)) })
         val backupField = authField(card, "BACKUP CODE (from registration)", muted, panel, border)
         val newPasswordField = authField(card, "NEW PASSWORD", muted, panel, border, isPassword = true)
@@ -323,14 +335,14 @@ class OracleMysticActivity : Activity() {
             setPadding(0, dp(15), 0, dp(15))
             isClickable = true; isFocusable = true
             setOnClickListener {
-                val answer = answerField.text.toString()
+                val answers = answerFields.mapValues { it.value.text.toString() }
                 val backupCode = backupField.text.toString()
                 val newPassword = newPasswordField.text.toString()
                 val confirm = confirmField.text.toString()
-                val verified = (answer.isNotBlank() && store.verifySecurityAnswer(answer)) ||
+                val verified = (answers.values.any { it.isNotBlank() } && store.verifySecurityAnswers(answers)) ||
                     (backupCode.isNotBlank() && store.verifyBackupCode(backupCode))
                 error.text = when {
-                    !verified -> "That answer or backup code doesn't match."
+                    !verified -> "Those answers or that backup code don't match."
                     newPassword.length < 4 -> "Password needs at least 4 characters."
                     newPassword != confirm -> "Passwords don't match."
                     else -> ""

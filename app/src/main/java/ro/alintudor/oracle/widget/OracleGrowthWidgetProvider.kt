@@ -99,7 +99,7 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(slot.riskId, "${item.risk.uppercase(Locale.US)} risk")
                     views.setTextColor(slot.riskId, riskColor)
                     val sign = if (item.forecastPct >= 0) "+" else ""
-                    views.setTextViewText(slot.potentialId, "Pot. $sign${"%.1f".format(Locale.US, item.forecastPct)}%")
+                    views.setTextViewText(slot.potentialId, "Potential $sign${"%.1f".format(Locale.US, item.forecastPct)}%")
                     views.setTextColor(slot.potentialId, if (item.forecastPct >= 0) green else red)
                 }
                 views.setTextColor(slot.tickerId, Color.WHITE)
@@ -115,7 +115,11 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             val marketStatus = runCatching { ro.alintudor.oracle.core.OracleMarketCalendar.status() }.getOrNull()
             if (marketStatus != null) {
                 views.setTextViewText(R.id.widget_market_status, if (marketStatus.open) "● MARKET OPEN" else "● MARKET CLOSED")
-                views.setTextColor(R.id.widget_market_status, if (marketStatus.open) green else Color.rgb(255, 90, 90))
+                views.setTextColor(R.id.widget_market_status, if (marketStatus.open) green else red)
+                views.setInt(
+                    R.id.widget_market_status, "setBackgroundResource",
+                    if (marketStatus.open) R.drawable.widget_status_open_bg else R.drawable.widget_status_closed_bg
+                )
             }
 
             val launchIntent = Intent(context, OracleMysticActivity::class.java).apply {
