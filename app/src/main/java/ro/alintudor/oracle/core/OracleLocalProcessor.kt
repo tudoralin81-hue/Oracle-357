@@ -1,5 +1,9 @@
 package ro.alintudor.oracle.core
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 /** Local orchestration layer. */
 object OracleLocalProcessor {
     /**
@@ -82,12 +86,37 @@ object OracleLocalProcessor {
         // race the preload and generate a second ranking for the same T0.
         val growth = currentGrowthSnapshot(repository, now)
 
-        val oldAlerts=current.alerts.filter{it.active}; val generated=actions.filter{it.action=="BUY"||it.action=="SELL"}.map{OracleAlert(it.ticker,if(it.action=="SELL")"HIGH"else"INFO","${it.action} signal","Score ${"%.1f".format(it.score)} — ${it.reason}",now,true)}
-        val alertsByTicker=(oldAlerts+generated).groupBy{it.ticker}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(100)
+        val oldAlerts=current.alerts.filter{it.active}
+        val signalAlerts=actions.filter{it.action=="BUY"||it.action=="SELL"}.map{OracleAlert(it.ticker,if(it.action=="SELL")"HIGH"else"INFO","${it.action} signal","Score ${"%.1f".format(it.score)} — ${it.reason}",now,true,"SIGNAL")}
+
+        // Critical alerts: urgent sell, fading growth, high volatility. These are
+        // the ones that also push-notify and email — kept as their own "kind" so
+        // they never overwrite/hide the plain BUY/SELL signal for the same ticker.
+        val technicalByTicker = technical.associateBy { it.ticker.uppercase(Locale.US) }
+        val criticalAlerts = normalized.flatMap { p -> OracleAlertRules.evaluate(p, technicalByTicker[p.ticker.uppercase(Locale.US)], now) }
+
+        val alertsByKey=(oldAlerts+signalAlerts+criticalAlerts).groupBy{"${it.ticker}|${it.kind}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
+
+        // Push-notify at most once per ticker+kind+day, so a still-active
+        // condition doesn't re-alert on every single refresh. If an email is
+        // registered, tapping the notification opens a pre-filled draft for
+        // that alert — see OracleNotifier for why it isn't a silent auto-send.
+        if (criticalAlerts.isNotEmpty()) {
+            val settings = OracleAlertSettingsStore(repository.context)
+            val dayKey = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
+            for (alert in criticalAlerts) {
+                val notifyKey = "${alert.ticker}|${alert.kind}|$dayKey"
+                if (!settings.alreadyNotified(notifyKey)) {
+                    OracleNotifier.notify(repository.context, alert, settings.email())
+                    settings.markNotified(notifyKey)
+                }
+            }
+        }
+
         val journal=OracleActivityJournal.merge(current.journal,actions)
         val fetchedNews=runCatching{OracleNewsFetcher.fetch(150)}.getOrDefault(emptyList())
         val news=if(fetchedNews.isNotEmpty()) fetchedNews else current.news
-        repository.saveNews(news); repository.savePositions(normalized); repository.saveActions(actions); repository.saveTechnical(technical); repository.saveHistory(history); repository.saveAlerts(alertsByTicker); repository.saveJournal(journal)
+        repository.saveNews(news); repository.savePositions(normalized); repository.saveActions(actions); repository.saveTechnical(technical); repository.saveHistory(history); repository.saveAlerts(alertsByKey); repository.saveJournal(journal)
         return repository.snapshot().copy(news=news)
     }
 }

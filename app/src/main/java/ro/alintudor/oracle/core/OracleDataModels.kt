@@ -21,7 +21,10 @@ data class OracleAlert(
     val title: String,
     val message: String = "",
     val timestamp: Long = 0L,
-    val active: Boolean = true
+    val active: Boolean = true,
+    // "SIGNAL" = the existing plain BUY/SELL alerts. The three critical kinds
+    // below are the ones that also trigger a push notification and an email.
+    val kind: String = "SIGNAL"
 )
 
 data class OracleNews(
