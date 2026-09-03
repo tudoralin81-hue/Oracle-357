@@ -23,6 +23,10 @@ class OracleMysticActivity : Activity() {
         // stays alive, so the boot loader only shows on a genuine fresh launch —
         // not every time the user returns from the background.
         @Volatile private var bootLoaderShownThisProcess = false
+        // Same idea for the login gate: once unlocked, stays unlocked for the
+        // rest of this process (matches how most local-lock apps behave —
+        // re-locking only on a genuine fresh process start).
+        @Volatile private var authPassedThisProcess = false
     }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
@@ -40,12 +44,271 @@ class OracleMysticActivity : Activity() {
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBack() }
         }
+        if (authPassedThisProcess) {
+            proceedPastAuth()
+        } else {
+            runCatching { showAuthGate() }.onFailure { showFatalError("Oracle failed to start", it) }
+        }
+        // GROWTH warm-up starts at Android app launch, not when the user opens GROWTH —
+        // deliberately independent of the auth gate, so data is ready by the time login finishes.
+        Thread { runCatching { OracleLocalProcessor.refreshGrowthOnly(repository) } }.start()
+    }
+
+    private fun proceedPastAuth() {
         runCatching {
             OracleBootstrap.ensure(repository)
             if (bootLoaderShownThisProcess) { showHub(); consumePendingModuleIntent() } else { bootLoaderShownThisProcess = true; showBootLoader() }
         }.onFailure { showFatalError("Oracle failed to start", it) }
-        // GROWTH warm-up starts at Android app launch, not when the user opens GROWTH.
-        Thread { runCatching { OracleLocalProcessor.refreshGrowthOnly(repository) } }.start()
+    }
+
+    // ---------------------------------------------------------------------
+    // Local account gate — username/password with security-question recovery
+    // and optional biometric unlock. Runs before the boot loader on every
+    // fresh process start. Everything is stored only on this device
+    // (OracleAuthStore); there is no server, so "forgot password" can only
+    // work through the security question, and biometric unlock uses the
+    // platform BiometricPrompt (API 28+) tied to this device's own hardware.
+    // ---------------------------------------------------------------------
+
+    private fun showAuthGate() {
+        val store = OracleAuthStore(this)
+        if (store.hasAccount()) showLogin(store) else showRegister(store)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun biometricAvailable(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 29) return false
+        return runCatching {
+            val manager = getSystemService(android.hardware.biometrics.BiometricManager::class.java)
+            manager?.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+        }.getOrDefault(false)
+    }
+
+    private fun showBiometricPrompt(onSuccess: () -> Unit) {
+        if (android.os.Build.VERSION.SDK_INT < 28) return
+        val executor = mainExecutor
+        val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
+            .setTitle("Unlock Oracle")
+            .setSubtitle("Use your fingerprint or face to continue")
+            .setNegativeButton("Use password instead", executor) { _, _ -> }
+            .build()
+        runCatching {
+            prompt.authenticate(android.os.CancellationSignal(), executor, object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult) { onSuccess() }
+            })
+        }
+    }
+
+    private fun authField(container: LinearLayout, label: String, muted: Int, panel: Int, border: Int, isPassword: Boolean = false): EditText {
+        container.addView(TextView(this).apply { text = label; textSize = 11f; setTextColor(muted); setPadding(dp(2), dp(10), 0, dp(4)) })
+        val edit = EditText(this).apply {
+            setTextColor(Color.WHITE); textSize = 15f; setSingleLine(true)
+            if (isPassword) inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), border) }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        container.addView(edit, LinearLayout.LayoutParams(-1, -2))
+        return edit
+    }
+
+    private fun showRegister(store: OracleAuthStore) {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val muted = Color.rgb(165, 174, 195); val green = Color.rgb(105, 245, 35); val red = Color.rgb(255, 90, 90)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(ImageView(this).apply { setImageResource(R.drawable.ic_oracle); scaleType = ImageView.ScaleType.CENTER_INSIDE },
+            LinearLayout.LayoutParams(dp(64), dp(64)).apply { gravity = Gravity.CENTER; bottomMargin = dp(12) })
+        card.addView(TextView(this).apply { text = "CREATE YOUR ACCOUNT"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
+        card.addView(TextView(this).apply {
+            text = "Local to this device only — no server, no cloud account."
+            textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(20), dp(6), dp(20), dp(26))
+        })
+
+        val usernameField = authField(card, "USERNAME", muted, panel, border)
+        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true)
+        val confirmField = authField(card, "CONFIRM PASSWORD", muted, panel, border, isPassword = true)
+        val questionField = authField(card, "SECURITY QUESTION (used to reset your password)", muted, panel, border)
+        val answerField = authField(card, "ANSWER", muted, panel, border)
+
+        var biometricWanted = false
+        if (biometricAvailable()) {
+            val toggle = TextView(this).apply {
+                text = "🔒  ENABLE BIOMETRIC UNLOCK"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(muted)
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), border) }
+                setPadding(0, dp(12), 0, dp(12))
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    biometricWanted = !biometricWanted
+                    setTextColor(if (biometricWanted) green else muted)
+                    background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), if (biometricWanted) green else border) }
+                }
+            }
+            card.addView(toggle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        }
+
+        val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }
+        card.addView(error)
+
+        val createButton = TextView(this).apply {
+            text = "CREATE ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val username = usernameField.text.toString().trim()
+                val password = passwordField.text.toString()
+                val confirm = confirmField.text.toString()
+                val question = questionField.text.toString().trim()
+                val answer = answerField.text.toString().trim()
+                error.text = when {
+                    username.isBlank() -> "Enter a username."
+                    password.length < 4 -> "Password needs at least 4 characters."
+                    password != confirm -> "Passwords don't match."
+                    question.isBlank() || answer.isBlank() -> "Set a security question and answer — it's the only way to reset your password later."
+                    else -> ""
+                }
+                if (error.text.isNotEmpty()) return@setOnClickListener
+                store.register(username, password, question, answer)
+                store.setBiometricEnabled(biometricWanted)
+                authPassedThisProcess = true
+                proceedPastAuth()
+            }
+        }
+        card.addView(createButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun showLogin(store: OracleAuthStore) {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35); val red = Color.rgb(255, 90, 90)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(ImageView(this).apply { setImageResource(R.drawable.ic_oracle); scaleType = ImageView.ScaleType.CENTER_INSIDE },
+            LinearLayout.LayoutParams(dp(72), dp(72)).apply { gravity = Gravity.CENTER; bottomMargin = dp(10) })
+        card.addView(TextView(this).apply { text = "ORACLE"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
+        card.addView(TextView(this).apply {
+            text = "Welcome back, ${store.username()}"; textSize = 13f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(4), 0, dp(28))
+        })
+
+        val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
+        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true)
+
+        val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
+        card.addView(error)
+
+        fun attemptLogin() {
+            val username = usernameField.text.toString().trim()
+            val password = passwordField.text.toString()
+            if (!username.equals(store.username(), ignoreCase = true) || !store.verifyPassword(password)) {
+                error.text = "Wrong username or password."
+                return
+            }
+            authPassedThisProcess = true
+            proceedPastAuth()
+        }
+
+        card.addView(TextView(this).apply {
+            text = "LOG IN"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener { attemptLogin() }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+
+        if (store.biometricEnabled() && biometricAvailable()) {
+            card.addView(TextView(this).apply {
+                text = "🔒  USE BIOMETRIC UNLOCK"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(gold)
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), gold) }
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true; isFocusable = true
+                setOnClickListener { showBiometricPrompt { authPassedThisProcess = true; proceedPastAuth() } }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        }
+
+        card.addView(TextView(this).apply {
+            text = "Forgot password?"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showForgotPassword(store) }
+        })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+
+        // Returning users with biometric enabled don't have to type anything —
+        // offer it immediately; they can still fall back to the password fields.
+        if (store.biometricEnabled() && biometricAvailable()) {
+            showBiometricPrompt { authPassedThisProcess = true; proceedPastAuth() }
+        }
+    }
+
+    private fun showForgotPassword(store: OracleAuthStore) {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val muted = Color.rgb(165, 174, 195); val green = Color.rgb(105, 245, 35); val red = Color.rgb(255, 90, 90)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(TextView(this).apply { text = "RESET PASSWORD"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
+        card.addView(TextView(this).apply {
+            text = "This only works through the security question you set when you created your account — Oracle has no server to send a reset link from."
+            textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(10), dp(8), dp(10), dp(24))
+        })
+        card.addView(TextView(this).apply {
+            text = store.securityQuestion().ifBlank { "No security question was set for this account." }
+            textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, 0, 0, dp(8))
+        })
+
+        val answerField = authField(card, "YOUR ANSWER", muted, panel, border)
+        val newPasswordField = authField(card, "NEW PASSWORD", muted, panel, border, isPassword = true)
+        val confirmField = authField(card, "CONFIRM NEW PASSWORD", muted, panel, border, isPassword = true)
+
+        val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
+        card.addView(error)
+
+        card.addView(TextView(this).apply {
+            text = "RESET PASSWORD"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val answer = answerField.text.toString()
+                val newPassword = newPasswordField.text.toString()
+                val confirm = confirmField.text.toString()
+                error.text = when {
+                    !store.verifySecurityAnswer(answer) -> "That answer doesn't match."
+                    newPassword.length < 4 -> "Password needs at least 4 characters."
+                    newPassword != confirm -> "Passwords don't match."
+                    else -> ""
+                }
+                if (error.text.isNotEmpty()) return@setOnClickListener
+                store.resetPassword(newPassword)
+                Toast.makeText(this@OracleMysticActivity, "Password updated — log in with your new password.", Toast.LENGTH_LONG).show()
+                showLogin(store)
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+        card.addView(TextView(this).apply {
+            text = "Back to login"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showLogin(store) }
+        })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
     }
 
     /**
@@ -167,7 +430,11 @@ class OracleMysticActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (::root.isInitialized) consumePendingModuleIntent()
+        // Only route straight to the requested module if this session is
+        // already unlocked — otherwise a widget tap could skip the login
+        // screen entirely. If not yet authenticated, the request is simply
+        // left in the intent and picked up normally once login succeeds.
+        if (::root.isInitialized && authPassedThisProcess) consumePendingModuleIntent()
     }
 
     /** Handles the widget's "open Growth directly" tap. Consumed once so

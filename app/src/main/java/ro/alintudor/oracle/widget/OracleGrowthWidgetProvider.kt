@@ -112,6 +112,12 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             } else "No snapshot yet — open Oracle"
             views.setTextViewText(R.id.widget_updated, stamp)
 
+            val marketStatus = runCatching { ro.alintudor.oracle.core.OracleMarketCalendar.status() }.getOrNull()
+            if (marketStatus != null) {
+                views.setTextViewText(R.id.widget_market_status, if (marketStatus.open) "● MARKET OPEN" else "● MARKET CLOSED")
+                views.setTextColor(R.id.widget_market_status, if (marketStatus.open) green else Color.rgb(255, 90, 90))
+            }
+
             val launchIntent = Intent(context, OracleMysticActivity::class.java).apply {
                 putExtra("open_module", "growth")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
