@@ -2,7 +2,6 @@ package ro.alintudor.oracle
 
 import android.app.Activity
 import android.graphics.*
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +17,12 @@ import kotlin.math.*
 
 /** New Start experience. Module/data logic intentionally mirrors the stable activity. */
 class OracleMysticActivity : Activity() {
+    companion object {
+        // Survives Activity recreation (e.g. rotation) as long as the app process
+        // stays alive, so the boot loader only shows on a genuine fresh launch —
+        // not every time the user returns from the background.
+        @Volatile private var bootLoaderShownThisProcess = false
+    }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
     private var currentModule: String? = null
@@ -34,8 +39,10 @@ class OracleMysticActivity : Activity() {
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBack() }
         }
-        runCatching { OracleBootstrap.ensure(repository); showBootLoader() }
-            .onFailure { showFatalError("Oracle failed to start", it) }
+        runCatching {
+            OracleBootstrap.ensure(repository)
+            if (bootLoaderShownThisProcess) showHub() else { bootLoaderShownThisProcess = true; showBootLoader() }
+        }.onFailure { showFatalError("Oracle failed to start", it) }
         // GROWTH warm-up starts at Android app launch, not when the user opens GROWTH.
         Thread { runCatching { OracleLocalProcessor.refreshGrowthOnly(repository) } }.start()
     }
@@ -49,22 +56,17 @@ class OracleMysticActivity : Activity() {
     private fun showBootLoader() {
         root.removeAllViews()
         val bg = Color.rgb(3, 4, 12)
-        val panel = Color.rgb(7, 14, 28)
-        val border = Color.rgb(49, 82, 125)
         val muted = Color.rgb(165, 174, 195)
         val cyan = Color.rgb(75, 225, 255)
+        val gold = Color.rgb(255, 205, 55)
         val green = Color.rgb(105, 245, 35)
 
-        val container = FrameLayout(this).apply { setBackgroundColor(bg) }
+        // Full-screen card: the whole background IS the card now.
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(28), dp(28), dp(28), dp(28))
-            background = GradientDrawable().apply {
-                setColor(panel)
-                setStroke(dp(1), border)
-                cornerRadius = dp(16).toFloat()
-            }
+            setPadding(dp(36), dp(36), dp(36), dp(36))
+            setBackgroundColor(bg)
         }
 
         val spinner = ImageView(this).apply {
@@ -77,42 +79,39 @@ class OracleMysticActivity : Activity() {
                 interpolator = android.view.animation.LinearInterpolator()
             }.start()
         }
-        card.addView(spinner, LinearLayout.LayoutParams(dp(64), dp(64)).apply { gravity = Gravity.CENTER })
+        card.addView(spinner, LinearLayout.LayoutParams(dp(100), dp(100)).apply { gravity = Gravity.CENTER })
         card.addView(TextView(this).apply {
-            text = "ORACLE"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(green); setPadding(0, dp(12), 0, dp(4))
+            text = "ORACLE"; textSize = 30f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(green); setPadding(0, dp(18), 0, dp(6))
         })
         card.addView(TextView(this).apply {
-            text = "Getting things ready…"; textSize = 13f; gravity = Gravity.CENTER
-            setTextColor(muted); setPadding(0, 0, 0, dp(16))
+            text = "Getting things ready…"; textSize = 16f; gravity = Gravity.CENTER
+            setTextColor(muted); setPadding(0, 0, 0, dp(26))
         })
 
         val percentLabel = TextView(this).apply {
-            text = "0%"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(cyan); setPadding(0, 0, 0, dp(8))
+            text = "0%"; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(cyan); setPadding(0, 0, 0, dp(10))
         }
         card.addView(percentLabel)
         val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100; progress = 0; isIndeterminate = false
         }
-        card.addView(progressBar, LinearLayout.LayoutParams(dp(220), dp(9)))
+        card.addView(progressBar, LinearLayout.LayoutParams(dp(280), dp(10)))
 
         // Same rotating investor quotes as the GROWTH loader (OracleLoaderQuotes),
         // just cycling faster since the boot loader only runs for 5s total.
+        // Bigger and colored, as requested — the quotation marks are part of the
+        // quote strings themselves (OracleLoaderQuotes).
         val quoteLabel = TextView(this).apply {
             text = OracleLoaderQuotes.ALL.random()
-            textSize = 10f; gravity = Gravity.CENTER
-            setTextColor(Color.WHITE); setPadding(0, dp(16), 0, 0)
-            setLineSpacing(0f, 1.1f)
+            textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(dp(12), dp(34), dp(12), 0)
+            setLineSpacing(0f, 1.2f)
         }
         card.addView(quoteLabel)
-        card.addView(TextView(this).apply {
-            text = "GROWTH data is loading in the background."; textSize = 10f; gravity = Gravity.CENTER
-            setTextColor(muted); setPadding(0, dp(14), 0, 0)
-        })
 
-        container.addView(card, FrameLayout.LayoutParams(dp(260), -2, Gravity.CENTER))
-        root.addView(container, FrameLayout.LayoutParams(-1, -1))
+        root.addView(card, FrameLayout.LayoutParams(-1, -1))
 
         val bootDurationMs = 5_000L
         android.animation.ValueAnimator.ofInt(0, 100).apply {

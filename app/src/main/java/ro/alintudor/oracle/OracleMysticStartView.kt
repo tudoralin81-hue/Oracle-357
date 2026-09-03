@@ -69,7 +69,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(12.5f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,110f,380f,250f,125f,20f,time,true) else drawCards(c,8f,470f,170f,126f,8f,time,false)
+        hit.clear(); if(wide)drawCards(c,101f,395f,250f,125f,26f,time,true) else drawCards(c,10f,510f,165f,132f,13f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){

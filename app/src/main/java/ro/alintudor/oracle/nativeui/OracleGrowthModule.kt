@@ -207,12 +207,13 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             setPadding(host.dp(4), host.dp(3), host.dp(4), host.dp(7))
         }
         host.content.addView(section)
-        items.forEach { addRecommendationCard(it, news) }
+        items.forEachIndexed { index, item -> addRecommendationCard(item, news, index) }
     }
 
-    private fun addRecommendationCard(item: OracleGrowthRecommendation, news: List<OracleNews>) {
+    private fun addRecommendationCard(item: OracleGrowthRecommendation, news: List<OracleNews>, index: Int = 0) {
         val accent = when (item.horizon.uppercase(Locale.US)) { "SHORT" -> cyan; "MEDIUM" -> orange; else -> green }
-        val card = card(12).apply { background = rounded(bg, accent, 1, 15) }
+        val cardBg = rounded(bg, accent, 1, 15)
+        val card = card(12).apply { background = cardBg }
         val top = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val left = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
         left.addView(text(horizonLabel(item.horizon), 13f, Typeface.DEFAULT_BOLD, accent, 0, 0))
@@ -262,6 +263,27 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         }
         card.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 8))
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
+
+        // Entrance: fade + rise in, staggered per card so they don't all pop at once.
+        card.alpha = 0f
+        card.translationY = host.dp(26).toFloat()
+        card.animate().alpha(1f).translationY(0f).setStartDelay(index * 120L).setDuration(420L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+
+        // Continuous subtle pulse on the accent border, so the cards feel alive.
+        val strokePx = host.dp(1)
+        val r = Color.red(accent); val g = Color.green(accent); val b = Color.blue(accent)
+        val pulse = android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+            duration = 1900L
+            startDelay = index * 220L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                val q = anim.animatedValue as Float
+                cardBg.setStroke(strokePx, Color.argb((150 + 105 * q).toInt(), r, g, b))
+            }
+        }
+        pulse.start()
     }
 
     private fun addCompactWeights(parent: LinearLayout, weights: List<Int>) {
