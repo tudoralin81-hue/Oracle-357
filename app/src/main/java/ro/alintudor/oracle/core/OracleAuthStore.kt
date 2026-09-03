@@ -51,6 +51,27 @@ class OracleAuthStore(context: Context) {
         return hash(normalizeAnswer(answer), salt) == stored
     }
 
+    /** One-time backup recovery code, shown exactly once at registration.
+     *  Only its hash is ever stored — the plain code cannot be recovered
+     *  again from the app once the reveal screen is dismissed. */
+    fun generateAndStoreBackupCode(): String {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no O/0 or I/1 mix-ups
+        val random = SecureRandom()
+        fun segment() = (1..4).map { chars[random.nextInt(chars.length)] }.joinToString("")
+        val code = "${segment()}-${segment()}-${segment()}"
+        val salt = randomSalt()
+        prefs.edit().putString("backup_salt", salt).putString("backup_hash", hash(normalizeBackupCode(code), salt)).apply()
+        return code
+    }
+
+    fun verifyBackupCode(code: String): Boolean {
+        val salt = prefs.getString("backup_salt", null) ?: return false
+        val stored = prefs.getString("backup_hash", null) ?: return false
+        return hash(normalizeBackupCode(code), salt) == stored
+    }
+
+    private fun normalizeBackupCode(code: String) = code.trim().uppercase().replace("-", "").replace(" ", "")
+
     fun resetPassword(newPassword: String) {
         val salt = randomSalt()
         prefs.edit().putString("password_salt", salt).putString("password_hash", hash(newPassword, salt)).apply()
