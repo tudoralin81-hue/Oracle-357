@@ -829,6 +829,24 @@ host.content.addView(TextView(host.root.context).apply {
         })
         bust2.rotation = 6f
 
+        // Gravity-anchored (not fixed topMargin), so these two land near the
+        // real middle and bottom of the card no matter how tall it ends up —
+        // the card's height is computed from the actual screen at runtime.
+        val bust4 = ClassicalBustView(host.root.context, hasLaurel = false)
+        bigCard.addView(bust4, FrameLayout.LayoutParams(host.dp(95), host.dp(118)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = host.dp(340)
+        })
+        bust4.rotation = 4f
+        bust4.scaleX = -1f
+
+        val bust5 = ClassicalBustView(host.root.context, hasLaurel = true)
+        bigCard.addView(bust5, FrameLayout.LayoutParams(host.dp(110), host.dp(138)).apply {
+            gravity = Gravity.END or Gravity.BOTTOM
+            rightMargin = host.dp(18); bottomMargin = host.dp(18)
+        })
+        bust5.rotation = -7f
+
         data class Formula(val text: String, val leftDp: Int, val topDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
         val formulas = listOf(
             Formula("a² + b² = c²", 140, 16, 13f, -4f, 0.85f),
@@ -858,6 +876,31 @@ host.content.addView(TextView(host.root.context).apply {
             }
             bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply { leftMargin = host.dp(f.leftDp); topMargin = host.dp(f.topDp) })
         }
+
+        // Bottom-anchored formulas: gravity keeps these pinned near the true
+        // bottom edge of the card regardless of its actual runtime height.
+        data class BottomFormula(val text: String, val leftDp: Int, val bottomDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
+        val bottomFormulas = listOf(
+            BottomFormula("β", 150, 110, 20f, -6f, 0.55f),
+            BottomFormula("dy/dx", 175, 60, 12f, 5f, 0.65f),
+            BottomFormula("∮ F·dl", 145, 155, 11f, -4f, 0.55f),
+            BottomFormula("μ", 235, 40, 20f, 8f, 0.50f),
+            BottomFormula("x = (-b ± √(b²-4ac)) / 2a", 20, 10, 10f, 2f, 0.65f)
+        )
+        bottomFormulas.forEach { f ->
+            val tv = TextView(host.root.context).apply {
+                text = f.text
+                textSize = f.sizeSp
+                typeface = Typeface.SERIF
+                setTextColor(Color.argb((235 * f.a).toInt(), 200, 198, 192))
+                rotation = f.rot
+            }
+            bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply {
+                gravity = Gravity.BOTTOM
+                leftMargin = host.dp(f.leftDp); bottomMargin = host.dp(f.bottomDp)
+            })
+        }
+
         bigCard.alpha = 0f
         bigCard.animate().alpha(1f).setDuration(550L).start()
 
