@@ -99,8 +99,14 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(slot.riskId, "${item.risk.uppercase(Locale.US)} risk")
                     views.setTextColor(slot.riskId, riskColor)
                     val sign = if (item.forecastPct >= 0) "+" else ""
-                    views.setTextViewText(slot.potentialId, "Potential $sign${"%.1f".format(Locale.US, item.forecastPct)}%")
-                    views.setTextColor(slot.potentialId, if (item.forecastPct >= 0) green else red)
+                    val potentialColor = if (item.forecastPct >= 0) green else red
+                    val label = "Potential "
+                    val value = "$sign${"%.1f".format(Locale.US, item.forecastPct)}%"
+                    val spanned = android.text.SpannableString(label + value).apply {
+                        setSpan(android.text.style.ForegroundColorSpan(orange), 0, label.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        setSpan(android.text.style.ForegroundColorSpan(potentialColor), label.length, length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    views.setTextViewText(slot.potentialId, spanned)
                 }
                 views.setTextColor(slot.tickerId, Color.WHITE)
                 views.setTextColor(slot.signalId, slot.accent)

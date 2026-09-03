@@ -37,6 +37,9 @@ class OracleAuthStore(context: Context) {
     fun biometricEnabled(): Boolean = prefs.getBoolean("biometric_enabled", false)
     fun setBiometricEnabled(value: Boolean) { prefs.edit().putBoolean("biometric_enabled", value).apply() }
 
+    fun notificationEmail(): String = prefs.getString("notification_email", "") ?: ""
+    fun setNotificationEmail(value: String) { prefs.edit().putString("notification_email", value.trim()).apply() }
+
     fun register(username: String, password: String) {
         val salt = randomSalt()
         prefs.edit()

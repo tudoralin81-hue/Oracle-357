@@ -9,13 +9,18 @@ import android.os.Handler
 import android.os.Looper
 import android.view.*
 import android.widget.*
+import ro.alintudor.oracle.core.OracleAccountMailer
 import ro.alintudor.oracle.core.OracleAuthStore
+import ro.alintudor.oracle.core.OracleBackupManager
 import ro.alintudor.oracle.core.OracleBootstrap
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
 import ro.alintudor.oracle.core.OracleRepository
 import ro.alintudor.oracle.core.snapshot
 import ro.alintudor.oracle.nativeui.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.*
 
 /** New Start experience. Module/data logic intentionally mirrors the stable activity. */
@@ -29,6 +34,8 @@ class OracleMysticActivity : Activity() {
         // rest of this process (matches how most local-lock apps behave —
         // re-locking only on a genuine fresh process start).
         @Volatile private var authPassedThisProcess = false
+        private const val REQUEST_CODE_EXPORT_BACKUP = 4201
+        private const val REQUEST_CODE_IMPORT_BACKUP = 4202
     }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
@@ -84,12 +91,6 @@ class OracleMysticActivity : Activity() {
 
     private fun showTermsDialog() = legalDialog("Terms & Conditions", termsText)
     private fun showDisclaimerDialog() = legalDialog("Disclaimer", disclaimerText)
-
-    private fun disclaimerLink(color: Int): TextView = TextView(this).apply {
-        text = "Disclaimer"; textSize = 11f; setTextColor(color)
-        isClickable = true; isFocusable = true
-        setOnClickListener { showDisclaimerDialog() }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -196,6 +197,8 @@ class OracleMysticActivity : Activity() {
             index to authField(card, question, muted, panel, border)
         }.toMap()
 
+        val notifyEmailField = authField(card, "NOTIFICATION EMAIL (optional — get an email when this account is created)", muted, panel, border)
+
         var biometricWanted = false
         if (biometricAvailable()) {
             val toggle = TextView(this).apply {
@@ -253,6 +256,11 @@ class OracleMysticActivity : Activity() {
                 store.register(username, password)
                 store.setSecurityAnswers(questionAnswerFields.mapValues { it.value.text.toString() })
                 store.setBiometricEnabled(biometricWanted)
+                val notifyEmail = notifyEmailField.text.toString().trim()
+                if (notifyEmail.isNotBlank()) {
+                    store.setNotificationEmail(notifyEmail)
+                    OracleAccountMailer.open(this@OracleMysticActivity, notifyEmail, username)
+                }
                 showBackupCodeReveal(store.generateAndStoreBackupCode())
             }
         }
@@ -563,8 +571,93 @@ class OracleMysticActivity : Activity() {
         page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        root.addView(disclaimerLink(Color.rgb(120, 130, 150)).apply { textSize = 10f },
-            FrameLayout.LayoutParams(-2, -2).apply { gravity = Gravity.BOTTOM or Gravity.START; leftMargin = dp(14); bottomMargin = dp(14) })
+    }
+
+    private fun showBackupScreen() {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(TextView(this).apply { text = "BACKUP"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
+        card.addView(TextView(this).apply {
+            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge — everything except your login itself. If this app is ever uninstalled, that data is gone unless you've exported it here first. Save the file somewhere outside this app (Downloads, Drive, email to yourself) and Restore brings it all back."
+            textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(26))
+        })
+
+        val lastExport = OracleBackupManager.lastExportTimestamp(this)
+        val statusLabel = TextView(this).apply {
+            text = if (lastExport > 0L) "Last exported: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date(lastExport))}" else "No backup exported yet."
+            textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(18))
+        }
+        card.addView(statusLabel)
+
+        card.addView(TextView(this).apply {
+            text = "EXPORT BACKUP"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val name = "oracle-backup-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json"
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_TITLE, name)
+                }
+                runCatching { startActivityForResult(intent, REQUEST_CODE_EXPORT_BACKUP) }
+                    .onFailure { Toast.makeText(this@OracleMysticActivity, "Couldn't open the file picker.", Toast.LENGTH_LONG).show() }
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        card.addView(TextView(this).apply {
+            text = "RESTORE FROM BACKUP"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold)
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), gold) }
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/json"
+                }
+                runCatching { startActivityForResult(intent, REQUEST_CODE_IMPORT_BACKUP) }
+                    .onFailure { Toast.makeText(this@OracleMysticActivity, "Couldn't open the file picker.", Toast.LENGTH_LONG).show() }
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+
+        card.addView(TextView(this).apply {
+            text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showHub() }
+        })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != Activity.RESULT_OK || data?.data == null) return
+        val uri = data.data!!
+        when (requestCode) {
+            REQUEST_CODE_EXPORT_BACKUP -> runCatching {
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(OracleBackupManager.buildExportJson(this).toString(2).toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("Could not open the file for writing")
+                OracleBackupManager.markExported(this)
+                Toast.makeText(this, "Backup saved.", Toast.LENGTH_LONG).show()
+                if (currentModule == "backup") showBackupScreen()
+            }.onFailure { Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show() }
+            REQUEST_CODE_IMPORT_BACKUP -> runCatching {
+                val text = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    ?: throw IllegalStateException("Could not read the selected file")
+                val restored = OracleBackupManager.restoreFromJson(this, org.json.JSONObject(text))
+                Toast.makeText(this, "Restored ${restored.size} data sets. Open a module to see it.", Toast.LENGTH_LONG).show()
+            }.onFailure { Toast.makeText(this, "Restore failed: ${it.message}", Toast.LENGTH_LONG).show() }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -586,6 +679,8 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun openModule(key: String) {
+        if (key == "disclaimer") { showDisclaimerDialog(); return }
+        if (key == "backup") { currentModule = "backup"; showBackupScreen(); return }
         currentModule = key
         if (key == "alerts" && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

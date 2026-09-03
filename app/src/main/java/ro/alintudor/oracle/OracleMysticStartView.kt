@@ -70,7 +70,19 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
-        p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f;c.drawText("357AT2026",X(if(wide)1180f else 660f),Y(if(wide)775f else 1090f),p); postInvalidateDelayed(32L)
+        p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f
+        val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
+        c.drawText("357AT2026",brandX,brandY,p)
+        val brandWidth=p.measureText("357AT2026")
+        val discX=brandX-brandWidth-S(20f)
+        c.drawText("DISCLAIMER",discX,brandY,p)
+        val discWidth=p.measureText("DISCLAIMER")
+        hit+=RectF(discX-discWidth-S(8f),brandY-S(18f),discX+S(8f),brandY+S(8f)) to "disclaimer"
+        val backupY=brandY-S(22f)
+        c.drawText("BACKUP",brandX,backupY,p)
+        val backupWidth=p.measureText("BACKUP")
+        hit+=RectF(brandX-backupWidth-S(8f),backupY-S(18f),brandX+S(8f),backupY+S(8f)) to "backup"
+        postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
         p.style=Paint.Style.FILL
