@@ -1,0 +1,108 @@
+name: Oracle B540 Growth 1200 Fast
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Freeze START and non-GROWTH modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/oracle-freeze
+          for f in app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt; do git hash-object "$f"; done > /tmp/oracle-freeze/before
+      - name: Patch only Growth engine for 1200 and 20s deadline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('private val universe = ', 'private val fallbackUniverse = ', 1)
+          marker='    private data class C'
+          pos=s.index(marker)
+          support='''    private const val UNIVERSE_URL = "https://raw.githubusercontent.com/Ate329/top-us-stock-tickers/main/tickers/all.csv"\n    private const val TARGET_UNIVERSE_SIZE = 1200\n    @Volatile private var cachedUniverse: List<String>? = null\n    @Volatile private var cachedUniverseSectors: Map<String,String> = emptyMap()\n    @Volatile private var cachedUniverseNames: Map<String,String> = emptyMap()\n\n    private fun loadUniverse(): List<String> {\n        cachedUniverse?.let { if(it.size >= TARGET_UNIVERSE_SIZE) return it }\n        val loaded=runCatching {\n            val c=(URL(UNIVERSE_URL).openConnection() as HttpURLConnection).apply {\n                requestMethod="GET"; connectTimeout=2500; readTimeout=5000\n                setRequestProperty("User-Agent","Oracle-Stock-Intelligence/1.0")\n                setRequestProperty("Accept","text/csv")\n            }\n            val lines=c.inputStream.bufferedReader().use{it.readLines()}; c.disconnect()\n            val sectorMap=linkedMapOf<String,String>(); val nameMap=linkedMapOf<String,String>()\n            val symbols=lines.drop(1).mapNotNull { line ->\n                val parts=line.split(',', limit=6)\n                val sym=parts.getOrNull(0)?.trim()?.uppercase(Locale.US).orEmpty()\n                if(!sym.matches(Regex("[A-Z]{1,5}([.-][A-Z])?"))) return@mapNotNull null\n                parts.getOrNull(1)?.trim()?.trim('"')?.takeIf{it.isNotBlank()}?.let{nameMap[sym]=it}\n                parts.getOrNull(5)?.trim()?.takeIf{it.isNotBlank()}?.let{sectorMap[sym]=it}\n                sym\n            }.distinct().take(TARGET_UNIVERSE_SIZE)\n            cachedUniverseSectors=sectorMap.filterKeys{it in symbols}; cachedUniverseNames=nameMap.filterKeys{it in symbols}; symbols\n        }.getOrDefault(emptyList())\n        if(loaded.size >= TARGET_UNIVERSE_SIZE) { cachedUniverse=loaded; return loaded }\n        return (loaded + fallbackUniverse).distinct().take(TARGET_UNIVERSE_SIZE)\n    }\n\n'''
+          s=s[:pos]+support+s[pos:]
+          old='''        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}\n        val candidates=mutableListOf<C>()\n        for(ticker in universe.distinct()){val candles=OracleMarketData.fetchDaily(ticker,"1y");if(candles.size<60)continue;evaluate(ticker,candles)?.let{candidates+=it}}\n        if(candidates.isEmpty())return emptyList()'''
+          new='''        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}\n        val universe=loadUniverse()\n        val candidates=java.util.concurrent.ConcurrentLinkedQueue<C>()\n        val deadline=System.nanoTime()+11_000_000_000L\n        val pool=java.util.concurrent.Executors.newFixedThreadPool(8)\n        try {\n            universe.chunked(100).map { batch ->\n                pool.submit {\n                    if(System.nanoTime() >= deadline) return@submit\n                    val data=OracleMarketData.fetchDailyBatch(batch,"1y")\n                    for((ticker,candles) in data){\n                        if(System.nanoTime() >= deadline) break\n                        if(candles.size>=60) evaluate(ticker,candles)?.let{candidates.add(it)}\n                    }\n                }\n            }.forEach { future ->\n                val remaining=((deadline-System.nanoTime())/1_000_000).coerceAtLeast(1)\n                runCatching { future.get(remaining,java.util.concurrent.TimeUnit.MILLISECONDS) }\n            }\n        } finally { pool.shutdownNow() }\n        if(candidates.isEmpty())return emptyList()\n        val candidateList=candidates.toList()'''
+          if old not in s: raise SystemExit('B539 run block not found; refusing build')
+          s=s.replace(old,new,1)
+          s=s.replace('val technicalShortlist=candidates.sortedByDescending{it.score}.take(30)','val technicalShortlist=candidateList.sortedByDescending{it.score}.take(30)',1)
+          s=s.replace('val enriched=candidates.map{c->','val enriched=candidateList.map{c->',1)
+          oldf='''        val fundamentals=technicalShortlist.associate { c ->\n            c.ticker to runCatching { OracleRealData.fundamentals(c.ticker) }.getOrNull()\n        }'''
+          newf='''        val fundamentals=mutableMapOf<String,OracleFundamentals?>()\n        val fundamentalPool=java.util.concurrent.Executors.newFixedThreadPool(8)\n        try {\n            val fs=technicalShortlist.take(12).map { c -> c.ticker to fundamentalPool.submit<OracleFundamentals?> { runCatching { OracleRealData.fundamentals(c.ticker) }.getOrNull() } }\n            fs.forEach { (ticker,future) -> fundamentals[ticker]=runCatching { future.get(3_000,java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull() }\n        } finally { fundamentalPool.shutdownNow() }'''
+          if oldf not in s: raise SystemExit('fundamentals block not found; refusing build')
+          s=s.replace(oldf,newf,1)
+          oldn='''        val newsCandidates=technicalShortlist.take(15)\n        for(c in newsCandidates){\n            newsContexts[c.ticker]=runCatching { OracleRealData.newsContext(c.ticker) }.getOrDefault(OracleNewsContext(50,0,0,0,null))\n        }'''
+          newn='''        val newsCandidates=technicalShortlist.take(15)\n        val newsPool=java.util.concurrent.Executors.newFixedThreadPool(8)\n        try {\n            val ns=newsCandidates.map { c -> c.ticker to newsPool.submit<OracleNewsContext> { runCatching { OracleRealData.newsContext(c.ticker) }.getOrDefault(OracleNewsContext(50,0,0,0,null)) } }\n            ns.forEach { (ticker,future) -> newsContexts[ticker]=runCatching { future.get(2_500,java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(OracleNewsContext(50,0,0,0,null)) }\n        } finally { newsPool.shutdownNow() }'''
+          if oldn not in s: raise SystemExit('news block not found; refusing build')
+          s=s.replace(oldn,newn,1)
+          s=s.replace('OracleRealData.resolvedSector(c.ticker,f?.sector)', 'OracleRealData.resolvedSector(c.ticker,f?.sector ?: cachedUniverseSectors[c.ticker])')
+          s=s.replace('OracleRealData.resolvedSector(it.ticker,fundamentals[it.ticker]?.sector)', 'OracleRealData.resolvedSector(it.ticker,fundamentals[it.ticker]?.sector ?: cachedUniverseSectors[it.ticker])')
+          s=s.replace('OracleRealData.resolvedSector(pick.ticker,fundamentals[pick.ticker]?.sector)', 'OracleRealData.resolvedSector(pick.ticker,fundamentals[pick.ticker]?.sector ?: cachedUniverseSectors[pick.ticker])')
+          s=s.replace('f?.sector ?: meta?.sector', 'f?.sector ?: meta?.sector ?: cachedUniverseSectors[pick.ticker]')
+          s=s.replace('meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) } ?: lookupCompanyName(pick.ticker) ?: pick.ticker', 'meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) } ?: cachedUniverseNames[pick.ticker] ?: lookupCompanyName(pick.ticker) ?: pick.ticker')
+          p.write_text(s,encoding='utf-8')
+          p=Path('app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt')
+          s=p.read_text(encoding='utf-8')
+          marker='    /** Fetches OHLCV at the requested Analysis timeframe. */'
+          pos=s.index(marker)
+          batch='''    /** Batch daily OHLCV feed for Growth; one Spark request covers many symbols. */\n    fun fetchDailyBatch(tickers: List<String>, range: String = "1y"): Map<String, List<OracleOhlcvPoint>> {\n        val symbols=tickers.map{it.trim().uppercase()}.filter{it.isNotBlank()}.distinct()\n        if(symbols.isEmpty()) return emptyMap()\n        val encoded=java.net.URLEncoder.encode(symbols.joinToString(","), "UTF-8")\n        val url=URL("https://query1.finance.yahoo.com/v8/finance/spark?symbols=$encoded&range=$range&interval=1d&indicators=open,high,low,close,volume")\n        val connection=(url.openConnection() as HttpURLConnection).apply {\n            requestMethod="GET"; connectTimeout=3500; readTimeout=7500\n            setRequestProperty("User-Agent","Oracle-Stock-Intelligence/1.0")\n            setRequestProperty("Accept","application/json")\n        }\n        return try {\n            if(connection.responseCode !in 200..299) return emptyMap()\n            parseSpark(connection.inputStream.bufferedReader().use{it.readText()})\n        } catch(_:Exception) { emptyMap() } finally { connection.disconnect() }\n    }\n\n    private fun parseSpark(body:String): Map<String,List<OracleOhlcvPoint>> {\n        val root=JSONObject(body); val results=root.optJSONObject("spark")?.optJSONArray("result") ?: return emptyMap()\n        val out=mutableMapOf<String,List<OracleOhlcvPoint>>()\n        for(i in 0 until results.length()) {\n            val item=results.optJSONObject(i) ?: continue\n            val symbol=item.optString("symbol").trim().uppercase()\n            val response=item.optJSONArray("response")?.optJSONObject(0) ?: continue\n            val ts=response.optJSONArray("timestamp") ?: continue\n            val q=response.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0) ?: continue\n            val opens=q.optJSONArray("open") ?: continue; val highs=q.optJSONArray("high") ?: continue\n            val lows=q.optJSONArray("low") ?: continue; val closes=q.optJSONArray("close") ?: continue\n            val vols=q.optJSONArray("volume"); val rows=ArrayList<OracleOhlcvPoint>(ts.length())\n            for(j in 0 until ts.length()) {\n                val o=opens.optDouble(j,Double.NaN); val h=highs.optDouble(j,Double.NaN); val l=lows.optDouble(j,Double.NaN); val c=closes.optDouble(j,Double.NaN)\n                if(!o.isFinite() || !h.isFinite() || !l.isFinite() || !c.isFinite() || h<=0.0 || l<=0.0 || c<=0.0) continue\n                rows += OracleOhlcvPoint(ts.optLong(j)*1000L,o,h,l,c,vols?.optDouble(j,0.0) ?: 0.0)\n            }\n            if(rows.isNotEmpty()) out[symbol]=rows.sortedBy{it.timestamp}\n        }\n        return out\n    }\n\n'''
+          s=s[:pos]+batch+s[pos:]
+          p.write_text(s,encoding='utf-8')
+          e=Path('app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt').read_text(encoding='utf-8')
+          m=Path('app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt').read_text(encoding='utf-8')
+          for needle in ['TARGET_UNIVERSE_SIZE = 1200','fetchDailyBatch(batch,"1y")','deadline=System.nanoTime()+11_000_000_000L','cachedUniverseNames']:
+              assert needle in e, needle
+          assert 'fun fetchDailyBatch' in m
+          PY
+          git diff --check
+      - name: Set B540 identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'versionCode\s+\d+', 'versionCode 35', s, count=1)
+          s=re.sub(r'versionName\s+[\'\"][^\'\"]*[\'\"]', "versionName 'V6g-GROWTH-B540'", s, count=1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+      - name: Build APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify APK and frozen modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='V6g-GROWTH-B540'"
+          for f in app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt; do git hash-object "$f"; done > /tmp/oracle-freeze/after
+          cmp /tmp/oracle-freeze/before /tmp/oracle-freeze/after
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B540-GROWTH-1200-FAST-FINAL
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7

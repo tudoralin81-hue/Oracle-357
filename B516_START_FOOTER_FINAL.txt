@@ -1,0 +1,1 @@
+B516 FINAL START: remove only the bottom host footer. Keep 7 modules, 357AT2026, eye/status animations, and all protected modules unchanged.

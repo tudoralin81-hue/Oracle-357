@@ -153,6 +153,17 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }, LinearLayout.LayoutParams(0, -2, 1f))
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
+        lateinit var watchButton: Button
+        fun updateWatchUi(present: Boolean, eye: WatchlistEyeView? = null) {
+            eye?.setSelectedState(present)
+            if (::watchButton.isInitialized) {
+                watchButton.text = if (present) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
+                watchButton.background = GradientDrawable().apply {
+                    setColor(if (present) Color.rgb(25, 75, 45) else Color.rgb(95, 55, 10))
+                    cornerRadius = host.dp(13).toFloat()
+                }
+            }
+        }
         val watchEye = WatchlistEyeView(host.root.context, host.dp(42)).apply {
             tag = "oracle_watchlist_eye_direct"
             isClickable = true
@@ -164,7 +175,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 val present = current.any { it.equals(watchTicker, true) }
                 if (present) current.removeAll { it.equals(watchTicker, true) } else current.add(watchTicker)
                 watchStore.save(current)
-                setSelectedState(!present)
+                updateWatchUi(!present, this)
                 Toast.makeText(host.root.context, if (!present) "$watchTicker added to Watchlist" else "$watchTicker removed from Watchlist", Toast.LENGTH_SHORT).show()
             }
         }
@@ -258,30 +269,26 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
 
         addTechnicalChart(r.ticker)
 
-        val store = OracleWatchlistStore(host.root.context)
-        val list = store.load().toMutableList()
-        val inWatch = list.any { it.equals(r.ticker, true) }
-        val w = Button(host.root.context).apply {
-            text = if (inWatch) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
+        val inWatchNow = watchStore.load().any { it.equals(watchTicker, true) }
+        watchButton = Button(host.root.context).apply {
+            text = if (inWatchNow) "✓  IN WATCHLIST" else "＋  ADD TO WATCHLIST"
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             background = GradientDrawable().apply {
-                setColor(if (inWatch) Color.rgb(25, 75, 45) else Color.rgb(95, 55, 10))
+                setColor(if (inWatchNow) Color.rgb(25, 75, 45) else Color.rgb(95, 55, 10))
                 cornerRadius = host.dp(13).toFloat()
             }
-            isEnabled = !inWatch
         }
-        w.setOnClickListener {
-            if (list.none { it.equals(r.ticker, true) }) {
-                list.add(r.ticker)
-                store.save(list)
-                w.text = "✓  ADDED TO WATCHLIST"
-                w.isEnabled = false
-                Toast.makeText(host.root.context, "${r.ticker} added to Watchlist", Toast.LENGTH_SHORT).show()
-            }
+        watchButton.setOnClickListener {
+            val current = watchStore.load().toMutableList()
+            val present = current.any { it.equals(watchTicker, true) }
+            if (present) current.removeAll { it.equals(watchTicker, true) } else current.add(watchTicker)
+            watchStore.save(current)
+            updateWatchUi(!present, watchEye)
+            Toast.makeText(host.root.context, if (!present) "$watchTicker added to Watchlist" else "$watchTicker removed from Watchlist", Toast.LENGTH_SHORT).show()
         }
-        host.content.addView(w, LinearLayout.LayoutParams(-1, host.dp(50)).apply { setMargins(0, 0, 0, host.dp(16)) })
+        host.content.addView(watchButton, LinearLayout.LayoutParams(-1, host.dp(50)).apply { setMargins(0, 0, 0, host.dp(16)) })
 
 // BUILD_VERSION_BOTTOM_V1
 host.content.addView(TextView(host.root.context).apply {
@@ -496,7 +503,7 @@ host.content.addView(TextView(host.root.context).apply {
 
     private fun addTechnicalChart(ticker: String) {
         val chartTitle = TextView(host.root.context).apply {
-            text = "GRAFIC TEHNIC • DATE REALE"
+            text = "TECHNICAL CHART • LIVE DATA"
             textSize = 22f
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = .10f
@@ -720,7 +727,36 @@ host.content.addView(TextView(host.root.context).apply {
     }
 
     private fun renderKnowledge(items: List<OracleKnowledgeItem>) {
-        host.addCard("KNOWLEDGE", "Oracle library — local content")
+        val card = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(host.dp(18), host.dp(16), host.dp(18), host.dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(7, 11, 22))
+                cornerRadius = host.dp(16).toFloat()
+                setStroke(host.dp(1), Color.rgb(255, 205, 55))
+            }
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Open Knowledge: https://alintudor.ro/knowledge/"
+            setOnClickListener {
+                runCatching { host.root.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://alintudor.ro/knowledge/"))) }
+            }
+        }
+        val headerRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        headerRow.addView(KnowledgeGraphicView(host.root.context), LinearLayout.LayoutParams(host.dp(56), host.dp(56)).apply { setMargins(0, 0, host.dp(14), 0) })
+        val titleCol = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
+        titleCol.addView(TextView(host.root.context).apply { text = "KNOWLEDGE"; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = .04f; setTextColor(Color.WHITE) })
+        titleCol.addView(TextView(host.root.context).apply { text = "Oracle library — local content"; textSize = 13f; setTextColor(Color.rgb(190, 198, 215)); setPadding(0, host.dp(3), 0, 0) })
+        headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(headerRow)
+        card.addView(TextView(host.root.context).apply {
+            text = "OPEN: https://alintudor.ro/knowledge/"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(255, 205, 55))
+            setPadding(0, host.dp(12), 0, 0)
+        })
+        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
         if (items.isEmpty()) return
         items.sortedByDescending { it.publishedAt }.forEach { addItem(it.title, "${it.category}\n${it.content}") }
     }
@@ -781,6 +817,65 @@ host.content.addView(TextView(host.root.context).apply {
                 canvas.drawCircle(cx, cy, width * 0.052f, paint)
                 paint.style = android.graphics.Paint.Style.STROKE
             }
+        }
+    }
+
+    /** Small animated open-book glyph with a pulsing "insight" spark, used on the Knowledge card. */
+    private class KnowledgeGraphicView(context: android.content.Context) : android.view.View(context) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        private val startNanos = System.nanoTime()
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
+            val time = (System.nanoTime() - startNanos) / 1_000_000_000.0
+            val cx = w / 2f; val cy = h * 0.60f
+            val bookW = w * 0.42f; val bookH = h * 0.30f
+
+            paint.strokeWidth = (w * 0.045f).coerceAtLeast(2f)
+            paint.color = Color.rgb(255, 205, 55)
+            paint.alpha = 235
+            val left = android.graphics.Path().apply {
+                moveTo(cx, cy - bookH * 0.10f)
+                cubicTo(cx - bookW * 0.35f, cy - bookH * 0.55f, cx - bookW, cy - bookH * 0.30f, cx - bookW, cy + bookH * 0.35f)
+                cubicTo(cx - bookW * 0.35f, cy + bookH * 0.10f, cx - bookW * 0.1f, cy + bookH * 0.15f, cx, cy + bookH * 0.45f)
+            }
+            canvas.drawPath(left, paint)
+            val right = android.graphics.Path().apply {
+                moveTo(cx, cy - bookH * 0.10f)
+                cubicTo(cx + bookW * 0.35f, cy - bookH * 0.55f, cx + bookW, cy - bookH * 0.30f, cx + bookW, cy + bookH * 0.35f)
+                cubicTo(cx + bookW * 0.35f, cy + bookH * 0.10f, cx + bookW * 0.1f, cy + bookH * 0.15f, cx, cy + bookH * 0.45f)
+            }
+            canvas.drawPath(right, paint)
+
+            paint.strokeWidth = (w * 0.016f).coerceAtLeast(1f)
+            paint.alpha = 150
+            canvas.drawLine(cx - bookW * 0.55f, cy - bookH * 0.02f, cx - bookW * 0.15f, cy + bookH * 0.14f, paint)
+            canvas.drawLine(cx + bookW * 0.55f, cy - bookH * 0.02f, cx + bookW * 0.15f, cy + bookH * 0.14f, paint)
+
+            // Pulsing "insight" spark above the book.
+            val q = (0.5 + 0.5 * kotlin.math.sin(time * 1.6)).toFloat()
+            val sparkY = cy - bookH * 1.0f
+            val sparkR = w * (0.09f + 0.02f * q)
+            paint.strokeWidth = (w * 0.03f).coerceAtLeast(1.5f)
+            paint.color = Color.rgb(120, 220, 255)
+            paint.alpha = (110 + 130 * q).toInt()
+            for (i in 0 until 4) {
+                val a = Math.PI / 2.0 + i * Math.PI / 2.0
+                val dx = kotlin.math.cos(a).toFloat(); val dy = kotlin.math.sin(a).toFloat()
+                canvas.drawLine(cx + dx * sparkR * 0.55f, sparkY + dy * sparkR * 0.55f, cx + dx * sparkR, sparkY + dy * sparkR, paint)
+            }
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.alpha = (150 + 100 * q).toInt()
+            canvas.drawCircle(cx, sparkY, w * 0.045f, paint)
+            paint.style = android.graphics.Paint.Style.STROKE
+
+            postInvalidateDelayed(60L)
         }
     }
 

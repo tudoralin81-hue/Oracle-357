@@ -1,0 +1,29 @@
+ADDED:
+./app/src/main/assets/sp500_universe.json
+./app/src/main/java/ro/alintudor/oracle/core/OracleSP500Universe.kt
+
+CHANGED:
+./app/build.gradle
+./app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+./app/src/main/java/ro/alintudor/oracle/core/OracleLocalProcessor.kt
+./app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt
+./app/src/main/java/ro/alintudor/oracle/core/OracleRepository.kt
+./app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+
+UNCHANGED_COUNT: 162 / 168
+
+--- 2 septembrie 2026, sesiune diagnostic ---
+Verificare Oracle-main-18.zip (primit) fata de B539 pristine:
+- app/src changed: NICIUNUL (0 fisiere)
+- app/src added: NICIUNUL (0 fisiere)
+- Concluzie: codul GROWTH livrat anterior nu a fost aplicat pe main.
+  Singurul artefact din livrarea anterioara prezent este workflow-ul
+  b540-growth-real-fix.yml (orfan, verifica markeri inexistenti).
+- Gasite in Oracle-main-18.zip, in afara livrarii mele: workflow nou
+  b540-growth-sp500-bundle-final.yml + 5 scripturi Python noi + modificari
+  la b540_growth_1200_build.py / b540_growth_perf_fix.py /
+  b540-growth-1200-final.yml (linie de lucru separata, neatinsa aici).
+- Validare YAML (PyYAML) pe toate cele 34 workflow-uri: 14 invalide
+  sintactic (heredoc/indentare), inclusiv toate cele 4 mentionate in
+  raportul de diagnostic ca "FAILED, jobs=0". Fisierul propriu
+  b540-growth-real-fix.yml este YAML valid.

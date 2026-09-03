@@ -22,6 +22,7 @@ import ro.alintudor.oracle.core.OracleGrowthJournalStore
 import ro.alintudor.oracle.core.OracleGrowthPhase
 import ro.alintudor.oracle.core.OracleGrowthProgress
 import ro.alintudor.oracle.core.OracleGrowthRecommendation
+import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleNews
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,18 +67,9 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     }
 
     // B540 — investor quotes rotated in the loader every 15s (Requirement #7).
-    // Local strings only; no network request is made to show them.
-    private val loaderQuotes = listOf(
-        "\"Price is what you pay; value is what you get.\"\n— Benjamin Graham",
-        "\"Rule No. 1: Never lose money. Rule No. 2: Never forget Rule No. 1.\"\n— Warren Buffett",
-        "\"The most important quality for an investor is temperament, not intellect.\"\n— Warren Buffett",
-        "\"It's only when the tide goes out that you learn who's been swimming naked.\"\n— Warren Buffett",
-        "\"In the short run, the market is a voting machine, but in the long run it is a weighing machine.\"\n— Benjamin Graham",
-        "\"The intelligent investor is a realist who sells to optimists and buys from pessimists.\"\n— Benjamin Graham",
-        "\"Invert, always invert.\"\n— Charlie Munger",
-        "\"Behind every stock is a company. Find out what it's doing.\"\n— Peter Lynch",
-        "\"The four most dangerous words in investing are: this time it's different.\"\n— Sir John Templeton"
-    )
+    // Shared with the app boot loader via OracleLoaderQuotes so both use the
+    // exact same pool. Local strings only; no network request is made to show them.
+    private val loaderQuotes = OracleLoaderQuotes.ALL
 
     /**
      * B540 loading state (Requirement #6/#7/#11).
@@ -315,7 +307,8 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         }
         header.addView(text("LATEST RECOMMENDATIONS", 15f, Typeface.DEFAULT_BOLD, cyan, 0, 0), LinearLayout.LayoutParams(-2, -2))
 
-        // Arrow sits right next to the title.
+        // Arrow sits right next to the title. Hidden/inert unless there is more than
+        // COLLAPSED_COUNT entries to reveal — shown further down once we know the count.
         val arrow = TextView(host.root.context).apply {
             text = "⌄"
             textSize = 23f
@@ -358,30 +351,36 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         val rows = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
         card.addView(rows)
 
-        fun addPlaceholder() {
-            val row = historyRow(null)
-            rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
-        }
-        fun addEntry(item: OracleGrowthRecommendation) {
-            val row = historyRow(item)
-            rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
+        if (all.isEmpty()) {
+            arrow.visibility = View.GONE
+            rows.addView(historyRow(null), LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
+            host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+            return
         }
 
-        val visible = all.take(6)
-        visible.forEach { addEntry(it) }
-        repeat(maxOf(0, 6 - visible.size)) { addPlaceholder() }
-        val expandedRows = all.drop(6)
-        val expandedViews = expandedRows.map { item ->
-            val row = historyRow(item)
-            row.visibility = View.GONE
-            rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
-            row
+        val collapsedCount = 3
+        val visible = all.take(collapsedCount)
+        visible.forEach { item ->
+            rows.addView(historyRow(item), LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
         }
-        var expanded = false
-        arrow.setOnClickListener {
-            expanded = !expanded
-            arrow.text = if (expanded) "⌃" else "⌄"
-            expandedViews.forEach { it.visibility = if (expanded) View.VISIBLE else View.GONE }
+        val remaining = all.drop(collapsedCount)
+        if (remaining.isEmpty()) {
+            // Nothing more to reveal — the toggle would be a dead control, so remove it.
+            arrow.visibility = View.GONE
+        } else {
+            val expandedViews = remaining.map { item ->
+                val row = historyRow(item)
+                row.visibility = View.GONE
+                rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(6), 0, 0) })
+                row
+            }
+            var expanded = false
+            val toggle: () -> Unit = {
+                expanded = !expanded
+                arrow.text = if (expanded) "⌃" else "⌄"
+                expandedViews.forEach { it.visibility = if (expanded) View.VISIBLE else View.GONE }
+            }
+            arrow.setOnClickListener { toggle() }
         }
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
     }
@@ -398,9 +397,8 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                     gravity = Gravity.CENTER_VERTICAL
                 }
                 placeholderTop.addView(text("—", 18f, Typeface.DEFAULT_BOLD, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
-                placeholderTop.addView(text("›", 24f, Typeface.DEFAULT, muted, 0, 0))
                 addView(placeholderTop)
-                addView(text("02.09.2026 16:00", 10f, Typeface.DEFAULT, muted, 0, 2))
+                addView(text("No recommendations yet", 10f, Typeface.DEFAULT, muted, 0, 2))
             } else {
                 val top = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
                 top.addView(text(item.ticker, 16f, Typeface.DEFAULT_BOLD, white, 0, 0), LinearLayout.LayoutParams(host.dp(72), -2))

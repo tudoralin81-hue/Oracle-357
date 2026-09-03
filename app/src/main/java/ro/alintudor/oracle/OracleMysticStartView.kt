@@ -33,13 +33,14 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     )
     private data class M(val key:String,val title:String,val sub:String,val color:Int)
     private data class ConstellationStar(val nx: Float, val ny: Float, val phase: Double)
-    private val constellations: List<List<ConstellationStar>> by lazy { buildConstellations() }
-    private fun buildConstellations(): List<List<ConstellationStar>> {
+    private data class Constellation(val stars: List<ConstellationStar>, val hue: Int) // 0=neutral, 1=green, 2=red
+    private val constellations: List<Constellation> by lazy { buildConstellations() }
+    private fun buildConstellations(): List<Constellation> {
         val rnd = java.util.Random(357202601L) // fixed seed: pattern stays stable across frames
-        val clusters = mutableListOf<List<ConstellationStar>>()
-        repeat(7) {
-            var cx = 0.06f + rnd.nextFloat() * 0.88f
-            var cy = 0.05f + rnd.nextFloat() * 0.85f
+        val clusters = mutableListOf<Constellation>()
+        repeat(13) { idx ->
+            var cx = 0.05f + rnd.nextFloat() * 0.90f
+            var cy = 0.04f + rnd.nextFloat() * 0.88f
             val count = 4 + rnd.nextInt(4)
             val stars = mutableListOf<ConstellationStar>()
             repeat(count) {
@@ -47,21 +48,26 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                 cx += (rnd.nextFloat() - 0.5f) * 0.16f
                 cy += (rnd.nextFloat() - 0.5f) * 0.11f
             }
-            clusters += stars
+            val hue = when (idx % 3) { 0 -> 1; 1 -> 2; else -> 0 } // roughly even green/red/neutral split
+            clusters += Constellation(stars, hue)
         }
         return clusters
     }
     private fun X(v:Float)=ox+v*sx; private fun Y(v:Float)=oy+v*sy; private fun S(v:Float)=v*min(sx,sy)
 
+    private var introStartNanos = 0L
     override fun onDraw(c:Canvas){
         super.onDraw(c); val w=width.toFloat(); val h=height.toFloat(); if(w<=0f||h<=0f)return
+        if(introStartNanos==0L) introStartNanos=System.nanoTime()
         val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1120f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
-        stars(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
+        stars(c,w,h,time); shootingStar(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
         text(c,"ORACLE",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
-        text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(10.5f),white,Typeface.DEFAULT,.25f,true)
+        val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0; val introDuration=0.7
+        val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
+        text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(12.5f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,145f,385f,225f,110f,18f,time,true) else drawCards(c,18f,475f,162f,118f,10f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
@@ -69,16 +75,38 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
         p.style=Paint.Style.FILL
         for(i in 0 until 110){val x=((i*83+41)%1000)/1000f*w;val y=((i*149+17)%1000)/1000f*h;val q=(.5+.5*sin(time*.7+i)).toFloat();p.color=Color.argb((70+140*q).toInt(),225,235,255);c.drawCircle(x,y,S(.6f+(i%3)*.4f),p)}
-        for(cluster in constellations){
-            p.style=Paint.Style.STROKE;p.strokeWidth=S(.75f);p.color=Color.argb(100,150,190,255)
-            for(i in 0 until cluster.size-1){val a=cluster[i];val b=cluster[i+1];c.drawLine(a.nx*w,a.ny*h,b.nx*w,b.ny*h,p)}
+        for(cst in constellations){
+            val rgb = when(cst.hue){1->Triple(90,255,140);2->Triple(255,95,95);else->Triple(175,205,255)}
+            val lineRgb = when(cst.hue){1->Triple(80,220,130);2->Triple(230,90,90);else->Triple(150,190,255)}
+            p.style=Paint.Style.STROKE;p.strokeWidth=S(.75f);p.color=Color.argb(100,lineRgb.first,lineRgb.second,lineRgb.third)
+            for(i in 0 until cst.stars.size-1){val a=cst.stars[i];val b=cst.stars[i+1];c.drawLine(a.nx*w,a.ny*h,b.nx*w,b.ny*h,p)}
             p.style=Paint.Style.FILL
-            for(star in cluster){
+            for(star in cst.stars){
                 val q=(.5+.5*sin(time*1.15+star.phase)).toFloat()
-                p.color=Color.argb((40+55*q).toInt(),175,205,255);c.drawCircle(star.nx*w,star.ny*h,S(3.6f+1.3f*q),p)
+                p.color=Color.argb((40+55*q).toInt(),rgb.first,rgb.second,rgb.third);c.drawCircle(star.nx*w,star.ny*h,S(3.6f+1.3f*q),p)
                 p.color=Color.argb((175+80*q).toInt(),240,245,255);c.drawCircle(star.nx*w,star.ny*h,S(1.7f+0.7f*q),p)
             }
         }
+    }
+    private val shootingTrajectories = listOf(
+        floatArrayOf(0.06f, 0.08f, 0.52f, 0.40f),
+        floatArrayOf(0.60f, 0.05f, 0.97f, 0.28f),
+        floatArrayOf(0.15f, 0.50f, 0.68f, 0.82f),
+        floatArrayOf(0.85f, 0.12f, 0.40f, 0.55f)
+    )
+    private fun shootingStar(c:Canvas,w:Float,h:Float,time:Double){
+        val period=8.5; val duration=1.0
+        val cycle=(time/period).toLong(); val t=time%period
+        if(t>duration) return
+        val progress=(t/duration).toFloat().coerceIn(0f,1f)
+        val traj=shootingTrajectories[(cycle%shootingTrajectories.size).toInt()]
+        val x1=traj[0]*w; val y1=traj[1]*h; val x2=traj[2]*w; val y2=traj[3]*h
+        val hx=x1+(x2-x1)*progress; val hy=y1+(y2-y1)*progress
+        val tx=hx-(x2-x1)*0.22f; val ty=hy-(y2-y1)*0.22f
+        val fade=(1f-progress*progress)
+        p.style=Paint.Style.STROKE; p.strokeWidth=S(1.6f); p.shader=LinearGradient(tx,ty,hx,hy,Color.argb(0,255,255,255),Color.argb((235*fade).toInt(),255,255,255),Shader.TileMode.CLAMP)
+        c.drawLine(tx,ty,hx,hy,p); p.shader=null
+        p.style=Paint.Style.FILL; p.color=Color.argb((235*fade).toInt(),255,255,255); c.drawCircle(hx,hy,S(2.1f),p)
     }
     private fun grid(c:Canvas,cx:Float,cy:Float,first:Float,step:Float){p.style=Paint.Style.STROKE;p.strokeWidth=S(.55f);p.color=Color.argb(48,205,175,65);for(i in 0 until 14)c.drawCircle(cx,cy,first+i*step,p);for(i in 0 until 32){val a=i*Math.PI/16.0;val dx=cos(a).toFloat();val dy=sin(a).toFloat();c.drawLine(cx+dx*(first-S(16f)),cy+dy*(first-S(16f)),cx+dx*(first+S(255f)),cy+dy*(first+S(255f)),p)}}
     private fun eye(c:Canvas,x:Float,y:Float,r:Float,time:Double){val q=(.5+.5*sin(time*1.25)).toFloat();p.style=Paint.Style.STROKE;path.reset();path.moveTo(x-r,y);path.cubicTo(x-r*.58f,y-r*.55f,x+r*.58f,y-r*.55f,x+r,y);path.cubicTo(x+r*.58f,y+r*.55f,x-r*.58f,y+r*.55f,x-r,y);p.color=gold;p.alpha=(180+70*q).toInt();p.strokeWidth=S(2f);c.drawPath(path,p);p.color=green;p.alpha=(55+90*q).toInt();p.strokeWidth=S(1.2f);c.drawCircle(x,y,r*(.48f+.035f*q),p);p.alpha=(160+90*q).toInt();p.strokeWidth=S(2f);c.drawCircle(x,y,r*.29f,p);p.style=Paint.Style.FILL;p.color=Color.rgb(2,10,4);p.alpha=255;c.drawCircle(x,y,r*.275f,p);p.color=green;p.alpha=(165+90*q).toInt();c.drawCircle(x,y,r*(.09f+.035f*q),p);p.color=Color.argb((30+80*q).toInt(),60,255,85);c.drawCircle(x,y,r*(.15f+.05f*q),p);p.style=Paint.Style.STROKE;p.color=Color.rgb(255,105,35);p.alpha=(70+90*q).toInt();p.strokeWidth=S(.8f);for(i in 0 until 28){val a=i*Math.PI/14.0;val inn=r*.40f;val out=r*(.56f+.05f*q);c.drawLine(x+cos(a).toFloat()*inn,y+sin(a).toFloat()*inn,x+cos(a).toFloat()*out,y+sin(a).toFloat()*out,p)}}

@@ -1,0 +1,45 @@
+name: Integrate Canonical Analysis V2
+
+on:
+  push:
+    branches: [main]
+    paths: [CANONICAL_ANALYSIS_INTEGRATE_V2.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply approved B511 patch permanently
+        run: python3 scripts/b511_patch.py
+
+      - name: Verify integrated source
+        run: |
+          set -euo pipefail
+          A=app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+          grep -q 'fun equalizeRow' "$A"
+          grep -q 'if (!name.equals("Fundamentals"' "$A"
+          grep -q '"APLD" -> "Applied Digital Corporation"' "$A"
+          grep -q "versionName 'V6g-FINAL-B514'" app/build.gradle
+          git diff --check
+
+      - name: Commit permanent source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt app/build.gradle
+          if git diff --cached --quiet; then
+            echo "No canonical Analysis changes required."
+            exit 0
+          fi
+          git commit -m "Integrate canonical B514 Analysis into main [skip ci]"
+          git push origin HEAD:main

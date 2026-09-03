@@ -1,0 +1,169 @@
+name: B514 MYSTIC START FINAL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt
+      - app/src/main/java/ro/alintudor/oracle/OracleMysticActivity.kt
+      - app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+      - app/src/main/res/drawable-nodpi/oracle_start_b514.jpg
+      - app/build.gradle
+      - .github/workflows/b514-mystic-start-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ORACLE_KEYSTORE_BASE64: ${{ secrets.ORACLE_KEYSTORE_BASE64 }}
+  ORACLE_KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+  ORACLE_KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+  ORACLE_KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout B514 main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Freeze protected modules before build patch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/oracle-freeze
+          for f in \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt \
+            app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt; do
+            test -f "$f"
+            git hash-object "$f"
+          done > /tmp/oracle-freeze/protected.sha
+
+      - name: Connect B514 Start to supplied artwork
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/ro/alintudor/oracle/MainActivity.kt')
+          s=p.read_text(encoding='utf-8')
+          a=s.index('    private fun showHub()')
+          b=s.index('    private fun makeHomeCard', a)
+          replacement='''    private fun showHub() {\n        currentModule = null\n        root.removeAllViews()\n        root.addView(OracleMysticStartView(this) { openModule(it) }, FrameLayout.LayoutParams(-1, -1))\n    }\n'''
+          p.write_text(s[:a]+replacement+s[b:],encoding='utf-8')
+          PY
+          test -f app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt
+          grep -q 'class OracleMysticStartView' app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt
+          test -f app/src/main/res/drawable-nodpi/oracle_start_b514.jpg
+
+      - name: Remove duplicate artwork class
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/ro/alintudor/oracle/OracleMysticActivity.kt')
+          s=p.read_text(encoding='utf-8')
+          marker='\nprivate class OracleMysticStartView'
+          if marker in s:
+              s=s.split(marker,1)[0].rstrip()+'\n'
+              p.write_text(s,encoding='utf-8')
+          PY
+          test "$(grep -c 'class OracleMysticStartView' app/src/main/java/ro/alintudor/oracle/OracleMysticActivity.kt || true)" = "0"
+
+      - name: HARD byte-for-byte freeze verification
+        run: |
+          set -euo pipefail
+          for f in \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt \
+            app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt; do
+            git hash-object "$f"
+          done > /tmp/oracle-freeze/protected.after.sha
+          cmp /tmp/oracle-freeze/protected.sha /tmp/oracle-freeze/protected.after.sha
+          git diff --check
+          grep -q 'OracleMysticStartView' app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+
+      - name: Force B514 package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle')
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'versionCode\s+\d+', 'versionCode 35', s, count=1)
+          if re.search(r'versionName\s+[\'\"]', s):
+              s=re.sub(r'versionName\s+[\'\"][^\'\"]*[\'\"]', "versionName 'V6g-FINAL-B514'", s, count=1)
+          else:
+              s=s.replace('defaultConfig {', "defaultConfig {\n        versionName 'V6g-FINAL-B514'", 1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -q "versionName 'V6g-FINAL-B514'" app/build.gradle
+          grep -q 'versionCode 35' app/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Prepare production signing key
+        run: |
+          set -euo pipefail
+          if [ -n "$ORACLE_KEYSTORE_BASE64" ] && [ -n "$ORACLE_KEYSTORE_PASSWORD" ] && [ -n "$ORACLE_KEY_ALIAS" ] && [ -n "$ORACLE_KEY_PASSWORD" ]; then
+            echo "$ORACLE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/oracle-release.jks"
+            {
+              echo "ORACLE_KEYSTORE_FILE=$RUNNER_TEMP/oracle-release.jks"
+              echo "ORACLE_KEYSTORE_PASSWORD=$ORACLE_KEYSTORE_PASSWORD"
+              echo "ORACLE_KEY_ALIAS=$ORACLE_KEY_ALIAS"
+              echo "ORACLE_KEY_PASSWORD=$ORACLE_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Build B514 release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify B514 APK
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -q "versionName='V6g-FINAL-B514'"
+          printf '%s\n' "$BADGING" | grep -q "versionCode='35'"
+          printf '%s\n' "$BADGING" | grep -q "package: name='ro.alintudor.oracle'"
+
+      - name: Final byte-for-byte freeze verification
+        run: |
+          set -euo pipefail
+          for f in \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt \
+            app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt \
+            app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt; do
+            git hash-object "$f"
+          done > /tmp/oracle-freeze/protected.final.sha
+          cmp /tmp/oracle-freeze/protected.sha /tmp/oracle-freeze/protected.final.sha
+
+      - name: Upload B514 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B514-MYSTIC-START-FINAL
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30

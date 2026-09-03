@@ -1,0 +1,11 @@
+Build 335 regression checkpoint.
+
+Verified source path: app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+Watchlist rows use onWatchlistTickerClick(t) and MainActivity routes the ticker to Analysis via OracleSimpleModule.setTickerDraft().
+
+Required acceptance test:
+1. Watchlist -> tap ticker row (NVDA/AAPL/etc.) -> Analysis opens for that ticker.
+2. Tap ticker text and arrow independently -> same result.
+3. Analysis -> eye toggles Watchlist membership.
+4. Return to Watchlist -> ticker remains clickable.
+5. Delete removes only the selected ticker.

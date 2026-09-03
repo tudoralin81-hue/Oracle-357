@@ -1,0 +1,128 @@
+name: Oracle B533 Start - exact status card removal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - B533_TRIGGER.txt
+      - scripts/remove_start_status_card.py
+      - .github/workflows/b533-start-remove-status-card.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current approved source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Apply exact historical-style removal
+        run: python3 scripts/remove_start_status_card.py
+
+      - name: Verify final Start source
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="app/src/main/java/ro/alintudor/oracle/MainActivity.kt"
+          grep -q 'OracleHeroView(this){ openModule(it) }' "$MAIN"
+          ! grep -q 'OracleMysticStartViewV2(this)' "$MAIN"
+          ! grep -q 'ORACLE READY' "$MAIN"
+          ! grep -q 'LOCAL INTELLIGENCE' "$MAIN"
+          ! grep -q 'page.addView(status' "$MAIN"
+          git diff --check
+
+      - name: Commit actual source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'oracle-build'
+          git config user.email 'oracle-build@users.noreply.github.com'
+          git add app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo 'Source already contains the exact fix.'
+          else
+            git commit -m 'B533 final: remove Start status card'
+            git push origin HEAD:main
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Prepare signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ORACLE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${KEYSTORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/oracle-release.jks"
+            echo "ORACLE_KEYSTORE_FILE=$RUNNER_TEMP/oracle-release.jks" >> "$GITHUB_ENV"
+            echo "ORACLE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set B533 version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('app/build.gradle')
+          s = p.read_text()
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 50', s, count=1)
+          s = re.sub(r"versionName\s+'[^']+'", "versionName 'V6g-START-B533'", s, count=1)
+          p.write_text(s)
+          PY
+          grep -q 'versionCode 50' app/build.gradle
+          grep -q "versionName 'V6g-START-B533'" app/build.gradle
+
+      - name: Clean build outputs
+        run: rm -rf app/build
+
+      - name: Build release APK
+        run: gradle clean :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK")"
+          echo "$BADGING" | grep -q "versionName='V6g-START-B533'"
+          echo "$BADGING" | grep -q "versionCode='50'"
+          echo "$BADGING" | grep -q "package: name='ro.alintudor.oracle'"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B533-FINAL-START-NO-STATUS-CARD
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

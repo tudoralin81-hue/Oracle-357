@@ -1,0 +1,80 @@
+name: Oracle B540 Growth 1200 Fast
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3eb9b3284c24f94cf8126dd9916b615038664ae8
+      - name: Freeze B539 protected modules
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/oracle-freeze
+          for f in app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt; do git hash-object "$f"; done > /tmp/oracle-freeze/before
+      - name: Patch GROWTH only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          E=Path('app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt')
+          s=E.read_text()
+          if 'TARGET_UNIVERSE_SIZE' in s: raise SystemExit('already patched')
+          s=s.replace('private val universe = ', 'private val fallbackUniverse = ', 1)
+          i=s.index('    private data class C')
+          support='''    private const val UNIVERSE_URL="https://raw.githubusercontent.com/Ate329/top-us-stock-tickers/main/tickers/all.csv"\n    private const val TARGET_UNIVERSE_SIZE=1200\n    @Volatile private var cachedUniverse:List<String>?=null\n    @Volatile private var cachedUniverseSectors:Map<String,String> = emptyMap()\n    @Volatile private var cachedUniverseNames:Map<String,String> = emptyMap()\n    private fun loadUniverse():List<String>{\n        cachedUniverse?.let{if(it.size>=TARGET_UNIVERSE_SIZE)return it}\n        val loaded=runCatching{\n            val c=(URL(UNIVERSE_URL).openConnection() as HttpURLConnection).apply{requestMethod="GET";connectTimeout=2500;readTimeout=5000;setRequestProperty("User-Agent","Oracle-Stock-Intelligence/1.0")}\n            val lines=c.inputStream.bufferedReader().use{it.readLines()};c.disconnect()\n            val sm=linkedMapOf<String,String>();val nm=linkedMapOf<String,String>()\n            val syms=lines.drop(1).mapNotNull{line->val p=line.split(',',limit=6);val t=p.getOrNull(0)?.trim()?.uppercase(Locale.US).orEmpty();if(!t.matches(Regex("[A-Z]{1,5}([.-][A-Z])?")))return@mapNotNull null;p.getOrNull(1)?.trim()?.trim('"')?.takeIf{it.isNotBlank()}?.let{nm[t]=it};p.getOrNull(5)?.trim()?.takeIf{it.isNotBlank()}?.let{sm[t]=it};t}.distinct().take(TARGET_UNIVERSE_SIZE)\n            cachedUniverseSectors=sm.filterKeys{it in syms};cachedUniverseNames=nm.filterKeys{it in syms};syms\n        }.getOrDefault(emptyList())\n        if(loaded.size>=TARGET_UNIVERSE_SIZE){cachedUniverse=loaded;return loaded}\n        return(loaded+fallbackUniverse).distinct().take(TARGET_UNIVERSE_SIZE)\n    }\n\n'''
+          s=s[:i]+support+s[i:]
+          old='''        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}\n        val candidates=mutableListOf<C>()\n        for(ticker in universe.distinct()){val candles=OracleMarketData.fetchDaily(ticker,"1y");if(candles.size<60)continue;evaluate(ticker,candles)?.let{candidates+=it}}\n        if(candidates.isEmpty())return emptyList()'''
+          new='''        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}\n        val universe=loadUniverse()\n        require(universe.size>=TARGET_UNIVERSE_SIZE){"Growth universe has only ${universe.size} tickers; refusing non-1200 run"}\n        val candidates=java.util.concurrent.ConcurrentLinkedQueue<C>()\n        val deadline=System.nanoTime()+10_000_000_000L\n        val pool=java.util.concurrent.Executors.newFixedThreadPool(8)\n        try{universe.chunked(100).map{batch->pool.submit{val data=OracleMarketData.fetchDailyBatch(batch,"1y");for((ticker,candles) in data)if(System.nanoTime()<deadline&&candles.size>=60)evaluate(ticker,candles)?.let{candidates.add(it)}}}.forEach{f->runCatching{f.get(10,java.util.concurrent.TimeUnit.SECONDS)}}}finally{pool.shutdownNow()}\n        if(candidates.isEmpty())return emptyList()\n        val candidateList=candidates.toList()'''
+          if old not in s: raise SystemExit('B539 Growth block not found')
+          s=s.replace(old,new,1).replace('candidates.sortedByDescending{it.score}.take(30)','candidateList.sortedByDescending{it.score}.take(30)',1).replace('candidates.map{c->','candidateList.map{c->',1)
+          s=s.replace('OracleRealData.resolvedSector(c.ticker,f?.sector)','OracleRealData.resolvedSector(c.ticker,f?.sector ?: cachedUniverseSectors[c.ticker])')
+          s=s.replace('OracleRealData.resolvedSector(it.ticker,fundamentals[it.ticker]?.sector)','OracleRealData.resolvedSector(it.ticker,fundamentals[it.ticker]?.sector ?: cachedUniverseSectors[it.ticker])')
+          s=s.replace('OracleRealData.resolvedSector(pick.ticker,fundamentals[pick.ticker]?.sector)','OracleRealData.resolvedSector(pick.ticker,fundamentals[pick.ticker]?.sector ?: cachedUniverseSectors[pick.ticker])')
+          E.write_text(s)
+          M=Path('app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt');s=M.read_text();i=s.index('    /** Fetches OHLCV at the requested Analysis timeframe. */')
+          batch='''    fun fetchDailyBatch(tickers:List<String>,range:String="1y"):Map<String,List<OracleOhlcvPoint>>{val syms=tickers.map{it.trim().uppercase()}.filter{it.isNotBlank()}.distinct();if(syms.isEmpty())return emptyMap();val u=URL("https://query1.finance.yahoo.com/v8/finance/spark?symbols=${java.net.URLEncoder.encode(syms.joinToString(","),"UTF-8")}&range=$range&interval=1d&indicators=open,high,low,close,volume");val c=(u.openConnection() as HttpURLConnection).apply{requestMethod="GET";connectTimeout=3500;readTimeout=7500;setRequestProperty("User-Agent","Oracle-Stock-Intelligence/1.0")};return try{if(c.responseCode !in 200..299)return emptyMap();val r=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optJSONObject("spark")?.optJSONArray("result")?:return emptyMap();buildMap{for(x in 0 until r.length()){val a=r.optJSONObject(x)?:continue;val t=a.optString("symbol").uppercase();val z=a.optJSONArray("response")?.optJSONObject(0)?:continue;val ts=z.optJSONArray("timestamp")?:continue;val q=z.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0)?:continue;val o=q.optJSONArray("open")?:continue;val h=q.optJSONArray("high")?:continue;val l=q.optJSONArray("low")?:continue;val cl=q.optJSONArray("close")?:continue;val v=q.optJSONArray("volume");val rows=ArrayList<OracleOhlcvPoint>(ts.length());for(j in 0 until ts.length()){val oo=o.optDouble(j,Double.NaN);val hh=h.optDouble(j,Double.NaN);val ll=l.optDouble(j,Double.NaN);val cc=cl.optDouble(j,Double.NaN);if(oo.isFinite()&&hh.isFinite()&&ll.isFinite()&&cc.isFinite()&&hh>0&&ll>0&&cc>0)rows+=OracleOhlcvPoint(ts.optLong(j)*1000L,oo,hh,ll,cc,v?.optDouble(j,0.0)?:0.0)};if(rows.isNotEmpty())put(t,rows.sortedBy{it.timestamp})}}}catch(_:Exception){emptyMap()}finally{c.disconnect()}}\n\n'''
+          M.write_text(s[:i]+batch+s[i:])
+          PY
+          grep -q 'TARGET_UNIVERSE_SIZE=1200' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          grep -q 'fun fetchDailyBatch' app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt
+          git diff --check
+      - name: Set B540 identity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle');s=p.read_text();s=re.sub(r'versionCode\s+\d+','versionCode 35',s,count=1);s=re.sub(r'versionName\s+[\'\"][^\'\"]*[\'\"]',"versionName 'V6g-GROWTH-B540'",s,count=1);p.write_text(s)
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+      - run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify APK and frozen modules
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='V6g-GROWTH-B540'"
+          for f in app/src/main/java/ro/alintudor/oracle/OracleMysticStartView.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleNewsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OraclePortfolioModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAlertsModule.kt app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt app/src/main/java/ro/alintudor/oracle/core/OracleKnowledgeSync.kt; do git hash-object "$f"; done > /tmp/oracle-freeze/after
+          cmp /tmp/oracle-freeze/before /tmp/oracle-freeze/after
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B540-GROWTH-1200-FAST-FINAL
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7

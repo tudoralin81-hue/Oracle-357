@@ -1,0 +1,134 @@
+name: Oracle B526 Final Start APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Apply Start V2 and remove footer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/ro/alintudor/oracle/MainActivity.kt')
+          s = p.read_text()
+          start = s.index('    private fun showHub()')
+          end = s.index('    private fun makeHomeCard', start)
+          block = '''    private fun showHub() {
+        currentModule = null
+        root.removeAllViews()
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.rgb(1, 3, 8))
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        }
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(8))
+            setBackgroundColor(Color.rgb(1, 2, 5))
+        }
+        val hero = OracleMysticStartViewV2(this) { openModule(it) }
+        val sw = resources.displayMetrics.widthPixels.toFloat()
+        val sh = resources.displayMetrics.heightPixels.toFloat()
+        val wide = sw / sh > 1.18f
+        val heroHeight = (sh * (if (wide) .91f else .94f)).toInt().coerceAtLeast(if (wide) dp(650) else dp(720))
+        page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
+        scroll.addView(page)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+'''
+          p.write_text(s[:start] + block + s[end:])
+          PY
+
+      - name: Verify Start V2
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'OracleMysticStartViewV2(this)' app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+          ! grep -q 'OracleHeroView(this)' app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+          ! grep -q 'ORACLE READY' app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+          ! grep -q 'LOCAL INTELLIGENCE' app/src/main/java/ro/alintudor/oracle/MainActivity.kt
+          grep -q '357AT2026' app/src/main/java/ro/alintudor/oracle/OracleMysticStartViewV2.kt
+          ! grep -q '"stock"' app/src/main/java/ro/alintudor/oracle/OracleMysticStartViewV2.kt
+          git diff --check
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Prepare signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ORACLE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${KEYSTORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/oracle-release.jks"
+            echo "ORACLE_KEYSTORE_FILE=$RUNNER_TEMP/oracle-release.jks" >> "$GITHUB_ENV"
+            echo "ORACLE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set version
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('app/build.gradle')
+          s = p.read_text()
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 44', s, count=1)
+          s = re.sub(r"versionName\s+'[^']+'", "versionName 'V6g-START-B526'", s, count=1)
+          p.write_text(s)
+          PY
+
+      - name: Build release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='V6g-START-B526'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionCode='44'"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B526-START-NO-FOOTER
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,113 @@
+# B514 build: source-of-truth main; Analysis immutable; Growth-only patch.
+name: B514 FINAL APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/b514_build_growth.py
+      - scripts/apply_growth_v597_reference.py
+      - scripts/apply_growth_sector_metadata.py
+      - scripts/apply_growth_loader.py
+      - .github/workflows/b522-growth-only-from-b514-good.yml
+      - app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+      - app/src/main/java/ro/alintudor/oracle/core/OracleLocalProcessor.kt
+      - app/src/main/java/ro/alintudor/oracle/core/OracleMarketCalendar.kt
+      - app/src/main/java/ro/alintudor/oracle/core/OracleGrowthLiveData.kt
+      - app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+      - app/src/main/java/ro/alintudor/oracle/core/OracleSectorAllocation.kt
+      - app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+      - BUILD_B514_NOW.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ORACLE_KEYSTORE_BASE64: ${{ secrets.ORACLE_KEYSTORE_BASE64 }}
+  ORACLE_KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+  ORACLE_KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+  ORACLE_KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (current HEAD)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Clean generated state
+        run: git clean -xfd
+
+      - name: Record canonical Analysis source
+        run: |
+          set -euo pipefail
+          ANALYSIS=app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+          test -f "$ANALYSIS"
+          echo "ANALYSIS_SHA=$(git hash-object "$ANALYSIS")" >> "$GITHUB_ENV"
+
+      - name: Apply Growth-only UI/preload changes
+        run: python3 scripts/b514_build_growth.py
+
+      - name: Apply Oracle Growth V5.9.7 reference rules
+        run: python3 scripts/apply_growth_v597_reference.py
+
+      - name: Apply Growth sector/company metadata correction
+        run: python3 scripts/apply_growth_sector_metadata.py
+
+      - name: Apply Oracle-style Growth loader
+        run: python3 scripts/apply_growth_loader.py
+
+      - name: HARD VERIFY Analysis unchanged by Growth patch
+        run: |
+          set -euo pipefail
+          ANALYSIS=app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+          test "$(git hash-object "$ANALYSIS")" = "$ANALYSIS_SHA"
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+      - name: Prepare production signing key
+        run: |
+          set -euo pipefail
+          if [ -n "$ORACLE_KEYSTORE_BASE64" ] && [ -n "$ORACLE_KEYSTORE_PASSWORD" ] && [ -n "$ORACLE_KEY_ALIAS" ] && [ -n "$ORACLE_KEY_PASSWORD" ]; then
+            echo "$ORACLE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/oracle-release.jks"
+            {
+              echo "ORACLE_KEYSTORE_FILE=$RUNNER_TEMP/oracle-release.jks"
+              echo "ORACLE_KEYSTORE_PASSWORD=$ORACLE_KEYSTORE_PASSWORD"
+              echo "ORACLE_KEY_ALIAS=$ORACLE_KEY_ALIAS"
+              echo "ORACLE_KEY_PASSWORD=$ORACLE_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          fi
+      - name: Build release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify APK metadata
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='V6g-FINAL-B514'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionCode='35'"
+      - name: Verify Analysis source remains unchanged after build
+        run: |
+          set -euo pipefail
+          ANALYSIS=app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt
+          test "$(git hash-object "$ANALYSIS")" = "$ANALYSIS_SHA"
+      - name: Upload ONLY B514 FINAL APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B514-FINAL-installable
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30

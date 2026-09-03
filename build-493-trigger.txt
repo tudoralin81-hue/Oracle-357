@@ -1,0 +1,2 @@
+Build 494 — Final Analysis verification/build.
+Verify real fundamental values, keep Growth weights separate from raw fundamentals, preserve sector resolution and working Oracle engine, and display BUILD 494 in the module header and app metadata.

@@ -1,0 +1,54 @@
+name: B535 GROWTH APK
+on:
+  push:
+    branches: [main]
+    paths: [B535_GROWTH_BUILD_TRIGGER.txt]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: sed -i 's/^a\.write_text(s\[:i\]+h+s\[j:\])$/p.write_text(s[:i]+h+s[j:])/g; /^PY$/d' scripts/build_b535_growth.py
+      - run: python3 scripts/build_b535_growth.py
+      - run: python3 scripts/fix_b535_growth_runtime.py
+      - run: python3 scripts/apply_growth_timeout_solution.py
+      - run: sed -i 's/seed?\.company/null/g; s/seed?\.sector/null/g' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+      - name: Verify Growth timeout solution
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'newFixedThreadPool(16)' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          grep -q 'f.get(25,TimeUnit.SECONDS)' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          grep -q 'newFixedThreadPool(15)' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          grep -q 'f.get(12,TimeUnit.SECONDS)' app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          grep -q 'future.get(45, TimeUnit.SECONDS)' app/src/main/java/ro/alintudor/oracle/OracleMysticActivity.kt
+          grep -q 'Calculul Growth a depășit limita de 45 de secunde' app/src/main/java/ro/alintudor/oracle/OracleMysticActivity.kt
+          git diff --check
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+      - run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify B535 Growth APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='V6g-GROWTH-B535'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B535-GROWTH-FINAL-installable
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,94 @@
+name: Knowledge Direct Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch only renderKnowledge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('app/src/main/java/ro/alintudor/oracle/nativeui/OracleAnalysisModules.kt')
+          s = p.read_text()
+          new = r'''    private fun renderKnowledge(items: List<OracleKnowledgeItem>) {
+        val card = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(host.dp(18), host.dp(16), host.dp(18), host.dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(7, 12, 23))
+                cornerRadius = host.dp(16).toFloat()
+                setStroke(host.dp(1), host.accent)
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://alintudor.ro/knowledge/"))
+                host.root.context.startActivity(intent)
+            }
+        }
+        card.addView(TextView(host.root.context).apply {
+            text = "KNOWLEDGE"
+            textSize = 24f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(host.accent)
+        })
+        card.addView(TextView(host.root.context).apply {
+            text = "Biblioteca Oracle — conținut online"
+            textSize = 17f
+            setTextColor(Color.rgb(190, 198, 215))
+            setPadding(0, host.dp(6), 0, host.dp(12))
+        })
+        val open = Button(host.root.context).apply {
+            text = "DESCHIDE KNOWLEDGE"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(15, 75, 110))
+                cornerRadius = host.dp(13).toFloat()
+            }
+            setOnClickListener {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://alintudor.ro/knowledge/"))
+                host.root.context.startActivity(intent)
+            }
+        }
+        card.addView(open, LinearLayout.LayoutParams(-1, host.dp(50)))
+        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, 0, 0, host.dp(12))
+        })
+
+        if (items.isNotEmpty()) {
+            items.sortedByDescending { it.publishedAt }.forEach {
+                addItem(it.title, "${it.category}\n${it.content}")
+            }
+        }
+    }
+'''
+          pattern = r'(?s)    private fun renderKnowledge\(items: List<OracleKnowledgeItem>\) \{.*?\n    \}\n\n    private fun '
+          replacement = new + '\n    private fun '
+          out, n = re.subn(pattern, replacement, s, count=1)
+          if n != 1:
+              raise SystemExit('renderKnowledge not found; refusing to build')
+          p.write_text(out)
+          PY
+
+      - name: Make executable
+        run: chmod +x gradlew
+
+      - name: Build APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-Knowledge-direct-test
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

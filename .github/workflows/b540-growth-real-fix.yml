@@ -1,0 +1,94 @@
+name: Oracle B540 Growth Real Fix
+# This workflow builds the Claude B540 source snapshot.
+# Only the requested GROWTH history-toggle UI patch is applied at build time.
+# START and all non-GROWTH modules remain protected by the frozen manifest.
+#
+on:
+  push:
+    branches:
+      - B540-CLAUDE-V2-EXACT
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify frozen (non-GROWTH) files are byte-identical to B539
+        run: |
+          set -euo pipefail
+          sha256sum -c B540_FROZEN_MANIFEST.sha256 --strict
+
+      - name: Verify GROWTH-only fix markers are present
+        run: |
+          set -euo pipefail
+          E=app/src/main/java/ro/alintudor/oracle/core/OracleGrowthEngine.kt
+          M=app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+          MD=app/src/main/java/ro/alintudor/oracle/core/OracleMarketData.kt
+          U=app/src/main/java/ro/alintudor/oracle/core/OracleSP500Universe.kt
+          grep -q 'TARGET_SIZE = 500' "$U"
+          grep -q 'fun companies(context: Context)' "$U"
+          grep -q 'fun fetchDailyBatch' "$MD"
+          grep -q 'OracleGrowthPhase' "$E"
+          grep -q 'TOTAL_BUDGET_NANOS' "$E"
+          grep -q 'DATE ÎNCĂRCATE' "$M"
+          grep -q 'OracleGrowthPhase.NO_DATA' "$M"
+          grep -q 'Maxim țintă: 20 secunde' "$M"
+          test -f app/src/main/assets/sp500_universe.json
+          [ "$(python3 -c "import json;print(len(json.load(open('app/src/main/assets/sp500_universe.json'))))")" = "500" ]
+
+      - name: Apply B540 GROWTH history toggle UI fix
+        run: |
+          set -euo pipefail
+          python3 scripts/b540_growth_history_toggle.py
+          grep -q 'val allRows = mutableListOf<View>()' app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+          grep -q 'var expanded = false' app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+          grep -q 'allRows.forEach { it.visibility = if (expanded) View.VISIBLE else View.GONE }' app/src/main/java/ro/alintudor/oracle/nativeui/OracleGrowthModule.kt
+          git diff --check
+
+      - name: Set B540 identity
+        run: |
+          set -euo pipefail
+          grep -q "versionCode 30" app/build.gradle
+          grep -q "versionName 'B540'" app/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Build release APK
+        env:
+          ORACLE_KEYSTORE_FILE: ${{ secrets.ORACLE_KEYSTORE_FILE }}
+          ORACLE_KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+          ORACLE_KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+          ORACLE_KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and version, re-check frozen files post-build
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK")"
+          echo "$BADGING" | grep -q "versionCode='30'"
+          echo "$BADGING" | grep -q "versionName='B540'"
+          sha256sum -c B540_FROZEN_MANIFEST.sha256 --strict
+          sha256sum "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oracle-APK-B540-GROWTH-REAL-FIX
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

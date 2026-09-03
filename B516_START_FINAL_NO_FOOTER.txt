@@ -1,0 +1,2 @@
+RUN B517 INSTALLABLE FINAL — 2026-09-01 21:59 EEST
+Use the approved 7-module Start from B515/B516, remove the bottom host footer completely, keep 357AT2026, and do not modify protected modules. Build and sign the release APK with the repository signing key.
