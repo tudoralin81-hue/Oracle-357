@@ -203,7 +203,7 @@
         android:id="@+id/widget_updated"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="12dp"
         android:textColor="#7D879B"
         android:textSize="9sp"
         android:text="—" />
