@@ -46,9 +46,11 @@ android {
 
     packagingOptions {
         // Known conflict with com.sun.mail:android-mail/android-activation —
-        // both ship duplicate META-INF license/notice files.
-        exclude 'META-INF/LICENSE.txt'
-        exclude 'META-INF/NOTICE.txt'
+        // both ship duplicate META-INF license/notice files, under several
+        // different filenames (.txt, .md, extension-less) depending on
+        // version, hence the wildcards instead of exact names.
+        exclude 'META-INF/LICENSE*'
+        exclude 'META-INF/NOTICE*'
         exclude 'META-INF/DEPENDENCIES'
     }
 }
