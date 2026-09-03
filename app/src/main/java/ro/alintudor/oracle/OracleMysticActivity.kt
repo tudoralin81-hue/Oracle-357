@@ -202,8 +202,16 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun hideKeyboard(view: View) {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-        imm.hideSoftInputFromWindow(view.windowToken, 0)
+        // Posted with a short delay: if fired in the exact same instant as
+        // the autofill event, the system's own focus handling for that
+        // event can immediately re-show the keyboard right after, undoing
+        // an immediate call. Clearing focus too, not just hiding, is the
+        // more forceful combination that actually sticks.
+        view.postDelayed({
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+            view.clearFocus()
+        }, 100L)
     }
 
     private fun showRegister(store: OracleAuthStore) {
