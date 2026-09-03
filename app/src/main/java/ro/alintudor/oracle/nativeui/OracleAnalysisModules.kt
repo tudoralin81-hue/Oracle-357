@@ -203,6 +203,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setPadding(0, host.dp(2), 0, 0)
         })
         host.content.addView(top, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+        top.alpha = 0f
+        top.translationY = host.dp(24).toFloat()
+        top.animate().alpha(1f).translationY(0f).setDuration(400L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
 
         // ANALYSIS_PARAMETERS_V8
         // All market-relevant values are presented in one two-column matrix:
@@ -652,7 +656,7 @@ host.content.addView(TextView(host.root.context).apply {
         items.map { it.trim().uppercase(Locale.US) }
             .filter { it.isNotBlank() }
             .distinct()
-            .forEach { ticker ->
+            .forEachIndexed { index, ticker ->
                 val row = LinearLayout(host.root.context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -724,6 +728,10 @@ host.content.addView(TextView(host.root.context).apply {
                 host.content.addView(row, LinearLayout.LayoutParams(-1, host.dp(100)).apply {
                     setMargins(0, 0, 0, host.dp(12))
                 })
+                row.alpha = 0f
+                row.translationY = host.dp(20).toFloat()
+                row.animate().alpha(1f).translationY(0f).setStartDelay(index * 80L).setDuration(360L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
             }
     }
 
@@ -757,7 +765,60 @@ host.content.addView(TextView(host.root.context).apply {
             setTextColor(Color.rgb(255, 205, 55))
             setPadding(0, host.dp(12), 0, 0)
         })
-        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
+
+        // Fills the space below the header card with animated, knowledge-themed
+        // content (independent of whether any articles are cached yet).
+        host.addSectionLabel("EXPLORE TOPICS")
+        val topics = listOf(
+            Triple("FUNDAMENTALS", "P/E, earnings, balance sheets", Color.rgb(120, 255, 45)),
+            Triple("TECHNICAL ANALYSIS", "Trends, patterns, indicators", Color.rgb(20, 220, 255)),
+            Triple("RISK MANAGEMENT", "Position sizing, stop-loss", Color.rgb(255, 80, 90)),
+            Triple("MARKET PSYCHOLOGY", "Sentiment, cycles, bias", Color.rgb(220, 55, 255)),
+            Triple("VALUATION", "Intrinsic value, multiples", Color.rgb(255, 205, 35)),
+            Triple("MACRO TRENDS", "Rates, inflation, cycles", Color.rgb(255, 160, 25))
+        )
+        var topicsRow: LinearLayout? = null
+        topics.forEachIndexed { index, (title, sub, color) ->
+            if (index % 2 == 0) {
+                topicsRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
+                host.content.addView(topicsRow, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+            }
+            val tileBg = GradientDrawable().apply {
+                setColor(Color.rgb(7, 11, 22)); cornerRadius = host.dp(14).toFloat(); setStroke(host.dp(1), color)
+            }
+            val tile = LinearLayout(host.root.context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(host.dp(12), host.dp(12), host.dp(12), host.dp(12))
+                background = tileBg
+            }
+            tile.addView(TextView(host.root.context).apply { text = title; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); letterSpacing = .02f })
+            tile.addView(TextView(host.root.context).apply { text = sub; textSize = 10f; setTextColor(Color.rgb(175, 182, 198)); setPadding(0, host.dp(4), 0, 0) })
+            topicsRow?.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (index % 2 == 1) setMargins(host.dp(6), 0, 0, 0) else setMargins(0, 0, host.dp(6), 0)
+            })
+
+            // Entrance: fade + rise, staggered.
+            tile.alpha = 0f
+            tile.translationY = host.dp(20).toFloat()
+            tile.animate().alpha(1f).translationY(0f).setStartDelay(index * 90L).setDuration(360L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+
+            // Continuous slow pulse on the tile's accent border.
+            val r = Color.red(color); val g = Color.green(color); val b = Color.blue(color)
+            val strokePx = host.dp(1)
+            android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                duration = 2200L
+                startDelay = index * 150L
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { anim ->
+                    if (!tile.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                    val q = anim.animatedValue as Float
+                    tileBg.setStroke(strokePx, Color.argb((140 + 115 * q).toInt(), r, g, b))
+                }
+            }.start()
+        }
+
         if (items.isEmpty()) return
         items.sortedByDescending { it.publishedAt }.forEach { addItem(it.title, "${it.category}\n${it.content}") }
     }

@@ -216,7 +216,8 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         val card = card(12).apply { background = cardBg }
         val top = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val left = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
-        left.addView(text(horizonLabel(item.horizon), 13f, Typeface.DEFAULT_BOLD, accent, 0, 0))
+        val horizonLabelView = text(horizonLabel(item.horizon), 13f, Typeface.DEFAULT_BOLD, accent, 0, 0)
+        left.addView(horizonLabelView)
         left.addView(text(horizonRange(item.horizon), 11f, Typeface.DEFAULT, muted, 0, 3))
         top.addView(left, LinearLayout.LayoutParams(0, -2, 1f))
         top.addView(text(formatT0(item.referenceTimestamp), 10f, Typeface.DEFAULT, muted, 0, 0))
@@ -229,13 +230,12 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         company.addView(text(item.company, 15f, Typeface.DEFAULT_BOLD, white, 0, 0))
         company.addView(text(item.sector, 11f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 4))
         identity.addView(company, LinearLayout.LayoutParams(0, -2, 1f))
-        identity.addView(text("›", 28f, Typeface.DEFAULT, accent, 0, 0))
         card.addView(identity)
         card.addView(divider())
 
         val metrics = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(7), 0, host.dp(4)) }
         metrics.addView(metric("SCORE", "${item.score}/100", cyan), LinearLayout.LayoutParams(0, -2, 1f))
-        metrics.addView(metric("SIGNAL", compactSignal(item.signal), orange), LinearLayout.LayoutParams(0, -2, 1.15f))
+        metrics.addView(metric("SIGNAL", compactSignal(item.signal), signalColor(item.signal)), LinearLayout.LayoutParams(0, -2, 1.15f))
         metrics.addView(metric("RISK", item.risk, riskColor(item.risk)), LinearLayout.LayoutParams(0, -2, 1f))
         metrics.addView(metric("ALLOCATION", "${format(item.allocationMax)}%", orange), LinearLayout.LayoutParams(0, -2, 1f))
         card.addView(metrics)
@@ -284,6 +284,18 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             }
         }
         pulse.start()
+
+        // Slow pulse on the SHORT/MEDIUM/LONG TERM label.
+        val horizonPulse = android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
+            duration = 2600L
+            startDelay = index * 180L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                horizonLabelView.alpha = anim.animatedValue as Float
+            }
+        }
+        horizonPulse.start()
     }
 
     private fun addCompactWeights(parent: LinearLayout, weights: List<Int>) {
@@ -441,7 +453,22 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun horizonLabel(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "●  SHORT TERM"; "MEDIUM" -> "●  MEDIUM TERM"; else -> "●  LONG TERM" }
     private fun horizonRange(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "1–10 trading days"; "MEDIUM" -> "2–12 weeks"; else -> "3–12 months" }
     private fun compactSignal(signal: String) = signal.replace("STRONG ", "STRONG\n").trim()
-    private fun riskColor(risk: String): Int = if (risk.contains("HIGH", true)) red else orange
+    private fun signalColor(signal: String): Int {
+        val s = signal.uppercase(Locale.US)
+        return when {
+            s.contains("STRONG BUY") || s == "BUY" -> green
+            s.contains("AVOID") || s.contains("SELL") -> red
+            else -> orange // HOLD, WATCH
+        }
+    }
+    private fun riskColor(risk: String): Int {
+        val r = risk.uppercase(Locale.US)
+        return when {
+            r.contains("HIGH") -> red
+            r.contains("LOW") -> green
+            else -> orange // MEDIUM
+        }
+    }
     private fun signedPct(v: Double) = if (v >= 0) "+${format(v)}%" else "${format(v)}%"
     private fun format(v: Double) = "%.1f".format(Locale.US, v)
 

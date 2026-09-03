@@ -67,9 +67,9 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
         val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0; val introDuration=0.7
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
-        text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(12.5f)*introScale,white,Typeface.DEFAULT,.25f,true)
+        text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,101f,395f,250f,125f,26f,time,true) else drawCards(c,10f,510f,165f,132f,13f,time,false)
+        hit.clear(); if(wide)drawCards(c,101f,405f,250f,125f,26f,time,true) else drawCards(c,10f,555f,165f,132f,13f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
@@ -142,7 +142,24 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     }
     private fun grid(c:Canvas,cx:Float,cy:Float,first:Float,step:Float){p.style=Paint.Style.STROKE;p.strokeWidth=S(.55f);p.color=Color.argb(48,205,175,65);for(i in 0 until 14)c.drawCircle(cx,cy,first+i*step,p);for(i in 0 until 32){val a=i*Math.PI/16.0;val dx=cos(a).toFloat();val dy=sin(a).toFloat();c.drawLine(cx+dx*(first-S(16f)),cy+dy*(first-S(16f)),cx+dx*(first+S(255f)),cy+dy*(first+S(255f)),p)}}
     private fun eye(c:Canvas,x:Float,y:Float,r:Float,time:Double){val q=(.5+.5*sin(time*1.25)).toFloat();p.style=Paint.Style.STROKE;path.reset();path.moveTo(x-r,y);path.cubicTo(x-r*.58f,y-r*.55f,x+r*.58f,y-r*.55f,x+r,y);path.cubicTo(x+r*.58f,y+r*.55f,x-r*.58f,y+r*.55f,x-r,y);p.color=gold;p.alpha=(180+70*q).toInt();p.strokeWidth=S(2f);c.drawPath(path,p);p.color=green;p.alpha=(55+90*q).toInt();p.strokeWidth=S(1.2f);c.drawCircle(x,y,r*(.48f+.035f*q),p);p.alpha=(160+90*q).toInt();p.strokeWidth=S(2f);c.drawCircle(x,y,r*.29f,p);p.style=Paint.Style.FILL;p.color=Color.rgb(2,10,4);p.alpha=255;c.drawCircle(x,y,r*.275f,p);p.color=green;p.alpha=(165+90*q).toInt();c.drawCircle(x,y,r*(.09f+.035f*q),p);p.color=Color.argb((30+80*q).toInt(),60,255,85);c.drawCircle(x,y,r*(.15f+.05f*q),p);p.style=Paint.Style.STROKE;p.color=Color.rgb(255,105,35);p.alpha=(70+90*q).toInt();p.strokeWidth=S(.8f);for(i in 0 until 28){val a=i*Math.PI/14.0;val inn=r*.40f;val out=r*(.56f+.05f*q);c.drawLine(x+cos(a).toFloat()*inn,y+sin(a).toFloat()*inn,x+cos(a).toFloat()*out,y+sin(a).toFloat()*out,p)}}
-    private fun drawCards(c:Canvas,left:Float,top:Float,cw:Float,ch:Float,gap:Float,time:Double,wide:Boolean){for(i in modules.indices){val col:Int;val row:Int;if(i<4){col=i;row=0}else{col=i-4;row=1};val count=if(row==0)4 else 3;val rowW=count*cw+(count-1)*gap;val rowLeft=if(row==0)left else left+(4*cw+3*gap-rowW)/2f;val l=rowLeft+col*(cw+gap);val t=top+row*(ch+gap);val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch));hit+=r to modules[i].key;card(c,r,modules[i],time,i,wide)}}
+    private fun drawCards(c:Canvas,left:Float,top:Float,cw:Float,ch:Float,gap:Float,time:Double,wide:Boolean){
+        for(i in modules.indices){
+            val col:Int;val row:Int
+            if(i<4){col=i;row=0}else{col=i-4;row=1}
+            val count=if(row==0)4 else 3
+            val rowW=count*cw+(count-1)*gap
+            val rowLeft=if(row==0)left else left+(4*cw+3*gap-rowW)/2f
+            val l=rowLeft+col*(cw+gap)
+            // Gentle arc per row (each row bows upward toward its middle) instead of
+            // a flat grid — keeps the exact module order, just a livelier layout.
+            val hump=if(count>1) sin(Math.PI*col/(count-1)).toFloat() else 0f
+            val arch=ch*0.20f
+            val t=top+row*(ch+gap)-arch*hump
+            val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch))
+            hit+=r to modules[i].key
+            card(c,r,modules[i],time,i,wide)
+        }
+    }
     private fun card(c:Canvas,r:RectF,m:M,time:Double,index:Int,wide:Boolean){val q=(.5+.5*sin(time*1.1+index*.53)).toFloat();val cx=r.centerX();val cy=r.top+r.height()*.39f;val rr=min(r.width(),r.height())*.255f;p.style=Paint.Style.FILL;p.color=Color.rgb(2,4,8);p.alpha=248;c.drawRoundRect(r,S(10f),S(10f),p);p.style=Paint.Style.STROKE;p.color=m.color;p.alpha=(155+95*q).toInt();p.strokeWidth=S(1.15f);c.drawRoundRect(r,S(10f),S(10f),p);p.alpha=(35+95*q).toInt();p.strokeWidth=S(1f);c.drawCircle(cx,cy,rr*(1.16f+.06f*q),p);p.alpha=(100+130*q).toInt();c.drawCircle(cx,cy,rr,p);p.alpha=90;c.drawCircle(cx,cy,rr*.78f,p);p.alpha=255;p.strokeWidth=S(1.8f);when(m.key){"watchlist"->miniEye(c,cx,cy,rr*.72f,m.color);"portfolio"->{c.drawRect(cx-rr*.5f,cy-rr*.38f,cx+rr*.5f,cy+rr*.38f,p);c.drawCircle(cx+rr*.22f,cy+rr*.17f,rr*.16f,p)};"analysis"->{path.reset();path.moveTo(cx-rr*.58f,cy+rr*.35f);path.lineTo(cx-rr*.2f,cy);path.lineTo(cx,cy+rr*.12f);path.lineTo(cx+rr*.56f,cy-rr*.5f);c.drawPath(path,p)};"growth"->{path.reset();path.moveTo(cx-rr*.6f,cy+rr*.34f);path.lineTo(cx-rr*.2f,cy+.05f);path.lineTo(cx+rr*.04f,cy+.18f);path.lineTo(cx+rr*.58f,cy-rr*.5f);c.drawPath(path,p)};"alerts"->{c.drawArc(RectF(cx-rr*.46f,cy-rr*.48f,cx+rr*.46f,cy+rr*.42f),210f,120f,false,p);c.drawLine(cx-rr*.2f,cy+rr*.42f,cx+rr*.2f,cy+rr*.42f,p)};"news"->{c.drawRect(cx-rr*.46f,cy-rr*.44f,cx+rr*.46f,cy+rr*.44f,p);for(j in -1..1)c.drawLine(cx-rr*.28f,cy+j*rr*.19f,cx+rr*.28f,cy+j*rr*.19f,p)};"knowledge"->{c.drawRect(cx-rr*.48f,cy-rr*.44f,cx,cy+rr*.44f,p);c.drawRect(cx,cy-rr*.44f,cx+rr*.48f,cy+rr*.44f,p)}};text(c,m.title,cx,r.top+r.height()*.73f,S(if(wide)11.5f else 11f),white,Typeface.DEFAULT,.01f,true);text(c,m.sub,cx,r.top+r.height()*.88f,S(if(wide)7.7f else 7.2f),m.color,Typeface.DEFAULT,.02f,true);p.color=m.color;p.alpha=(130+115*q).toInt();p.strokeWidth=S(1f);c.drawLine(cx-S(32f),r.bottom-S(12f),cx+S(32f),r.bottom-S(12f),p);diamond(c,cx,r.bottom-S(12f),S(3.3f),m.color)}
     private fun miniEye(c:Canvas,x:Float,y:Float,r:Float,color:Int){p.style=Paint.Style.STROKE;p.color=color;p.alpha=235;p.strokeWidth=S(1.5f);path.reset();path.moveTo(x-r,y);path.cubicTo(x-r*.55f,y-r*.48f,x+r*.55f,y-r*.48f,x+r,y);path.cubicTo(x+r*.55f,y+r*.48f,x-r*.55f,y+r*.48f,x-r,y);c.drawPath(path,p);p.style=Paint.Style.FILL;c.drawCircle(x,y,r*.16f,p)}
     private fun sigil(c:Canvas,x:Float,y:Float,r:Float,color:Int){p.style=Paint.Style.STROKE;p.color=color;p.alpha=220;p.strokeWidth=S(1.2f);c.drawCircle(x,y,r*.45f,p);c.drawCircle(x,y,r*.14f,p);c.drawLine(x,y-r*.45f,x,y-r*.8f,p);c.drawLine(x-r*.65f,y,x-r*.25f,y,p);c.drawLine(x+r*.25f,y,x+r*.65f,y,p)}

@@ -69,8 +69,9 @@ class OracleNewsModule(private val host: OracleNativeModule) {
 
     private fun renderGroups(clean: List<OracleNews>) {
         val groups = clean.groupBy { sourceName(it) }
-        sourceOrder.filter { groups.containsKey(it) }.forEach { source -> addSource(source, groups.getValue(source)) }
-        groups.keys.filterNot { sourceOrder.contains(it) }.sorted().forEach { source -> addSource(source, groups.getValue(source)) }
+        var index = 0
+        sourceOrder.filter { groups.containsKey(it) }.forEach { source -> addSource(source, groups.getValue(source), index++) }
+        groups.keys.filterNot { sourceOrder.contains(it) }.sorted().forEach { source -> addSource(source, groups.getValue(source), index++) }
     }
 
     private fun addSearchBar() {
@@ -116,7 +117,7 @@ class OracleNewsModule(private val host: OracleNativeModule) {
         return keywords.any{text.contains(it)}
     }
 
-    private fun addSource(source:String,items:List<OracleNews>){
+    private fun addSource(source:String,items:List<OracleNews>,index:Int=0){
         val accent=sourceAccent(source)
         val box=LinearLayout(host.root.context).apply{orientation=LinearLayout.VERTICAL;background=GradientDrawable().apply{setColor(Color.rgb(9,15,29));cornerRadius=host.dp(16).toFloat();setStroke(host.dp(1),accent)};setPadding(host.dp(14),host.dp(13),host.dp(14),host.dp(12))}
         box.addView(TextView(host.root.context).apply{text=source;textSize=19f;typeface=Typeface.DEFAULT_BOLD;setTextColor(accent);setPadding(host.dp(2),0,0,host.dp(8))})
@@ -125,6 +126,8 @@ class OracleNewsModule(private val host: OracleNativeModule) {
         items.take(8).forEach{n->addStory(box,n,accent)}
         box.addView(TextView(host.root.context).apply{text="SEE $source  →";textSize=11f;typeface=Typeface.DEFAULT_BOLD;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=GradientDrawable().apply{setColor(Color.rgb(18,34,58));cornerRadius=host.dp(11).toFloat()};setPadding(0,host.dp(10),0,host.dp(10));isClickable=true;if(items.firstOrNull()?.url?.isNotBlank()==true)setOnClickListener{open(items.first().url)}},LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,host.dp(8),0,0)})
         host.content.addView(box,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,host.dp(12))})
+        box.alpha=0f; box.translationY=host.dp(22).toFloat()
+        box.animate().alpha(1f).translationY(0f).setStartDelay(index*110L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun addStory(box:LinearLayout,n:OracleNews,accent:Int){

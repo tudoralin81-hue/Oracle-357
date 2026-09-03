@@ -97,6 +97,8 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         two(grid, "Support 20D", technicalPrice(t?.support20D, p.currentPrice), "Resistance 20D", technicalPrice(t?.resistance20D, p.currentPrice)); c.addView(grid)
         val buttons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(34), host.dp(9), 0, 0) }; buttons.addView(btn("SELL SHARES", Color.rgb(255, 205, 65)) { partialSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(0, 0, host.dp(4), 0) }); buttons.addView(btn("FULL SELL", Color.rgb(255, 80, 105)) { fullSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(buttons)
         c.addView(TextView(context).apply { text = "Updated locally • ${date.format(Date())}"; textSize = 9f; setTextColor(Color.rgb(105, 120, 145)); setPadding(host.dp(34), host.dp(7), 0, 0) }); host.content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
+        c.alpha = 0f; c.translationY = host.dp(24).toFloat()
+        c.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun technicalPrice(value: Double?, fallback: Double): String { val v = value?.takeIf { it.isFinite() && it > 0.0 } ?: fallback.takeIf { it.isFinite() && it > 0.0 }; return if (v == null) "N/A" else money(v) }
