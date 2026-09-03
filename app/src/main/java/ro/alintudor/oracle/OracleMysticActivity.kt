@@ -648,6 +648,7 @@ class OracleMysticActivity : Activity() {
                             result.onSuccess {
                                 OracleBackupManager.markExported(this@OracleMysticActivity)
                                 serverStatus.setTextColor(green); serverStatus.text = "Uploaded to alintudor.ro."
+                                statusLabel.text = "Last exported: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date())}"
                             }.onFailure { serverStatus.setTextColor(Color.rgb(255, 90, 90)); serverStatus.text = "Upload failed: ${it.message}" }
                         }
                     }.start()
