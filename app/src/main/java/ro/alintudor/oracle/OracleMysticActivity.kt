@@ -116,6 +116,10 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun proceedPastAuth() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357)
+        }
         runCatching {
             OracleBootstrap.ensure(repository)
             if (bootLoaderShownThisProcess) { showHub(); consumePendingModuleIntent() } else { bootLoaderShownThisProcess = true; showBootLoader() }
@@ -689,8 +693,17 @@ class OracleMysticActivity : Activity() {
                 Thread {
                     val result = OracleApiClient.notify(auth.token(), "Oracle test notification", "If you see this on your phone, push notifications are working correctly.")
                     runOnUiThread {
-                        result.onSuccess { pushStatus.setTextColor(green); pushStatus.text = "Sent — check your phone (and your email) in a few seconds." }
-                            .onFailure { pushStatus.setTextColor(Color.rgb(255, 90, 90)); pushStatus.text = "Failed: ${it.message}" }
+                        result.onSuccess { response ->
+                            val push = response.optJSONObject("push")
+                            val pushOk = push?.optBoolean("ok", false) ?: false
+                            if (pushOk) {
+                                pushStatus.setTextColor(green); pushStatus.text = "Email sent, push sent — check your phone."
+                            } else {
+                                val reason = push?.optString("error")?.takeIf { it.isNotBlank() } ?: "unknown reason"
+                                pushStatus.setTextColor(Color.rgb(255, 205, 55))
+                                pushStatus.text = "Email sent, but push failed: $reason"
+                            }
+                        }.onFailure { pushStatus.setTextColor(Color.rgb(255, 90, 90)); pushStatus.text = "Failed: ${it.message}" }
                     }
                 }.start()
             }

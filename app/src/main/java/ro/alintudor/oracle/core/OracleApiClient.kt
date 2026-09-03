@@ -81,9 +81,8 @@ object OracleApiClient {
         Unit
     }
 
-    fun notify(token: String, subject: String, message: String): Result<Unit> = runCatching {
+    fun notify(token: String, subject: String, message: String): Result<JSONObject> = runCatching {
         post("/notify", token, JSONObject().apply { put("subject", subject); put("message", message) })
-        Unit
     }
 
     fun registerDevice(token: String, fcmToken: String): Result<Unit> = runCatching {
