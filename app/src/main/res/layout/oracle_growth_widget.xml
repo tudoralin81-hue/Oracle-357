@@ -7,89 +7,182 @@
     android:background="#03040C"
     android:padding="12dp">
 
-    <TextView
-        android:id="@+id/widget_title"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="ORACLE GROWTH"
-        android:textColor="#69F523"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.05" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp"
         android:gravity="center_vertical">
+        <ImageView
+            android:id="@+id/widget_icon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginEnd="6dp"
+            android:src="@drawable/ic_oracle" />
         <TextView
-            android:id="@+id/short_ticker"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:text="—" />
-        <TextView
-            android:id="@+id/short_meta"
+            android:id="@+id/widget_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#4BE1FF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:text="—" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="6dp"
-        android:gravity="center_vertical">
-        <TextView
-            android:id="@+id/medium_ticker"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:text="—" />
-        <TextView
-            android:id="@+id/medium_meta"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#FFA019"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:text="—" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="6dp"
-        android:gravity="center_vertical">
-        <TextView
-            android:id="@+id/long_ticker"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:text="—" />
-        <TextView
-            android:id="@+id/long_meta"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:text="ORACLE GROWTH"
             android:textColor="#69F523"
-            android:textSize="11sp"
+            android:textSize="12sp"
             android:textStyle="bold"
-            android:text="—" />
+            android:letterSpacing="0.05" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/short_ticker"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:text="—" />
+            <TextView
+                android:id="@+id/short_signal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#4BE1FF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/short_risk"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:text="—" />
+            <TextView
+                android:id="@+id/short_potential"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="7dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/medium_ticker"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:text="—" />
+            <TextView
+                android:id="@+id/medium_signal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFA019"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/medium_risk"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:text="—" />
+            <TextView
+                android:id="@+id/medium_potential"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="7dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/long_ticker"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:text="—" />
+            <TextView
+                android:id="@+id/long_signal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#69F523"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/long_risk"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:text="—" />
+            <TextView
+                android:id="@+id/long_potential"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#7D879B"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:text="—" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView

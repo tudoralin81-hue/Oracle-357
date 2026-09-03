@@ -39,7 +39,7 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
         private const val LAUNCH_REQUEST_CODE = 35702
         private const val REFRESH_INTERVAL_MS = 3L * 60L * 1000L
 
-        private data class Slot(val horizon: String, val tickerId: Int, val metaId: Int, val accent: Int)
+        private data class Slot(val horizon: String, val tickerId: Int, val signalId: Int, val riskId: Int, val potentialId: Int, val accent: Int)
 
         fun scheduleNext(context: Context) {
             val app = context.applicationContext
@@ -76,21 +76,34 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             val orange = Color.rgb(255, 160, 25)
             val green = Color.rgb(105, 245, 35)
             val slots = listOf(
-                Slot("SHORT", R.id.short_ticker, R.id.short_meta, cyan),
-                Slot("MEDIUM", R.id.medium_ticker, R.id.medium_meta, orange),
-                Slot("LONG", R.id.long_ticker, R.id.long_meta, green)
+                Slot("SHORT", R.id.short_ticker, R.id.short_signal, R.id.short_risk, R.id.short_potential, cyan),
+                Slot("MEDIUM", R.id.medium_ticker, R.id.medium_signal, R.id.medium_risk, R.id.medium_potential, orange),
+                Slot("LONG", R.id.long_ticker, R.id.long_signal, R.id.long_risk, R.id.long_potential, green)
             )
+            val red = Color.rgb(255, 90, 90)
             for (slot in slots) {
                 val item = items.firstOrNull { it.horizon.equals(slot.horizon, true) }
                 if (item == null) {
                     views.setTextViewText(slot.tickerId, "—")
-                    views.setTextViewText(slot.metaId, "no data")
+                    views.setTextViewText(slot.signalId, "no data")
+                    views.setTextViewText(slot.riskId, "")
+                    views.setTextViewText(slot.potentialId, "")
                 } else {
                     views.setTextViewText(slot.tickerId, item.ticker.uppercase(Locale.US))
-                    views.setTextViewText(slot.metaId, "${item.signal} · ${item.score}/100")
+                    views.setTextViewText(slot.signalId, "${item.signal} · ${item.score}/100")
+                    val riskColor = when {
+                        item.risk.contains("HIGH", true) -> red
+                        item.risk.contains("LOW", true) -> green
+                        else -> orange
+                    }
+                    views.setTextViewText(slot.riskId, "${item.risk.uppercase(Locale.US)} risk")
+                    views.setTextColor(slot.riskId, riskColor)
+                    val sign = if (item.forecastPct >= 0) "+" else ""
+                    views.setTextViewText(slot.potentialId, "Pot. $sign${"%.1f".format(Locale.US, item.forecastPct)}%")
+                    views.setTextColor(slot.potentialId, if (item.forecastPct >= 0) green else red)
                 }
                 views.setTextColor(slot.tickerId, Color.WHITE)
-                views.setTextColor(slot.metaId, slot.accent)
+                views.setTextColor(slot.signalId, slot.accent)
             }
             val newestTimestamp = items.maxOfOrNull { it.referenceTimestamp } ?: 0L
             val stamp = if (newestTimestamp > 0L) {
