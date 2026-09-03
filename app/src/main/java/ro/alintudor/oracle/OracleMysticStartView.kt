@@ -69,7 +69,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,101f,405f,250f,125f,26f,time,true) else drawCards(c,10f,555f,165f,132f,13f,time,false)
+        hit.clear(); if(wide)drawCards(c,101f,415f,250f,125f,26f,time,true) else drawCards(c,10f,600f,165f,132f,13f,time,false)
         text(c,"357AT2026",cx,Y(if(wide)775f else 1090f),S(10f),gold,Typeface.DEFAULT_BOLD,.18f,true); postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
@@ -147,14 +147,15 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             val col:Int;val row:Int
             if(i<4){col=i;row=0}else{col=i-4;row=1}
             val count=if(row==0)4 else 3
-            val rowW=count*cw+(count-1)*gap
-            val rowLeft=if(row==0)left else left+(4*cw+3*gap-rowW)/2f
+            // Row 2 is offset half a card to the right (brick/masonry weave)
+            // instead of centered under row 1 — a clearly different layout.
+            val rowLeft=if(row==0)left else left+(cw+gap)/2f
             val l=rowLeft+col*(cw+gap)
-            // Gentle arc per row (each row bows upward toward its middle) instead of
-            // a flat grid — keeps the exact module order, just a livelier layout.
+            // The two rows arc in opposite directions, giving an S-shaped flow.
             val hump=if(count>1) sin(Math.PI*col/(count-1)).toFloat() else 0f
-            val arch=ch*0.20f
-            val t=top+row*(ch+gap)-arch*hump
+            val arch=ch*0.22f
+            val direction=if(row==0) 1f else -1f
+            val t=top+row*(ch+gap)-arch*hump*direction
             val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch))
             hit+=r to modules[i].key
             card(c,r,modules[i],time,i,wide)

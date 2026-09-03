@@ -135,14 +135,15 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
         if (host.content.childCount > 1) host.content.removeViews(1, host.content.childCount - 1)
 
+        val topBg = GradientDrawable().apply {
+            setColor(Color.rgb(5, 10, 19))
+            cornerRadius = host.dp(16).toFloat()
+            setStroke(host.dp(1), host.accent)
+        }
         val top = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(16), host.dp(14), host.dp(16), host.dp(14))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(5, 10, 19))
-                cornerRadius = host.dp(16).toFloat()
-                setStroke(host.dp(1), host.accent)
-            }
+            background = topBg
         }
         val headline = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         headline.addView(TextView(host.root.context).apply {
@@ -207,6 +208,19 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         top.translationY = host.dp(24).toFloat()
         top.animate().alpha(1f).translationY(0f).setDuration(400L)
             .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        run {
+            val strokePx = host.dp(1)
+            val ar = Color.red(host.accent); val ag = Color.green(host.accent); val ab = Color.blue(host.accent)
+            android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                duration = 2000L
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { anim ->
+                    if (!top.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                    val q = anim.animatedValue as Float
+                    topBg.setStroke(strokePx, Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
+                }
+            }.start()
+        }
 
         // ANALYSIS_PARAMETERS_V8
         // All market-relevant values are presented in one two-column matrix:
@@ -657,15 +671,16 @@ host.content.addView(TextView(host.root.context).apply {
             .filter { it.isNotBlank() }
             .distinct()
             .forEachIndexed { index, ticker ->
+                val rowBg = GradientDrawable().apply {
+                    setColor(Color.rgb(7, 12, 23))
+                    cornerRadius = host.dp(14).toFloat()
+                    setStroke(host.dp(1), Color.rgb(45, 70, 105))
+                }
                 val row = LinearLayout(host.root.context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(host.dp(8), host.dp(8), host.dp(8), host.dp(8))
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(7, 12, 23))
-                        cornerRadius = host.dp(14).toFloat()
-                        setStroke(host.dp(1), Color.rgb(45, 70, 105))
-                    }
+                    background = rowBg
                 }
 
                 // Real Android Button: this is deliberately the primary navigation control.
@@ -732,6 +747,17 @@ host.content.addView(TextView(host.root.context).apply {
                 row.translationY = host.dp(20).toFloat()
                 row.animate().alpha(1f).translationY(0f).setStartDelay(index * 80L).setDuration(360L)
                     .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+                val rowStrokePx = host.dp(1)
+                android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                    duration = 2000L
+                    startDelay = index * 160L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    addUpdateListener { anim ->
+                        if (!row.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                        val q = anim.animatedValue as Float
+                        rowBg.setStroke(rowStrokePx, Color.argb((130 + 100 * q).toInt(), 75, 225, 255))
+                    }
+                }.start()
             }
     }
 
@@ -767,56 +793,29 @@ host.content.addView(TextView(host.root.context).apply {
         })
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
 
-        // Fills the space below the header card with animated, knowledge-themed
-        // content (independent of whether any articles are cached yet).
-        host.addSectionLabel("EXPLORE TOPICS")
-        val topics = listOf(
-            Triple("FUNDAMENTALS", "P/E, earnings, balance sheets", Color.rgb(120, 255, 45)),
-            Triple("TECHNICAL ANALYSIS", "Trends, patterns, indicators", Color.rgb(20, 220, 255)),
-            Triple("RISK MANAGEMENT", "Position sizing, stop-loss", Color.rgb(255, 80, 90)),
-            Triple("MARKET PSYCHOLOGY", "Sentiment, cycles, bias", Color.rgb(220, 55, 255)),
-            Triple("VALUATION", "Intrinsic value, multiples", Color.rgb(255, 205, 35)),
-            Triple("MACRO TRENDS", "Rates, inflation, cycles", Color.rgb(255, 160, 25))
-        )
-        var topicsRow: LinearLayout? = null
-        topics.forEachIndexed { index, (title, sub, color) ->
-            if (index % 2 == 0) {
-                topicsRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
-                host.content.addView(topicsRow, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
-            }
-            val tileBg = GradientDrawable().apply {
-                setColor(Color.rgb(7, 11, 22)); cornerRadius = host.dp(14).toFloat(); setStroke(host.dp(1), color)
-            }
-            val tile = LinearLayout(host.root.context).apply {
+        // Fills the space below the header card with black-and-white pencil-sketch
+        // style illustrations — books and a classical wise figure — instead of
+        // colored topic tiles.
+        host.addSectionLabel("WISDOM, SKETCHED")
+        val sketchRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
+        host.content.addView(sketchRow, LinearLayout.LayoutParams(-1, host.dp(150)).apply { setMargins(0, 0, 0, host.dp(10)) })
+        val sketchKinds = listOf(KnowledgeSketchView.KIND_SAGE, KnowledgeSketchView.KIND_BOOKS, KnowledgeSketchView.KIND_OWL)
+        sketchKinds.forEachIndexed { index, kind ->
+            val panel = LinearLayout(host.root.context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(host.dp(12), host.dp(12), host.dp(12), host.dp(12))
-                background = tileBg
-            }
-            tile.addView(TextView(host.root.context).apply { text = title; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); letterSpacing = .02f })
-            tile.addView(TextView(host.root.context).apply { text = sub; textSize = 10f; setTextColor(Color.rgb(175, 182, 198)); setPadding(0, host.dp(4), 0, 0) })
-            topicsRow?.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                if (index % 2 == 1) setMargins(host.dp(6), 0, 0, 0) else setMargins(0, 0, host.dp(6), 0)
-            })
-
-            // Entrance: fade + rise, staggered.
-            tile.alpha = 0f
-            tile.translationY = host.dp(20).toFloat()
-            tile.animate().alpha(1f).translationY(0f).setStartDelay(index * 90L).setDuration(360L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-
-            // Continuous slow pulse on the tile's accent border.
-            val r = Color.red(color); val g = Color.green(color); val b = Color.blue(color)
-            val strokePx = host.dp(1)
-            android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
-                duration = 2200L
-                startDelay = index * 150L
-                repeatCount = android.animation.ValueAnimator.INFINITE
-                addUpdateListener { anim ->
-                    if (!tile.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
-                    val q = anim.animatedValue as Float
-                    tileBg.setStroke(strokePx, Color.argb((140 + 115 * q).toInt(), r, g, b))
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(10, 10, 10))
+                    cornerRadius = host.dp(14).toFloat()
+                    setStroke(host.dp(1), Color.rgb(90, 90, 90))
                 }
-            }.start()
+            }
+            panel.addView(KnowledgeSketchView(host.root.context, kind), LinearLayout.LayoutParams(-1, -1))
+            sketchRow.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply {
+                setMargins(if (index == 0) 0 else host.dp(5), 0, if (index == sketchKinds.size - 1) 0 else host.dp(5), 0)
+            })
+            panel.alpha = 0f
+            panel.animate().alpha(1f).setStartDelay(index * 160L).setDuration(500L).start()
         }
 
         if (items.isEmpty()) return
@@ -938,6 +937,138 @@ host.content.addView(TextView(host.root.context).apply {
             paint.style = android.graphics.Paint.Style.STROKE
 
             postInvalidateDelayed(60L)
+        }
+    }
+
+    /** Black-and-white pencil-sketch style illustrations: a classical wise figure,
+     *  a stack of books, and an owl with a scroll. Hand-drawn look via doubled,
+     *  slightly-offset strokes and light diagonal hatching; monochrome only. */
+    private class KnowledgeSketchView(context: android.content.Context, private val kind: Int) : android.view.View(context) {
+        companion object { const val KIND_SAGE = 0; const val KIND_BOOKS = 1; const val KIND_OWL = 2 }
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        private val startNanos = System.nanoTime()
+        private val ink = Color.rgb(215, 212, 205) // graphite-on-dark-paper tone
+
+        private fun sketchLine(c: android.graphics.Canvas, x1: Float, y1: Float, x2: Float, y2: Float, w: Float, a: Int, jitter: Float) {
+            paint.strokeWidth = w; paint.color = ink; paint.alpha = a
+            c.drawLine(x1, y1, x2, y2, paint)
+            // A second, faint offset stroke gives the doubled hand-drawn pencil look.
+            paint.alpha = (a * 0.45f).toInt()
+            c.drawLine(x1 + jitter, y1 - jitter, x2 + jitter, y2 - jitter, paint)
+        }
+        private fun sketchPath(c: android.graphics.Canvas, path: android.graphics.Path, w: Float, a: Int) {
+            paint.strokeWidth = w; paint.color = ink; paint.alpha = a
+            c.drawPath(path, paint)
+        }
+        private fun hatch(c: android.graphics.Canvas, cx: Float, cy: Float, r: Float, lines: Int, a: Int) {
+            paint.strokeWidth = 1.2f; paint.color = ink; paint.alpha = a
+            for (i in 0 until lines) {
+                val t = i / lines.toFloat()
+                val x = cx - r + t * 2f * r
+                c.drawLine(x, cy - r * 0.5f, x - r * 0.3f, cy + r * 0.5f, paint)
+            }
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
+            val time = (System.nanoTime() - startNanos) / 1_000_000_000.0
+            // Slow graphite shimmer instead of color — keeps it monochrome.
+            val shimmer = (0.75 + 0.25 * kotlin.math.sin(time * 0.9)).toFloat()
+            val baseAlpha = (215 * shimmer).toInt().coerceIn(150, 235)
+            val cx = w / 2f
+
+            when (kind) {
+                KIND_SAGE -> {
+                    val cy = h * 0.36f; val headR = w * 0.17f
+                    // Head
+                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx, cy, headR, android.graphics.Path.Direction.CW) }, w * 0.028f, baseAlpha)
+                    // Beard
+                    val beard = android.graphics.Path().apply {
+                        moveTo(cx - headR * 0.75f, cy + headR * 0.55f)
+                        cubicTo(cx - headR * 0.5f, cy + headR * 1.9f, cx + headR * 0.5f, cy + headR * 1.9f, cx + headR * 0.75f, cy + headR * 0.55f)
+                    }
+                    sketchPath(canvas, beard, w * 0.024f, baseAlpha)
+                    hatch(canvas, cx, cy + headR * 1.15f, headR * 0.7f, 7, (baseAlpha * 0.5f).toInt())
+                    // Simple hair strokes on top
+                    for (i in -2..2) sketchLine(canvas, cx + i * headR * 0.28f, cy - headR * 0.95f, cx + i * headR * 0.32f, cy - headR * 0.55f, w * 0.014f, (baseAlpha * 0.8f).toInt(), 1.2f)
+                    // Shoulders / toga
+                    val toga = android.graphics.Path().apply {
+                        moveTo(cx - w * 0.34f, h * 0.86f)
+                        lineTo(cx - headR * 0.85f, cy + headR * 1.35f)
+                        lineTo(cx + headR * 0.85f, cy + headR * 1.35f)
+                        lineTo(cx + w * 0.34f, h * 0.86f)
+                    }
+                    sketchPath(canvas, toga, w * 0.022f, baseAlpha)
+                    for (i in 0 until 4) sketchLine(canvas, cx - w * 0.18f + i * w * 0.12f, cy + headR * 1.5f, cx - w * 0.14f + i * w * 0.12f, h * 0.83f, w * 0.012f, (baseAlpha * 0.55f).toInt(), 0.8f)
+                }
+                KIND_BOOKS -> {
+                    val baseY = h * 0.80f
+                    val widths = floatArrayOf(0.62f, 0.54f, 0.46f)
+                    var y = baseY
+                    widths.forEachIndexed { i, wf ->
+                        val bw = w * wf; val bh = h * 0.10f
+                        val tilt = if (i % 2 == 0) -0.02f else 0.02f
+                        val rect = android.graphics.Path().apply {
+                            moveTo(cx - bw / 2f, y)
+                            lineTo(cx + bw / 2f + w * tilt, y - h * 0.01f)
+                            lineTo(cx + bw / 2f + w * tilt, y - bh)
+                            lineTo(cx - bw / 2f, y - bh - h * 0.01f)
+                            close()
+                        }
+                        sketchPath(canvas, rect, w * 0.02f, baseAlpha)
+                        sketchLine(canvas, cx - bw / 2f + w * 0.03f, y - bh * 0.5f, cx + bw / 2f - w * 0.03f, y - bh * 0.5f, w * 0.01f, (baseAlpha * 0.5f).toInt(), 0.6f)
+                        y -= bh + h * 0.015f
+                    }
+                    // Open book on top, pages fanned.
+                    val ocy = y - h * 0.02f
+                    val obw = w * 0.34f; val obh = h * 0.09f
+                    val leftPage = android.graphics.Path().apply {
+                        moveTo(cx, ocy); cubicTo(cx - obw * 0.5f, ocy - obh * 1.4f, cx - obw, ocy - obh * 0.4f, cx - obw, ocy + obh * 0.3f)
+                        cubicTo(cx - obw * 0.5f, ocy + obh * 0.1f, cx - obw * 0.1f, ocy + obh * 0.15f, cx, ocy + obh * 0.4f)
+                    }
+                    val rightPage = android.graphics.Path().apply {
+                        moveTo(cx, ocy); cubicTo(cx + obw * 0.5f, ocy - obh * 1.4f, cx + obw, ocy - obh * 0.4f, cx + obw, ocy + obh * 0.3f)
+                        cubicTo(cx + obw * 0.5f, ocy + obh * 0.1f, cx + obw * 0.1f, ocy + obh * 0.15f, cx, ocy + obh * 0.4f)
+                    }
+                    sketchPath(canvas, leftPage, w * 0.018f, baseAlpha)
+                    sketchPath(canvas, rightPage, w * 0.018f, baseAlpha)
+                }
+                else -> { // KIND_OWL
+                    val cy = h * 0.42f; val bodyRx = w * 0.24f; val bodyRy = h * 0.22f
+                    sketchPath(canvas, android.graphics.Path().apply { addOval(cx - bodyRx, cy - bodyRy, cx + bodyRx, cy + bodyRy, android.graphics.Path.Direction.CW) }, w * 0.024f, baseAlpha)
+                    // Ear tufts
+                    sketchLine(canvas, cx - bodyRx * 0.55f, cy - bodyRy * 0.85f, cx - bodyRx * 0.75f, cy - bodyRy * 1.5f, w * 0.02f, baseAlpha, 1f)
+                    sketchLine(canvas, cx + bodyRx * 0.55f, cy - bodyRy * 0.85f, cx + bodyRx * 0.75f, cy - bodyRy * 1.5f, w * 0.02f, baseAlpha, 1f)
+                    // Eyes
+                    val eyeR = bodyRx * 0.28f
+                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx - bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR, android.graphics.Path.Direction.CW) }, w * 0.016f, baseAlpha)
+                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx + bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR, android.graphics.Path.Direction.CW) }, w * 0.016f, baseAlpha)
+                    paint.style = android.graphics.Paint.Style.FILL; paint.color = ink; paint.alpha = (baseAlpha * 0.8f).toInt()
+                    canvas.drawCircle(cx - bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR * 0.35f, paint)
+                    canvas.drawCircle(cx + bodyRx * 0.4f, cy - bodyRy * 0.1f, eyeR * 0.35f, paint)
+                    paint.style = android.graphics.Paint.Style.STROKE
+                    // Beak
+                    val beak = android.graphics.Path().apply {
+                        moveTo(cx - eyeR * 0.4f, cy + bodyRy * 0.05f); lineTo(cx, cy + bodyRy * 0.35f); lineTo(cx + eyeR * 0.4f, cy + bodyRy * 0.05f)
+                    }
+                    sketchPath(canvas, beak, w * 0.016f, baseAlpha)
+                    hatch(canvas, cx, cy + bodyRy * 0.4f, bodyRx * 0.55f, 6, (baseAlpha * 0.4f).toInt())
+                    // Scroll beneath the owl.
+                    val sy = h * 0.82f; val sw = w * 0.34f
+                    sketchPath(canvas, android.graphics.Path().apply {
+                        moveTo(cx - sw, sy); cubicTo(cx - sw * 0.6f, sy - h * 0.04f, cx + sw * 0.6f, sy - h * 0.04f, cx + sw, sy)
+                    }, w * 0.02f, baseAlpha)
+                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx - sw, sy, w * 0.025f, android.graphics.Path.Direction.CW) }, w * 0.018f, baseAlpha)
+                    sketchPath(canvas, android.graphics.Path().apply { addCircle(cx + sw, sy, w * 0.025f, android.graphics.Path.Direction.CW) }, w * 0.018f, baseAlpha)
+                }
+            }
+            postInvalidateDelayed(90L)
         }
     }
 

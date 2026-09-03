@@ -80,7 +80,8 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val action = decision(a?.action ?: "HOLD", t)
         val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); else -> Color.rgb(50, 220, 190) }
         val reason = when { t == null -> "Insufficient technical data; local monitoring"; t.rsi >= 70 -> "RSI overheating · trend and momentum still acceptable"; t.rsi <= 30 -> "Weak RSI · selling pressure"; action == "BUY" -> "favorable trend and momentum"; action == "SELL" -> "negative signal · rising risk"; else -> "trend and momentum still acceptable" }
-        val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), Color.rgb(42, 52, 76), host.dp(1)) }
+        val cardBg = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), accent, host.dp(1))
+        val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = cardBg }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(context).apply { text = "%02d".format(rank); textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent) }, LinearLayout.LayoutParams(host.dp(34), host.dp(30)))
         top.addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; addView(TextView(context).apply { text = p.ticker; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }); addView(TextView(context).apply { text = "${p.company} • ${shares(p.shares)} shares • entry ${money(p.avgCost)}"; textSize = 10f; setTextColor(Color.rgb(155, 166, 188)); setPadding(0, host.dp(2), 0, 0) }) }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -99,6 +100,20 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         c.addView(TextView(context).apply { text = "Updated locally • ${date.format(Date())}"; textSize = 9f; setTextColor(Color.rgb(105, 120, 145)); setPadding(host.dp(34), host.dp(7), 0, 0) }); host.content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
         c.alpha = 0f; c.translationY = host.dp(24).toFloat()
         c.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+
+        // Continuous, clearly-visible pulse on the card border (not just the one-time entrance).
+        val strokePx = host.dp(1)
+        val ar = Color.red(accent); val ag = Color.green(accent); val ab = Color.blue(accent)
+        android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+            duration = 1900L
+            startDelay = (rank - 1) * 150L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                if (!c.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                val q = anim.animatedValue as Float
+                cardBg.setStroke(strokePx, Color.argb((150 + 105 * q).toInt(), ar, ag, ab))
+            }
+        }.start()
     }
 
     private fun technicalPrice(value: Double?, fallback: Double): String { val v = value?.takeIf { it.isFinite() && it > 0.0 } ?: fallback.takeIf { it.isFinite() && it > 0.0 }; return if (v == null) "N/A" else money(v) }

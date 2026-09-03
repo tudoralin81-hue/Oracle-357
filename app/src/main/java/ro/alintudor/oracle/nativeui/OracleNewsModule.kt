@@ -119,7 +119,8 @@ class OracleNewsModule(private val host: OracleNativeModule) {
 
     private fun addSource(source:String,items:List<OracleNews>,index:Int=0){
         val accent=sourceAccent(source)
-        val box=LinearLayout(host.root.context).apply{orientation=LinearLayout.VERTICAL;background=GradientDrawable().apply{setColor(Color.rgb(9,15,29));cornerRadius=host.dp(16).toFloat();setStroke(host.dp(1),accent)};setPadding(host.dp(14),host.dp(13),host.dp(14),host.dp(12))}
+        val boxBg=GradientDrawable().apply{setColor(Color.rgb(9,15,29));cornerRadius=host.dp(16).toFloat();setStroke(host.dp(1),accent)}
+        val box=LinearLayout(host.root.context).apply{orientation=LinearLayout.VERTICAL;background=boxBg;setPadding(host.dp(14),host.dp(13),host.dp(14),host.dp(12))}
         box.addView(TextView(host.root.context).apply{text=source;textSize=19f;typeface=Typeface.DEFAULT_BOLD;setTextColor(accent);setPadding(host.dp(2),0,0,host.dp(8))})
         // Keep the order produced by rotateArticlesWithinSources. Do NOT sort here:
         // sorting here would undo the visible refresh rotation.
@@ -128,6 +129,15 @@ class OracleNewsModule(private val host: OracleNativeModule) {
         host.content.addView(box,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,host.dp(12))})
         box.alpha=0f; box.translationY=host.dp(22).toFloat()
         box.animate().alpha(1f).translationY(0f).setStartDelay(index*110L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        val strokePx=host.dp(1); val ar=Color.red(accent); val ag=Color.green(accent); val ab=Color.blue(accent)
+        android.animation.ValueAnimator.ofFloat(0f,1f,0f).apply{
+            duration=2000L; startDelay=index*160L; repeatCount=android.animation.ValueAnimator.INFINITE
+            addUpdateListener{ anim->
+                if(!box.isAttachedToWindow){anim.cancel();return@addUpdateListener}
+                val q=anim.animatedValue as Float
+                boxBg.setStroke(strokePx,Color.argb((140+105*q).toInt(),ar,ag,ab))
+            }
+        }.start()
     }
 
     private fun addStory(box:LinearLayout,n:OracleNews,accent:Int){
