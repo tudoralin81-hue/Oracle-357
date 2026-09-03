@@ -184,6 +184,18 @@ class OracleMysticActivity : Activity() {
             if (isPassword) inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), border) }
             setPadding(dp(12), dp(10), dp(12), dp(10))
+            if (onAutofilled != null) {
+                // Fallback for autofill services that don't go through the
+                // standard View.autofill() hook (Samsung Pass has been known
+                // not to, on some OS versions) — a jump of more than one
+                // character in a single change is never manual keystroke
+                // typing, so it's a reliable stand-in signal either way.
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { if (count > 1) onAutofilled(this@apply) }
+                    override fun afterTextChanged(s: android.text.Editable?) {}
+                })
+            }
         }
         container.addView(edit, LinearLayout.LayoutParams(-1, -2))
         return edit
