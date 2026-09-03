@@ -1,1 +1,0 @@
-B518 START FIX — launcher must use approved B515/B516 V2; remove bottom host footer; keep protected modules unchanged.

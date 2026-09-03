@@ -1,1 +1,0 @@
-B516 START — remove Start footer only. Protected modules frozen. 357AT2026 retained.

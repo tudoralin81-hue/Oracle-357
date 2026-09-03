@@ -1,1 +1,0 @@
-ONE-TIME: integrate the approved B511 Analysis patch permanently into main, exactly as documented. After the integration workflow commits the canonical source, this trigger file is retained only as an audit marker.
