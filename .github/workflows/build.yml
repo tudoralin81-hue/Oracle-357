@@ -34,6 +34,24 @@ jobs:
         with:
           gradle-version: '8.10'
 
+      - name: Prepare signing key (optional — used automatically once the 4 secrets exist)
+        env:
+          KEYSTORE_B64: ${{ secrets.ORACLE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ORACLE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ORACLE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ORACLE_KEY_PASSWORD }}
+        run: |
+          if [ -n "${KEYSTORE_B64:-}" ] \
+            && [ -n "${KEYSTORE_PASSWORD:-}" ] \
+            && [ -n "${KEY_ALIAS:-}" ] \
+            && [ -n "${KEY_PASSWORD:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/oracle-release.jks"
+            echo "ORACLE_KEYSTORE_FILE=$RUNNER_TEMP/oracle-release.jks" >> "$GITHUB_ENV"
+            echo "ORACLE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ORACLE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
