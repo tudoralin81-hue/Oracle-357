@@ -212,13 +212,8 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             val rowW=count*cw+(count-1)*gap
             val rowLeft=if(row==0)left else left+(4*cw+3*gap-rowW)/2f
             val l=rowLeft+col*(cw+gap)
-            // Row 1 stays flat; row 2 zigzags per column, with a generously
-            // wide gap between rows so the two can never collide. A third,
-            // distinct arrangement from the earlier grid and arc attempts.
-            val t=if(row==0) top else {
-                val zigzag=if(col%2==0)-1f else 1f
-                top+ch+rowGap+amp*zigzag
-            }
+            // Two flat rows, all cards aligned — no zigzag.
+            val t=if(row==0) top else top+ch+gap*1.6f
             val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch))
             hit+=r to modules[i].key
             card(c,r,modules[i],time,i,wide)

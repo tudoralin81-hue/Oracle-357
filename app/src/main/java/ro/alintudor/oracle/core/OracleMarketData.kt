@@ -150,15 +150,52 @@ object OracleMarketData {
             setRequestProperty("User-Agent", "Oracle-Stock-Intelligence/1.0")
             setRequestProperty("Accept", "application/json")
         }
-        return try {
-            if (connection.responseCode !in 200..299) return emptyList()
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            parse(body)
+        val primary = try {
+            if (connection.responseCode !in 200..299) emptyList()
+            else parse(connection.inputStream.bufferedReader().use { it.readText() })
         } catch (_: Exception) {
             emptyList()
         } finally {
             connection.disconnect()
         }
+        if (primary.isNotEmpty() || interval != "1d") return primary
+        // Yahoo's unofficial endpoints change a few times a year. For daily
+        // data there's a second, independent source so the app never goes
+        // blank: Stooq's CSV feed (US tickers as "aapl.us", indices as "^spx").
+        return fetchStooqDaily(symbol, range)
+    }
+
+    private fun fetchStooqDaily(symbol: String, range: String): List<OracleOhlcvPoint> {
+        val stooqSymbol = when {
+            symbol == "^VIX" -> "^vix"
+            symbol == "^GSPC" -> "^spx"
+            symbol.startsWith("^") -> symbol.lowercase()
+            else -> symbol.lowercase().replace('.', '-') + ".us"
+        }
+        val keep = when (range) { "5d" -> 7; "1mo" -> 23; "3mo" -> 66; "6mo" -> 132; "1y" -> 262; "2y" -> 524; else -> Int.MAX_VALUE }
+        return try {
+            val c = (URL("https://stooq.com/q/d/l/?s=$stooqSymbol&i=d").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"; connectTimeout = CONNECT_TIMEOUT_MS; readTimeout = READ_TIMEOUT_MS
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/128.0.0.0 Mobile Safari/537.36")
+            }
+            try {
+                if (c.responseCode !in 200..299) return emptyList()
+                val lines = c.inputStream.bufferedReader().use { it.readLines() }
+                val out = ArrayList<OracleOhlcvPoint>()
+                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("America/New_York") }
+                for (line in lines.drop(1)) {
+                    val p = line.split(',')
+                    if (p.size < 5) continue
+                    val ts = runCatching { fmt.parse(p[0])?.time }.getOrNull() ?: continue
+                    val o = p[1].toDoubleOrNull() ?: continue; val h = p[2].toDoubleOrNull() ?: continue
+                    val l = p[3].toDoubleOrNull() ?: continue; val cl = p[4].toDoubleOrNull() ?: continue
+                    val v = p.getOrNull(5)?.toDoubleOrNull() ?: 0.0
+                    if (h <= 0.0 || l <= 0.0 || cl <= 0.0) continue
+                    out += OracleOhlcvPoint(ts + 16L * 3_600_000L, o, h, l, cl, v)
+                }
+                out.sortedBy { it.timestamp }.takeLast(keep)
+            } finally { c.disconnect() }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun parse(body: String): List<OracleOhlcvPoint> {

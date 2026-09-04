@@ -49,7 +49,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val invested = items.sumOf { it.shares * it.avgCost }
         val pnl = items.sumOf { it.pnl }
         addHero(value, pnl, if (invested == 0.0) 0.0 else pnl / invested * 100.0, items.size)
-        addMetrics(items); addPositionSummary(items); addManagementRow()
+        addMetrics(items); addPositionSummary(items); addSectorExposure(items); addManagementRow()
         val actions = OracleAnalytics.actions(items, data.history).associateBy { it.ticker }
         val tech = OracleTechnicalIndicators.all(data.history)
         items.sortedByDescending { it.marketValue }.forEachIndexed { i, p -> card(i + 1, p, actions[p.ticker], tech[p.ticker], data.journal, silent) }
@@ -125,6 +125,29 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         box.addView(TextView(context).apply { text = "TOTAL RETURN   ${signedPct(pct)}"; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(if (pnl >= 0) Color.rgb(145, 245, 35) else Color.rgb(255, 80, 65)); setPadding(host.dp(55), host.dp(8), 0, 0) })
         box.addView(TextView(context).apply { text = "P/L  ${money(pnl)}"; textSize = 13f; setTextColor(Color.rgb(175, 183, 201)); setPadding(host.dp(55), host.dp(3), 0, 0) })
         host.content.addView(box, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
+    }
+
+    /** Weight per sector. Three tech names are one bet, not three — this makes that visible. */
+    private fun addSectorExposure(items: List<OraclePosition>) {
+        val ctx = host.root.context
+        val bySector = items.groupBy { p ->
+            (OracleSP500Universe.sectorFor(ctx, p.ticker) ?: OracleRealData.resolvedSector(p.ticker) ?: "Other").trim().ifBlank { "Other" }
+        }.mapValues { (_, ps) -> ps.sumOf { it.weight } }.entries.sortedByDescending { it.value }
+        if (bySector.isEmpty()) return
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(12), host.dp(15), host.dp(12)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(12), Color.rgb(35, 44, 66), host.dp(1)) }
+        val top = bySector.first()
+        val warn = top.value >= 60.0
+        box.addView(TextView(context).apply { text = "SECTOR EXPOSURE"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.1f; setTextColor(if (warn) Color.rgb(255, 170, 40) else Color.rgb(55, 215, 255)) })
+        bySector.forEach { (sector, w) ->
+            val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(7), 0, 0) }
+            line.addView(TextView(context).apply { text = sector; textSize = 12f; setTextColor(Color.rgb(200, 207, 222)) }, LinearLayout.LayoutParams(0, -2, 1f))
+            val bar = android.view.View(context).apply { setBackgroundColor(if (w >= 60.0) Color.rgb(255, 170, 40) else Color.rgb(55, 215, 255)) }
+            line.addView(bar, LinearLayout.LayoutParams((host.dp(120) * (w / 100.0)).toInt().coerceAtLeast(host.dp(2)), host.dp(6)).apply { setMargins(host.dp(8), 0, host.dp(8), 0) })
+            line.addView(TextView(context).apply { text = pct(w); textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.END }, LinearLayout.LayoutParams(host.dp(56), -2))
+            box.addView(line)
+        }
+        if (warn) box.addView(TextView(context).apply { text = "${pct(top.value)} in ${top.key} \u2014 the positions move together; a sector-wide drop hits the whole portfolio at once."; textSize = 11f; setTextColor(Color.rgb(255, 170, 40)); setPadding(0, host.dp(8), 0, 0) })
+        host.content.addView(box, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(2), 0, host.dp(8)) })
     }
 
     private fun addMetrics(items: List<OraclePosition>) {

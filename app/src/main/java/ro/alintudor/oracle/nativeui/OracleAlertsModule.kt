@@ -6,7 +6,13 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.app.AlertDialog
+import android.text.InputType
+import android.widget.EditText
 import ro.alintudor.oracle.core.OracleAlert
+import ro.alintudor.oracle.core.OracleUserAlert
+import ro.alintudor.oracle.core.OracleUserAlertStore
+import ro.alintudor.oracle.core.OracleTickerScoreCache
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,14 +25,18 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
     private val context get() = host.root.context
     private val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
 
+    private var lastAlerts: List<OracleAlert> = emptyList()
+
     fun render(alerts: List<OracleAlert>) {
+        lastAlerts = alerts
         host.content.removeAllViews()
         val active = alerts.filter { it.active }
         val high = active.count { it.level.equals("HIGH", true) }
         val medium = active.count { it.level.equals("MEDIUM", true) }
-        host.addCard("SELL ALERTS", "Synced alert center")
+        host.addCard("ALERT CENTER", "Three sources, one list: Oracle's own BUY / SELL / REDUCE decisions on your positions, the critical conditions (urgent sell, fading growth, high volatility), and the alerts you define below. Critical and personal alerts push-notify and email.")
         addSummary(active.size, high, medium, alerts.size - active.size)
-        if (alerts.isEmpty()) { host.addCard("NO ALERTS", "There are no alerts in the local data."); return }
+        addMyAlerts()
+        if (alerts.isEmpty()) { host.addCard("NO ALERTS", "Nothing has fired yet."); return }
 
         val critical = alerts.filter { it.kind != "SIGNAL" }
         val plain = alerts.filter { it.kind == "SIGNAL" }
@@ -36,6 +46,77 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             host.addSectionLabel("SIGNAL ALERTS", host.accent)
         }
         plain.sortedWith(compareByDescending<OracleAlert>{it.active}.thenByDescending{severityRank(it.level)}.thenByDescending{it.timestamp}).take(100).forEach { addAlert(it, critical = false) }
+    }
+
+    private fun addMyAlerts() {
+        val store = OracleUserAlertStore(context)
+        val mine = store.load()
+        host.addSectionLabel("MY ALERTS \u2022 ${mine.size}", host.accent)
+        mine.sortedWith(compareByDescending<OracleUserAlert> { it.enabled }.thenByDescending { it.createdAt }).forEach { a ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(host.dp(14), host.dp(10), host.dp(10), host.dp(10))
+                background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(12), if (a.enabled) host.accent else Color.rgb(45, 55, 75), host.dp(1))
+            }
+            val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(TextView(context).apply { text = "${a.ticker}  \u00b7  ${a.describe()}"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(if (a.enabled) Color.WHITE else Color.rgb(140, 150, 172)) })
+            val now = OracleTickerScoreCache.get(context, a.ticker)
+            val status = when {
+                !a.enabled && a.lastFiredAt > 0L -> "Fired ${date.format(Date(a.lastFiredAt))} \u2014 disarmed"
+                a.type == "SIGNAL_CHANGE" -> if (now != null) "Armed \u00b7 now ${now.signal} (score ${now.score})" else "Armed \u00b7 waiting for first score"
+                a.type.startsWith("SCORE") -> if (now != null) "Armed \u00b7 now score ${now.score}" else "Armed"
+                else -> if (now != null) "Armed \u00b7 now ${String.format(Locale.US, "%.2f", now.price)}" else "Armed"
+            }
+            col.addView(TextView(context).apply { text = status; textSize = 11f; setTextColor(Color.rgb(150, 160, 182)); setPadding(0, host.dp(3), 0, 0) })
+            row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(TextView(context).apply {
+                text = "\u2715"; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.rgb(255, 105, 105))
+                setPadding(host.dp(12), host.dp(6), host.dp(8), host.dp(6)); isClickable = true; isFocusable = true
+                setOnClickListener { store.remove(a.id); render(lastAlerts) }
+            })
+            host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(8)) })
+        }
+        host.content.addView(TextView(context).apply {
+            text = "+ ADD ALERT"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(host.accent)
+            background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(11), host.accent, host.dp(1)); isClickable = true; isFocusable = true
+            setOnClickListener { addAlertDialog() }
+        }, LinearLayout.LayoutParams(-1, host.dp(44)).apply { setMargins(0, 0, 0, host.dp(12)) })
+    }
+
+    private fun addAlertDialog() {
+        val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
+        val types = listOf("PRICE_ABOVE" to "Price above", "PRICE_BELOW" to "Price below", "SCORE_ABOVE" to "Growth score \u2265", "SCORE_BELOW" to "Growth score \u2264", "SIGNAL_CHANGE" to "Signal changes")
+        var selected = types[0].first
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(20), host.dp(14), host.dp(20), host.dp(6)); setBackgroundColor(panel) }
+        fun field(hint: String, type: Int) = EditText(context).apply {
+            this.hint = hint; inputType = type; setTextColor(Color.WHITE); setHintTextColor(Color.rgb(120, 130, 152)); textSize = 15f
+            background = OracleNativeModule.rounded(Color.rgb(4, 8, 16), host.dp(10), border, host.dp(1)); setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
+        }
+        val ticker = field("Ticker (e.g. NVDA)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
+        val threshold = field("Level (price or score)", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        box.addView(ticker, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+        val typeRow = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val buttons = ArrayList<TextView>()
+        types.forEach { (key, label) ->
+            val b = TextView(context).apply {
+                text = label; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setPadding(0, host.dp(9), 0, host.dp(9)); isClickable = true; isFocusable = true
+                setOnClickListener { selected = key; buttons.forEach { it.setTextColor(Color.rgb(150, 160, 182)); it.background = OracleNativeModule.rounded(panel, host.dp(9), border, host.dp(1)) }
+                    setTextColor(host.accent); background = OracleNativeModule.rounded(panel, host.dp(9), host.accent, host.dp(1)); threshold.visibility = if (key == "SIGNAL_CHANGE") android.view.View.GONE else android.view.View.VISIBLE }
+            }
+            buttons += b; typeRow.addView(b, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(6)) })
+        }
+        buttons[0].performClick()
+        box.addView(typeRow)
+        box.addView(threshold, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(4), 0, 0) })
+        AlertDialog.Builder(context).setTitle("New alert").setView(box)
+            .setPositiveButton("Add") { _, _ ->
+                val t = ticker.text.toString().trim().uppercase(Locale.US)
+                val v = threshold.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+                if (t.isBlank() || (selected != "SIGNAL_CHANGE" && v <= 0.0)) { android.widget.Toast.makeText(context, "Enter a ticker and a level", android.widget.Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                OracleUserAlertStore(context).add(t, selected, v)
+                Thread { runCatching { OracleTickerScoreCache.refresh(context, listOf(t), maxFetches = 1) }; host.root.post { if (host.root.isAttachedToWindow) render(lastAlerts) } }.start()
+                render(lastAlerts)
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun addSummary(active:Int,high:Int,medium:Int,closed:Int){
@@ -54,6 +135,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
         "URGENT_SELL" -> "🚨 URGENT SELL"
         "GROWTH_FADING" -> "📈 RALLY MAY FADE"
         "HIGH_VOLATILITY" -> "⚡ HIGH VOLATILITY"
+        "USER" -> "MY ALERT"
         else -> kind
     }
 
@@ -63,6 +145,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             a.kind == "URGENT_SELL" -> Color.rgb(255, 60, 60)
             a.kind == "GROWTH_FADING" -> Color.rgb(255, 205, 45)
             a.kind == "HIGH_VOLATILITY" -> Color.rgb(255, 150, 45)
+            a.kind == "USER" -> Color.rgb(80, 200, 255)
             a.level.equals("HIGH", true) -> Color.rgb(255, 75, 60)
             a.level.equals("MEDIUM", true) -> Color.rgb(255, 205, 45)
             else -> Color.rgb(70, 185, 255)

@@ -98,6 +98,14 @@ object OracleLocalProcessor {
             key to peak
         }
         OracleTechnicalCache.put(technical, peaks)
+        // Ticker scores for Watchlist + user alerts. Held tickers are free
+        // (candles already fetched); the rest are fetched only when stale.
+        runCatching {
+            val ctx = repository.context
+            OracleTickerScoreCache.put(ctx, candlesByTicker.mapNotNull { (t, c) -> OracleTickerScoreCache.fromCandles(t, c) })
+            val extra = (OracleWatchlistStore(ctx).load() + OracleUserAlertStore(ctx).tickers()).map { it.uppercase(Locale.US) }.filter { it !in candlesByTicker }.distinct()
+            OracleTickerScoreCache.refresh(ctx, extra, maxFetches = 10)
+        }
         // Decisions are recomputed on EVERY refresh — a stored action never
         // outranks a fresh one (that is exactly how HOLD used to get frozen).
         val technicalByKey = technical.associateBy { it.ticker.uppercase(Locale.US) }
@@ -113,42 +121,23 @@ object OracleLocalProcessor {
         runCatching { OraclePerformanceStore(repository.context).update(maxFetches = 8) }
 
         val oldAlerts=current.alerts.filter{it.active}
-        val signalAlerts=actions.filter{it.action=="BUY"||it.action=="SELL"||it.action=="REDUCE"}.map{OracleAlert(it.ticker,when(it.action){"SELL"->"HIGH";"REDUCE"->"MEDIUM";else->"INFO"},"${it.action} signal",it.reason,now,true,"SIGNAL")}
-
-        // Critical alerts: urgent sell, fading growth, high volatility. These are
-        // the ones that also push-notify and email — kept as their own "kind" so
-        // they never overwrite/hide the plain BUY/SELL signal for the same ticker.
+        // Every alert comes out of OracleAlertCenter — one implementation for
+        // the in-app refresh and the background check alike.
+        val signalAlerts=OracleAlertCenter.signalAlerts(actions, now)
         val technicalByTicker = technical.associateBy { it.ticker.uppercase(Locale.US) }
-        val criticalAlerts = normalized.flatMap { p -> OracleAlertRules.evaluate(p, technicalByTicker[p.ticker.uppercase(Locale.US)], now) }
+        val criticalAlerts = OracleAlertCenter.criticalAlerts(normalized, technicalByTicker, now)
+        val userAlerts = runCatching {
+            val quotes = normalized.associate { it.ticker.uppercase(Locale.US) to it.currentPrice }
+            OracleAlertCenter.userAlerts(repository.context, quotes, OracleTickerScoreCache.all(repository.context), now)
+        }.getOrDefault(emptyList())
 
-        val alertsByKey=(oldAlerts+signalAlerts+criticalAlerts).groupBy{"${it.ticker}|${it.kind}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
+        val alertsByKey=(oldAlerts+signalAlerts+criticalAlerts+userAlerts).groupBy{"${it.ticker}|${it.kind}|${if(it.kind=="USER") it.title else ""}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
 
-        // Push-notify at most once per ticker+kind+day, so a still-active
-        // condition doesn't re-alert on every single refresh. Only outside
-        // market hours are alerts suppressed entirely — nothing meaningfully
-        // new happens to a price while the market is closed.
-        if (criticalAlerts.isNotEmpty() && OracleMarketCalendar.status(now).open) {
-            val settings = OracleAlertSettingsStore(repository.context)
-            val auth = OracleAuthStore(repository.context)
-            val dayKey = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
-            for (alert in criticalAlerts) {
-                val notifyKey = "${alert.ticker}|${alert.kind}|$dayKey"
-                if (!settings.alreadyNotified(notifyKey)) {
-                    // The server path (email + real push via Firebase) is the
-                    // one true notification. OracleNotifier (fully local, no
-                    // server) is only a fallback for the rare case there's no
-                    // session — with a session, using both used to mean two
-                    // pushes plus an email for the same single alert.
-                    if (auth.hasSession()) {
-                        OracleApiClient.notify(auth.token(),
-                            "Oracle alert — ${alert.ticker}: ${alert.title}",
-                            "Dear investor,\n\nOracle has an alert for you.\n\n${alert.ticker} — ${alert.title}\n${alert.message}\n\n— Oracle")
-                    } else {
-                        OracleNotifier.notify(repository.context, alert, settings.email())
-                    }
-                    settings.markNotified(notifyKey)
-                }
-            }
+        // Push-notify critical + user alerts (once per ticker+kind+day), only
+        // while the market is open — nothing meaningfully new happens to a
+        // price while it's closed.
+        if ((criticalAlerts.isNotEmpty() || userAlerts.isNotEmpty()) && OracleMarketCalendar.status(now).open) {
+            OracleAlertCenter.notify(repository.context, criticalAlerts + userAlerts)
         }
 
         val journal=OracleActivityJournal.merge(current.journal,actions)

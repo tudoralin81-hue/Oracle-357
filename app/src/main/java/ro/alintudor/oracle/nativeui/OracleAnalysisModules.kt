@@ -18,6 +18,7 @@ import kotlin.math.abs
 
 class OracleSimpleModule(private val host: OracleNativeModule, private val moduleTitle: String, private val onWatchlistTickerClick: (String) -> Unit = {}) {
     companion object {
+        @Volatile private var watchlistScoring = false
         @Volatile private var tickerDraft: String = ""
         fun setTickerDraft(ticker: String) { tickerDraft = ticker.trim().uppercase(Locale.US) }
     }
@@ -668,6 +669,14 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
 
         val store = OracleWatchlistStore(host.root.context)
+        val ctx = host.root.context
+        if (items.any { OracleTickerScoreCache.isStale(ctx, it) } && !watchlistScoring) {
+            watchlistScoring = true
+            Thread {
+                runCatching { OracleTickerScoreCache.refresh(ctx, items, maxFetches = 12) }
+                host.root.post { watchlistScoring = false; if (host.root.isAttachedToWindow) renderWatchlist(store.load()) }
+            }.start()
+        }
         items.map { it.trim().uppercase(Locale.US) }
             .filter { it.isNotBlank() }
             .distinct()
@@ -703,6 +712,15 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     }
                 }
                 row.addView(tickerButton, LinearLayout.LayoutParams(0, host.dp(84), 1f))
+
+                // Live Growth-style score for the ticker (same engine as Growth),
+                // refreshed in the background when older than an hour.
+                val sc = OracleTickerScoreCache.get(host.root.context, ticker)
+                val scoreBox = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+                val scoreColor = when (sc?.signal) { "STRONG BUY" -> Color.rgb(120, 255, 45); "BUY" -> Color.rgb(145, 245, 35); "HOLD" -> Color.rgb(50, 220, 190); "WATCH" -> Color.rgb(255, 205, 45); "AVOID" -> Color.rgb(255, 90, 90); else -> Color.rgb(120, 130, 152) }
+                scoreBox.addView(TextView(host.root.context).apply { text = sc?.let { "${it.score}" } ?: "\u2014"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; setTextColor(scoreColor); gravity = Gravity.CENTER })
+                scoreBox.addView(TextView(host.root.context).apply { text = sc?.signal ?: "scoring\u2026"; textSize = 8.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(scoreColor); gravity = Gravity.CENTER })
+                row.addView(scoreBox, LinearLayout.LayoutParams(host.dp(78), host.dp(84)))
 
                 val openButton = Button(host.root.context).apply {
                     text = "›"
