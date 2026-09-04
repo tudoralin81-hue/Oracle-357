@@ -52,6 +52,39 @@ object OracleGrowthEngine {
     private val weights=mapOf("SHORT" to intArrayOf(21,18,18,12,16,12,3,4,4,2,2,1),"MEDIUM" to intArrayOf(12,12,12,16,12,9,9,5,5,6,5,4),"LONG" to intArrayOf(6,6,6,19,7,9,18,4,4,9,7,2))
     private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx")
 
+    /** SHORT technical base score (0..100) for any ticker from its daily candles —
+     *  the same evaluate() Growth ranks with, so Portfolio can speak the same
+     *  language. Null when there is not enough history (< 60 sessions). */
+    fun technicalScore(candles:List<OracleOhlcvPoint>):Int? = if(candles.size<60) null else runCatching { evaluate("_", candles)?.score }.getOrNull()
+
+    data class MarketRegime(val level:String, val note:String, val allocationFactor:Double)
+
+    /** Absolute market gate. A relative ranking always yields a "best" stock —
+     *  even in a crash. This says whether the tide is with it at all:
+     *  DEFENSIVE = SPY below its 200-day average or VIX > 30 (no BUY labels,
+     *  allocation halved); CAUTION = SPY below its 50-day average or VIX > 22
+     *  (no STRONG BUY, allocation ×0.75); NORMAL otherwise. Fail-open to
+     *  NORMAL if the index data can't be fetched, and says so. */
+    fun marketRegime():MarketRegime = runCatching {
+        val spy=OracleMarketData.fetchDaily("SPY","1y").sortedBy{it.timestamp}.map{it.close}.filter{it>0.0}
+        val vix=OracleMarketData.fetchDaily("^VIX","3mo").sortedBy{it.timestamp}.map{it.close}.filter{it>0.0}.lastOrNull()
+        if(spy.size<200) return@runCatching MarketRegime("NORMAL","Regime check unavailable (index history too short)",1.0)
+        val p=spy.last(); val sma200=spy.takeLast(200).average(); val sma50=spy.takeLast(50).average()
+        val f=java.util.Locale.US
+        val vixText=vix?.let{" \u00b7 VIX %.1f".format(f,it)} ?: ""
+        when{
+            p<sma200 || (vix!=null&&vix>30.0) -> MarketRegime("DEFENSIVE","S&P 500 %.0f is %s its 200-day average (%.0f)%s \u2014 no BUY labels, allocations halved".format(f,p,if(p<sma200)"below" else "above",sma200,vixText),0.5)
+            p<sma50 || (vix!=null&&vix>22.0) -> MarketRegime("CAUTION","S&P 500 %.0f is %s its 50-day average (%.0f)%s \u2014 no STRONG BUY, allocations reduced".format(f,p,if(p<sma50)"below" else "above",sma50,vixText),0.75)
+            else -> MarketRegime("NORMAL","S&P 500 %.0f above its 50- and 200-day averages%s".format(f,p,vixText),1.0)
+        }
+    }.getOrElse { MarketRegime("NORMAL","Regime check unavailable (index data not reachable)",1.0) }
+
+    private fun capSignal(signal:String, regime:MarketRegime):String = when(regime.level){
+        "DEFENSIVE" -> when(signal){ "STRONG BUY","BUY" -> "HOLD"; else -> signal }
+        "CAUTION" -> if(signal=="STRONG BUY") "BUY" else signal
+        else -> signal
+    }
+
     fun run(context: Context, seed:List<OracleGrowthRecommendation> = emptyList()):List<OracleGrowthRecommendation> = try {
         runInternal(context, seed)
     } catch (_: Exception) {
@@ -132,6 +165,10 @@ object OracleGrowthEngine {
         // same absolute totalDeadline used for the scan phase (Requirement #5).
         val enrichDeadline=totalDeadline
         val enrichPool=Executors.newFixedThreadPool(ENRICH_THREADS)
+        val regimeFuture=enrichPool.submit<MarketRegime> { marketRegime() }
+        val earningsFutures=technicalShortlist.associate { c ->
+            c.ticker to enrichPool.submit<Long?> { OracleRealData.nextEarningsDate(c.ticker) }
+        }
         val fundamentalFutures=technicalShortlist.associate { c ->
             c.ticker to enrichPool.submit<OracleFundamentals?> { runCatching { OracleRealData.fundamentals(c.ticker) }.getOrNull() }
         }
@@ -148,6 +185,14 @@ object OracleGrowthEngine {
         newsFutures.forEach{(ticker,f)->
             val remaining=enrichDeadline-System.nanoTime()
             if(remaining>0) runCatching { f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.let{newsContexts[ticker]=it}
+        }
+        val regime=runCatching { regimeFuture.get(maxOf(0L,enrichDeadline-System.nanoTime()), TimeUnit.NANOSECONDS) }.getOrNull()
+            ?: MarketRegime("NORMAL","Regime check timed out",1.0)
+        val nowMs=System.currentTimeMillis()
+        val earningsInDays=mutableMapOf<String,Int>()
+        earningsFutures.forEach{(ticker,f)->
+            val remaining=enrichDeadline-System.nanoTime()
+            if(remaining>0) runCatching { f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.let{ ms-> val days=((ms-nowMs)/86_400_000L).toInt(); if(days>=-1) earningsInDays[ticker]=maxOf(0,days) }
         }
         enrichPool.shutdownNow()
 
@@ -175,21 +220,23 @@ object OracleGrowthEngine {
         val out=mutableListOf<OracleGrowthRecommendation>();val used=mutableSetOf<String>()
         for(h in listOf("SHORT","MEDIUM","LONG")){
             val ranked=enriched.sortedWith(compareByDescending<C>{horizonScore(it.components,h,resolveSector(context,it.ticker,fundamentals[it.ticker]?.sector))}.thenByDescending{tie(it,h)}.thenByDescending{it.score})
-            val pick=ranked.firstOrNull{it.ticker !in used}?:continue
+            // An entry into an earnings report is a coin flip, not a setup:
+            // SHORT and MEDIUM skip names reporting within 7 days.
+            val pick=ranked.firstOrNull{ it.ticker !in used && !(h!="LONG" && (earningsInDays[it.ticker] ?: 99) <= 7) }?:continue
             used+=pick.ticker
             val score=horizonScore(pick.components,h,resolveSector(context,pick.ticker,fundamentals[pick.ticker]?.sector))
             val meta=byTicker[pick.ticker]
             val cachedTitle=meta?.newsTitle?.takeIf { it.isNotBlank() && !it.contains("Google News",true) && !it.contains(" when:",true) }
             val f=fundamentals[pick.ticker]
             val sector=resolveSector(context,pick.ticker,f?.sector ?: meta?.sector) ?: "—"
-            val correctedAllocation=OracleSectorAllocation.apply(pick.allocation,sector)
+            val correctedAllocation=(OracleSectorAllocation.apply(pick.allocation,sector)*regime.allocationFactor).let{ kotlin.math.round(it*10.0)/10.0 }.coerceAtLeast(0.5)
             val correctedWeights=weights[h]!!.copyOf()
             val news=newsContexts[pick.ticker]
             val company=meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) }
                 ?: OracleSP500Universe.nameFor(context,pick.ticker)
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
-            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=rating(score),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V5.9.7_REALDATA_SECTOR_WEIGHTED")
+            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V5.9.7_REALDATA_SECTOR_WEIGHTED",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker])
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)
         return out

@@ -55,6 +55,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // GrowthBanner from the shared module shell is the single Growth hero.
         // Do not add a second Growth banner here.
         journalStore.record(items)
+        addRegimeBanner(items)
         addSummary(items)
 
         val ordered = listOf("SHORT", "MEDIUM", "LONG").mapNotNull { horizon ->
@@ -179,6 +180,22 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         return if (rounded < 60) "$rounded sec" else "${rounded / 60} min ${rounded % 60} sec"
     }
 
+    /** One line, only when it matters: the ranking is relative, this says
+     *  whether the market as a whole is with it. */
+    private fun addRegimeBanner(items: List<OracleGrowthRecommendation>) {
+        val first = items.firstOrNull() ?: return
+        val level = first.marketRegime.uppercase(Locale.US)
+        if (level == "NORMAL" || first.regimeNote.isBlank()) return
+        val color = if (level == "DEFENSIVE") Color.rgb(255, 80, 95) else Color.rgb(255, 170, 40)
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(host.dp(14), host.dp(11), host.dp(14), host.dp(11))
+            background = OracleNativeModule.rounded(Color.rgb(12, 8, 10), host.dp(12), color, host.dp(1))
+        }
+        box.addView(text("MARKET REGIME: $level", 12f, Typeface.DEFAULT_BOLD, color, 0, 0))
+        box.addView(text(first.regimeNote, 11f, Typeface.DEFAULT, Color.rgb(205, 210, 222), 0, 4))
+        host.content.addView(box, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+    }
+
     private fun addSummary(items: List<OracleGrowthRecommendation>) {
         val card = card(14)
         card.addView(text("GROWTH RECOMMENDATIONS", 18f, Typeface.DEFAULT_BOLD, green, 0, 0))
@@ -239,8 +256,13 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
 
         val lower = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, host.dp(4)) }
         val forecast = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        forecast.addView(text("Estimated potential", 10f, Typeface.DEFAULT, muted, 0, 0))
+        // Honest label: this number is the ATR-based expected range for the
+        // horizon (2×/4.5×/8×ATR), not a prediction of where price will go.
+        forecast.addView(text("Expected range (ATR)", 10f, Typeface.DEFAULT, muted, 0, 0))
         forecast.addView(text(signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
+        item.earningsInDays?.takeIf { it <= 14 }?.let { d ->
+            forecast.addView(text(if (d == 0) "Earnings today" else "Earnings in $d day${if (d == 1) "" else "s"}", 10f, Typeface.DEFAULT_BOLD, orange, 0, 2))
+        }
         lower.addView(forecast, LinearLayout.LayoutParams(0, -2, 1.15f))
         val momentum = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
         momentum.addView(text("Momentum", 10f, Typeface.DEFAULT, muted, 0, 0))

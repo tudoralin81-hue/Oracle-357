@@ -31,6 +31,21 @@ object OracleRealData {
      * fundamentals-timeseries endpoint, then the quote endpoint. Missing fields
      * remain genuinely missing; no Oracle score is substituted into the data.
      */
+    /** Next earnings date (epoch millis) from Yahoo's calendarEvents module, or null. */
+    fun nextEarningsDate(ticker:String):Long? = runCatching {
+        val symbol=ticker.uppercase(Locale.US)
+        val root=yahooQuoteSummary(symbol,"calendarEvents")
+        val earnings=root.optJSONObject("quoteSummary")?.optJSONArray("result")?.optJSONObject(0)?.optJSONObject("calendarEvents")?.optJSONObject("earnings")
+        val dates=earnings?.optJSONArray("earningsDate") ?: return@runCatching null
+        var best:Long?=null
+        for(i in 0 until dates.length()){
+            val raw=dates.opt(i)
+            val sec=when(raw){ is Number->raw.toLong(); is org.json.JSONObject->raw.optLong("raw",0L); else->0L }
+            if(sec>0L){ val ms=sec*1000L; if(best==null||ms<best!!) best=ms }
+        }
+        best
+    }.getOrNull()
+
     fun fundamentals(ticker:String):OracleFundamentals? {
         val symbol=ticker.uppercase(Locale.US)
         val modules="price,summaryDetail,defaultKeyStatistics,financialData,assetProfile"

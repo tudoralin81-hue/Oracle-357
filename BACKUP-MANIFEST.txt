@@ -1,0 +1,16 @@
+ORACLE — BACKUP SURSA
+Data: 2026-09-04_2001
+Stare: identic cu livrarea Oracle-main-translated-357.1.20.zip
+
+Versiuni per modul (OracleBuildInfo.VERSIONS):
+  KNOWLEDGE 357.1.19 | PORTFOLIO, GROWTH, ALERTS, NEWS, ANALYSIS, WATCHLIST, JOURNAL 357.1.17
+
+Inclus in aceasta stare (sesiunea din 2026-09-04):
+  - Security fix login (rate limiting, parola min 8) + widget color settings
+  - Refresh fara salt de scroll (reuseHost) in toate modulele
+  - Knowledge: sync REST complet, popup nativ (titlu+poza+articol), cronologic,
+    capitol ca header, auto-sync la deschidere + verificare orara Luni-Vineri,
+    decoratiuni in carduri, fara link extern
+  - Versiuni per modul (OracleBuildInfo)
+  - LOG OUT in TOOLS; oferta "Enable fingerprint unlock?" dupa login
+Nu contine: modificarile discutate in analiza (hardcodare Portfolio, Performance, etc.)

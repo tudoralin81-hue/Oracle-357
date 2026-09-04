@@ -120,6 +120,7 @@ class OracleGrowthJournalStore(private val context: Context) {
                     put("horizon", item.horizon); put("ticker", item.ticker); put("company", item.company); put("sector", item.sector)
                     put("score", item.score); put("signal", item.signal); put("risk", item.risk); put("allocationMax", item.allocationMax)
                     put("forecastPct", item.forecastPct); put("momentum5D", item.momentum5D); put("momentum20D", item.momentum20D)
+                    put("referencePrice", (item.referencePrice ?: item.currentPrice)?.takeIf { it > 0.0 } ?: org.json.JSONObject.NULL)
                     put("weights", org.json.JSONArray().apply { item.weights.forEach { put(it) } })
                     put("newsTitle", item.newsTitle); put("newsSource", item.newsSource); put("referenceTimestamp", item.referenceTimestamp)
                 })
@@ -137,7 +138,8 @@ class OracleGrowthJournalStore(private val context: Context) {
                 o.optString("horizon"), o.optString("ticker"), o.optString("company"), o.optString("sector"),
                 o.optInt("score"), o.optString("signal"), o.optString("risk"), o.optDouble("allocationMax"),
                 o.optDouble("forecastPct"), o.optDouble("momentum5D"), o.optDouble("momentum20D"),
-                List(w.length()) { n -> w.optInt(n) }, o.optString("newsTitle"), o.optString("newsSource"), o.optLong("referenceTimestamp")
+                List(w.length()) { n -> w.optInt(n) }, o.optString("newsTitle"), o.optString("newsSource"), o.optLong("referenceTimestamp"),
+                referencePrice = if (o.isNull("referencePrice")) null else o.optDouble("referencePrice").takeIf { it.isFinite() && it > 0.0 }
             )
         }
     }.getOrDefault(emptyList())

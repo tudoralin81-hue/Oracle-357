@@ -10,7 +10,7 @@ object OracleCalculations {
     }
     fun position(ticker: String, company: String, shares: Double, avgCost: Double, currentPrice: Double, currency: String = "USD", status: String = "ACTIVE"): OraclePosition {
         val value = marketValue(shares, currentPrice)
-        return OraclePosition(ticker, company, shares, avgCost, currentPrice, currency, pnl(shares, avgCost, currentPrice), pnlPercent(avgCost, currentPrice), value, 0.0, status)
+        return OraclePosition(ticker, company, shares, avgCost, currentPrice, currency, pnl(shares, avgCost, currentPrice), pnlPercent(avgCost, currentPrice), value, 0.0, status, System.currentTimeMillis())
     }
     fun withWeights(items: List<OraclePosition>): List<OraclePosition> {
         val ws = weights(items.map { it.marketValue })

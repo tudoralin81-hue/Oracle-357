@@ -27,5 +27,15 @@ data class OracleGrowthRecommendation(
     val factorValues: List<Double> = emptyList(),
     val factorScore: Double? = null,
     val generatedAt: Long = 0L,
-    val source: String = "ORACLE_ENGINE"
+    val source: String = "ORACLE_ENGINE",
+    // Market regime the ranking was produced under (NORMAL / CAUTION /
+    // DEFENSIVE) and the plain-language reason. In CAUTION/DEFENSIVE the
+    // signal label is capped and allocation reduced — the ranking still
+    // exists, but the app says out loud that the tide is against it.
+    val marketRegime: String = "NORMAL",
+    val regimeNote: String = "",
+    // Days until the next earnings report, when known. SHORT/MEDIUM picks
+    // skip names reporting within 7 days — an entry into earnings is a coin
+    // flip, not a technical setup.
+    val earningsInDays: Int? = null
 )

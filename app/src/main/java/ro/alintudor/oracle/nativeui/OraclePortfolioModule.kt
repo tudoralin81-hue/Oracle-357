@@ -142,11 +142,16 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     private fun addManagementRow() { val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(2), 0, host.dp(2), 0) }; row.addView(btn("+ ADD POSITION", Color.rgb(145, 245, 35)) { addPositionDialog() }, LinearLayout.LayoutParams(-1, host.dp(46))); host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(8)) }) }
 
     private fun card(rank: Int, p: OraclePosition, a: OracleAction?, t: OracleTechnicalSnapshot?, journal: List<OracleJournalEntry>, silent: Boolean = false) {
-        val forecast = when (p.ticker.uppercase(Locale.US)) { "CRM" -> 8.1; "HOOD" -> 23.5; "MELI" -> 16.3; else -> journal.filter { it.ticker.equals(p.ticker, true) && it.action.contains("BUY / OPEN", true) }.minByOrNull { it.timestamp }?.score ?: a?.score ?: 0.0 }
+        // "Forecast" = the Growth forecast recorded when the position was
+        // opened (journal), else the current 2×ATR expected move — the same
+        // definition Growth uses. Never a per-ticker constant.
+        val forecast = journal.filter { it.ticker.equals(p.ticker, true) && it.action.contains("BUY / OPEN", true) }.minByOrNull { it.timestamp }?.score?.takeIf { it > 0.0 }
+            ?: t?.atr14?.takeIf { it > 0.0 && p.currentPrice > 0.0 }?.let { (2.0 * it / p.currentPrice * 100.0).coerceAtMost(30.0) } ?: 0.0
         val action = decision(a?.action ?: "HOLD", t, p)
-        val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); else -> Color.rgb(50, 220, 190) }
+        val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); "REDUCE" -> Color.rgb(255, 170, 40); else -> Color.rgb(50, 220, 190) }
         val urgentSell = t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }
-        val reason = when { urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; t == null -> "Insufficient technical data; local monitoring"; t.rsi >= 70 -> "RSI overheating · trend and momentum still acceptable"; t.rsi <= 30 -> "Weak RSI · selling pressure"; action == "BUY" -> "favorable trend and momentum"; action == "SELL" -> "negative signal · rising risk"; else -> "trend and momentum still acceptable" }
+        // The engine's reason IS the reason — it names the rule that fired.
+        val reason = when { urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
         val cardBg = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), accent, host.dp(1))
         val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = cardBg }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -189,7 +194,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         }.start()
     }
 
-    private fun pulseSignal(view: TextView, action: String) { if (action != "SELL" && action != "HOLD") return; ObjectAnimator.ofFloat(view, "alpha", 1f, 0.38f, 1f).apply { duration = 1150L; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.RESTART; start() } }
+    private fun pulseSignal(view: TextView, action: String) { if (action != "SELL" && action != "HOLD" && action != "REDUCE") return; ObjectAnimator.ofFloat(view, "alpha", 1f, 0.38f, 1f).apply { duration = 1150L; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.RESTART; start() } }
     private fun valueBox(label: String, value: String, color: Int) = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(9), host.dp(8), host.dp(9), host.dp(8)); background = OracleNativeModule.rounded(Color.rgb(8, 13, 27), host.dp(10), color, host.dp(1)); addView(TextView(context).apply { text = label; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 166, 188)) }); addView(TextView(context).apply { text = value; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, host.dp(2), 0, 0) }) }
     private fun two(g: LinearLayout, a: String, av: String, b: String, bv: String): Pair<TextView, TextView> { val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }; val va = metric(r, a, av); val vb = metric(r, b, bv); g.addView(r); return va to vb }
     private fun metric(row: LinearLayout, label: String, value: String): TextView { val b = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(13), host.dp(10), host.dp(13), host.dp(10)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), Color.rgb(35, 44, 66), host.dp(1)) }; b.addView(TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)) }); val valueView = TextView(context).apply { text = value; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, host.dp(3), 0, 0) }; b.addView(valueView); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(2), host.dp(4), host.dp(2), host.dp(5)) }); return valueView }
@@ -387,7 +392,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     // URGENT_SELL — that would look like the app disagreeing with itself.
     private fun decision(action: String, t: OracleTechnicalSnapshot?, p: OraclePosition): String {
         if (t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }) return "SELL"
-        return when { (t?.rsi?.takeIf { it.isFinite() } ?: 50.0) >= 70.0 -> "HOLD"; action == "BUY" -> "BUY"; action == "SELL" -> "SELL"; else -> "HOLD" }
+        return when (action) { "BUY", "SELL", "REDUCE" -> action; else -> "HOLD" }
     }
     private fun stamp() = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     private fun money(v: Double) = String.format(Locale.US, "%,.2f", v)

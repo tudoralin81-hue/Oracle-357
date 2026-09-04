@@ -66,8 +66,16 @@ object OracleLocalProcessor {
         // P/L from whatever currentPrice was last stored (initial seed or manual
         // entry), so gains looked frozen. Pull the latest close for each held
         // ticker before recalculating, same OHLCV source used elsewhere.
+        // One real 1y daily-candle fetch per held ticker feeds everything below:
+        // the live close, the technical snapshot (RSI/SMA/ATR/ADX/score) and
+        // the peak price for the trailing stop. Nothing is hardcoded and
+        // nothing is derived from the handful of quotes the app happened to
+        // capture on previous opens.
+        val candlesByTicker = current.positions.map { it.ticker.uppercase(Locale.US) }.distinct().associateWith { t ->
+            runCatching { OracleMarketData.fetchDaily(t, "1y") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
+        }
         val livePositions = current.positions.map { p ->
-            val latestClose = runCatching { OracleMarketData.fetchDaily(p.ticker, "5d") }.getOrNull()?.lastOrNull()?.close
+            val latestClose = candlesByTicker[p.ticker.uppercase(Locale.US)]?.lastOrNull()?.close
             if (latestClose != null && latestClose > 0.0) p.copy(currentPrice = latestClose) else p
         }
         val normalized = OracleAnalytics.normalize(livePositions)
@@ -75,20 +83,37 @@ object OracleLocalProcessor {
         val recentHistory = current.history.filter { now - it.timestamp < 30L * 24L * 60L * 60L * 1000L }
         val newPoints = normalized.map { OracleHistoryPoint(it.ticker, now, it.currentPrice, it.marketValue, it.pnl) }
         val history = (recentHistory + newPoints).groupBy { "${it.ticker}:${it.timestamp}" }.values.map { it.first() }.sortedBy { it.timestamp }.takeLast(5000)
-        val computedActions = OracleAnalytics.actions(normalized, history).associateBy { it.ticker }
-        val actions = normalized.mapNotNull { p -> current.actions.firstOrNull { it.ticker.equals(p.ticker, true) } ?: computedActions[p.ticker] }
-        val computedTechnical = OracleTechnicalIndicators.all(history).toMutableMap()
-        val marketTickers = (normalized.map { it.ticker } + current.growth.map { it.ticker }).distinct()
-        for (ticker in marketTickers) OracleTechnicalIndicators.adx14(OracleMarketData.fetchDaily(ticker))?.let { adx -> computedTechnical[ticker]?.let { computedTechnical[ticker] = it.copy(adx = adx) } }
-        val technical = normalized.mapNotNull { p -> val existing=current.technical.firstOrNull{it.ticker.equals(p.ticker,true)}; val computed=computedTechnical[p.ticker]; when { existing!=null&&computed?.adx!=null->existing.copy(adx=computed.adx); existing!=null->existing; else->computed } }
+
+        val technical = normalized.mapNotNull { p ->
+            val key = p.ticker.uppercase(Locale.US)
+            OracleTechnicalIndicators.fromCandles(p.ticker, candlesByTicker[key].orEmpty())
+                ?: current.technical.firstOrNull { it.ticker.equals(p.ticker, true) && it.computedAt > 0L }
+                ?: OracleTechnicalIndicators.forTicker(p.ticker, history)
+        }
+        val peaks = normalized.associate { p ->
+            val key = p.ticker.uppercase(Locale.US)
+            val candles = candlesByTicker[key].orEmpty()
+            val sinceEntry = if (p.entryTimestamp > 0L) candles.filter { it.timestamp >= p.entryTimestamp } else candles.takeLast(60)
+            val peak = (sinceEntry.map { it.close } + history.filter { it.ticker.equals(p.ticker, true) }.map { it.price } + p.currentPrice).filter { it > 0.0 }.maxOrNull() ?: p.currentPrice
+            key to peak
+        }
+        OracleTechnicalCache.put(technical, peaks)
+        // Decisions are recomputed on EVERY refresh — a stored action never
+        // outranks a fresh one (that is exactly how HOLD used to get frozen).
+        val technicalByKey = technical.associateBy { it.ticker.uppercase(Locale.US) }
+        val actions = normalized.map { p -> OracleAnalytics.actionFor(p, technicalByKey[p.ticker.uppercase(Locale.US)], peaks[p.ticker.uppercase(Locale.US)]) }
+            .sortedByDescending { kotlin.math.abs(it.score) }
 
         // Growth is generated through the same single-flight snapshot path used
         // by Growth preload. A normal refresh may read the cache, but can never
         // race the preload and generate a second ranking for the same T0.
         val growth = currentGrowthSnapshot(repository, now)
+        // Performance tracking: fill in realized 5/20/60-session returns for
+        // past Growth signals (bounded number of fetches per refresh).
+        runCatching { OraclePerformanceStore(repository.context).update(maxFetches = 8) }
 
         val oldAlerts=current.alerts.filter{it.active}
-        val signalAlerts=actions.filter{it.action=="BUY"||it.action=="SELL"}.map{OracleAlert(it.ticker,if(it.action=="SELL")"HIGH"else"INFO","${it.action} signal","Score ${"%.1f".format(it.score)} — ${it.reason}",now,true,"SIGNAL")}
+        val signalAlerts=actions.filter{it.action=="BUY"||it.action=="SELL"||it.action=="REDUCE"}.map{OracleAlert(it.ticker,when(it.action){"SELL"->"HIGH";"REDUCE"->"MEDIUM";else->"INFO"},"${it.action} signal",it.reason,now,true,"SIGNAL")}
 
         // Critical alerts: urgent sell, fading growth, high volatility. These are
         // the ones that also push-notify and email — kept as their own "kind" so

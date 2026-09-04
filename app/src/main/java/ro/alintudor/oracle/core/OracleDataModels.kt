@@ -12,7 +12,11 @@ data class OraclePosition(
     val pnlPercent: Double = 0.0,
     val marketValue: Double = 0.0,
     val weight: Double = 0.0,
-    val status: String = "ACTIVE"
+    val status: String = "ACTIVE",
+    // When the position was opened on this device (0 = unknown / seeded).
+    // Used for the trailing stop's "peak since entry"; when unknown, the
+    // peak over the last 60 sessions is used instead.
+    val entryTimestamp: Long = 0L
 )
 
 data class OracleAlert(

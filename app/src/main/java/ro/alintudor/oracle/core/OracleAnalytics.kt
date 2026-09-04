@@ -1,7 +1,6 @@
 package ro.alintudor.oracle.core
 
 import kotlin.math.abs
-import kotlin.math.max
 
 /**
  * Local, deterministic analytics used by the native Oracle UI.
@@ -25,12 +24,6 @@ data class OraclePortfolioSummary(
 )
 
 object OracleAnalytics {
-    private val canonicalActions = mapOf(
-        "CRM" to OracleAction("CRM", "HOLD", 82.0, "RSI overheating · trend and momentum still acceptable"),
-        "HOOD" to OracleAction("HOOD", "HOLD", 95.0, "trend and momentum still acceptable"),
-        "MELI" to OracleAction("MELI", "HOLD", 95.0, "trend and momentum still acceptable")
-    )
-
     fun normalize(positions: List<OraclePosition>): List<OraclePosition> =
         OracleCalculations.withWeights(positions.map { p ->
             p.copy(
@@ -39,7 +32,6 @@ object OracleAnalytics {
                 marketValue = OracleCalculations.marketValue(p.shares, p.currentPrice)
             )
         })
-
     fun summary(positions: List<OraclePosition>): OraclePortfolioSummary {
         val p = normalize(positions)
         val value = p.sumOf { it.marketValue }
@@ -68,27 +60,72 @@ object OracleAnalytics {
         }
         .sortedByDescending { abs(it.changePct) }
 
-    fun actionFor(position: OraclePosition, trend: OracleTrend?): OracleAction {
-        canonicalActions[position.ticker.uppercase()]?.let { return it.copy(timestamp = System.currentTimeMillis()) }
-        val t = trend?.changePct ?: 0.0
-        val score = max(-100.0, minOf(100.0, position.pnlPercent * 0.6 + t * 4.0 - position.weight * 0.8))
-        val action = when {
-            score >= 20.0 -> "BUY"
-            score <= -20.0 -> "SELL"
-            else -> "HOLD"
+    /**
+     * Exit-first decision for a held position. The entry side of Oracle
+     * (Growth) has twelve factors; this is the side that decides when the
+     * trade is over, and it is deliberately rule-based and explicit so the
+     * reason shown in Portfolio is the actual reason. Order matters — the
+     * first rule that fires wins:
+     *   1. Stop-loss: price below entry − 2×ATR (or −10% when ATR unknown)
+     *   2. Trailing stop: after ≥ +8% at peak, price gives back 2×ATR from that peak
+     *   3. Trend break: below SMA50 with a weak technical score → SELL (in loss) / REDUCE (in profit)
+     *   4. Concentration: weight ≥ 35% → REDUCE
+     *   5. Overextension: ≥ +25% with RSI ≥ 75 → REDUCE (take partial profit)
+     *   6. Add: strong score, above SMA50, RSI < 70, weight < 15% → BUY
+     *   7. Otherwise HOLD, with the score in the reason.
+     * score is a signed conviction (−100..100) used by Alerts: |score| ≥ 70 alerts.
+     */
+    fun actionFor(position: OraclePosition, tech: OracleTechnicalSnapshot?, peakPrice: Double?): OracleAction {
+        val now = System.currentTimeMillis()
+        val p = position.currentPrice; val entry = position.avgCost
+        val atr = tech?.atr14?.takeIf { it.isFinite() && it > 0.0 }
+        val score = tech?.techScore
+        val sma50 = tech?.sma50?.takeIf { it.isFinite() && it > 0.0 }
+        val rsi = tech?.rsi?.takeIf { it.isFinite() }
+        fun money(v: Double) = String.format(java.util.Locale.US, "%.2f", v)
+        fun pct(v: Double) = String.format(java.util.Locale.US, "%+.1f%%", v)
+        if (entry > 0.0 && p > 0.0) {
+            // 1. stop-loss
+            if (atr != null) {
+                val stop = entry - 2.0 * atr
+                if (p <= stop) return OracleAction(position.ticker, "SELL", -85.0, "Stop-loss: price ${money(p)} is below entry \u2212 2\u00d7ATR (${money(stop)})", now)
+            } else if (position.pnlPercent <= -10.0) {
+                return OracleAction(position.ticker, "SELL", -80.0, "Stop-loss: P/L ${pct(position.pnlPercent)} (no ATR available, \u221210% rule)", now)
+            }
+            // 2. trailing stop
+            val peak = listOfNotNull(peakPrice, p).max()
+            val peakGain = (peak / entry - 1.0) * 100.0
+            if (atr != null && peakGain >= 8.0 && p <= peak - 2.0 * atr) {
+                return OracleAction(position.ticker, "SELL", -75.0, "Trailing stop: ${money(p)} is 2\u00d7ATR below the ${money(peak)} peak (${pct(peakGain)} at best) \u2014 protect the gain", now)
+            }
+            // 3. trend break
+            if (sma50 != null && p < sma50 && (score ?: 50) < 55) {
+                return if (position.pnlPercent < 0.0)
+                    OracleAction(position.ticker, "SELL", -70.0, "Trend broken: below SMA50 (${money(sma50)}) with weak score ${score ?: "n/a"} and a loss of ${pct(position.pnlPercent)}", now)
+                else
+                    OracleAction(position.ticker, "REDUCE", -45.0, "Trend weakening: below SMA50 (${money(sma50)}) with score ${score ?: "n/a"} \u2014 take part of the ${pct(position.pnlPercent)} gain", now)
+            }
         }
-        val reason = when {
-            action == "BUY" -> "Positive trend and favorable local score"
-            action == "SELL" -> "Negative trend / concentration risk"
-            else -> "Mixed signal; hold the position and monitor the trend"
-        }
-        return OracleAction(position.ticker, action, score, reason, System.currentTimeMillis())
+        // 4. concentration
+        if (position.weight >= 35.0) return OracleAction(position.ticker, "REDUCE", -40.0, "Concentration: ${String.format(java.util.Locale.US, "%.0f", position.weight)}% of the portfolio in one name", now)
+        // 5. overextension
+        if (position.pnlPercent >= 25.0 && (rsi ?: 50.0) >= 75.0) return OracleAction(position.ticker, "REDUCE", -40.0, "Overextended: ${pct(position.pnlPercent)} with RSI ${String.format(java.util.Locale.US, "%.0f", rsi!!)} \u2014 take partial profit", now)
+        // 6. add
+        if (score != null && score >= 80 && sma50 != null && p > sma50 && (rsi ?: 50.0) < 70.0 && position.weight < 15.0)
+            return OracleAction(position.ticker, "BUY", 75.0, "Strong signal (score $score), above SMA50, RSI ${String.format(java.util.Locale.US, "%.0f", rsi ?: 50.0)} \u2014 room to add", now)
+        // 7. hold
+        return if (tech == null) OracleAction(position.ticker, "HOLD", 0.0, "Insufficient market data yet \u2014 holding, monitoring", now)
+        else if ((score ?: 50) >= 65) OracleAction(position.ticker, "HOLD", 20.0, "Trend and momentum intact (score ${score ?: "n/a"}${sma50?.let { if (p > it) ", above SMA50" else ", below SMA50" } ?: ""})", now)
+        else OracleAction(position.ticker, "HOLD", 0.0, "Mixed signal (score ${score ?: "n/a"}) \u2014 hold and monitor; no exit rule triggered", now)
     }
 
     fun actions(positions: List<OraclePosition>, history: List<OracleHistoryPoint>): List<OracleAction> {
         val normalized = normalize(positions)
-        val trends = trends(history).associateBy { it.ticker }
-        return normalized.map { actionFor(it, trends[it.ticker]) }
-            .sortedByDescending { abs(it.score) }
+        return normalized.map { p ->
+            val tech = OracleTechnicalIndicators.forTicker(p.ticker, history)
+            val peak = OracleTechnicalCache.peak(p.ticker)
+                ?: history.filter { it.ticker.equals(p.ticker, true) && it.price > 0.0 }.maxOfOrNull { it.price }
+            actionFor(p, tech, peak)
+        }.sortedByDescending { abs(it.score) }
     }
 }
