@@ -117,10 +117,18 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
         host.fixedToolbar.addView(button, LinearLayout.LayoutParams(-1, host.dp(48)).apply { setMargins(0, 0, 0, host.dp(8)) })
 
+        // Demo: the engine only ever runs against the 3 sample tickers — typing
+        // anything else would be free, unlimited use of the same proprietary
+        // engine Growth locks behind an account. Real analysis is a paid feature.
+        val demoTickers = setOf("AAPL", "NVDA", "JPM")
         fun run() {
             val t = input.text.toString().trim().uppercase(Locale.US)
             if (t.isBlank()) {
                 input.error = "Enter a ticker"
+                return
+            }
+            if (OracleDemo.active(host.root.context) && t !in demoTickers) {
+                Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo analysis is limited to AAPL, NVDA and JPM \u2014 create an account to analyze any ticker.", Toast.LENGTH_LONG).show()
                 return
             }
             tickerDraft = t
@@ -740,10 +748,11 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 // Live Growth-style score for the ticker (same engine as Growth),
                 // refreshed in the background when older than an hour.
                 val sc = OracleTickerScoreCache.get(host.root.context, ticker)
+                val watchDemo = OracleDemo.active(host.root.context)
                 val scoreBox = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
                 val scoreColor = when (sc?.signal) { "STRONG BUY" -> Color.rgb(120, 255, 45); "BUY" -> Color.rgb(145, 245, 35); "HOLD" -> Color.rgb(50, 220, 190); "WATCH" -> Color.rgb(255, 205, 45); "AVOID" -> Color.rgb(255, 90, 90); else -> Color.rgb(120, 130, 152) }
-                scoreBox.addView(TextView(host.root.context).apply { text = sc?.let { "${it.score}" } ?: "\u2014"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; setTextColor(scoreColor); gravity = Gravity.CENTER })
-                scoreBox.addView(TextView(host.root.context).apply { text = sc?.signal ?: "scoring\u2026"; textSize = 8.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(scoreColor); gravity = Gravity.CENTER })
+                scoreBox.addView(TextView(host.root.context).apply { text = if (watchDemo) OracleDemo.LOCK else sc?.let { "${it.score}" } ?: "\u2014"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; setTextColor(scoreColor); gravity = Gravity.CENTER })
+                scoreBox.addView(TextView(host.root.context).apply { text = if (watchDemo) "locked" else sc?.signal ?: "scoring\u2026"; textSize = 8.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(scoreColor); gravity = Gravity.CENTER })
                 row.addView(scoreBox, LinearLayout.LayoutParams(host.dp(78), host.dp(84)))
 
                 val openButton = Button(host.root.context).apply {

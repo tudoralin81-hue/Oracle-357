@@ -202,7 +202,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(34), host.dp(8), 0, 0) }
         // Technical score (0..100, same engine as Growth) — not the signed
         // conviction of the action, which is internal to Alerts.
-        two(grid, "P/L", "${money(p.pnl)} (${signedPct(p.pnlPercent)})", "Score", t?.techScore?.let { "$it/100" } ?: "N/A")
+        two(grid, "P/L", "${money(p.pnl)} (${signedPct(p.pnlPercent)})", "Score", if (demo) OracleDemo.LOCK else t?.techScore?.let { "$it/100" } ?: "N/A")
         val reliable = isReliable(t)
         val (rsiView, sma50View) = two(grid, "RSI", if (reliable) String.format(Locale.US, "%.1f", t!!.rsi) else "N/A", "SMA50", t?.sma50?.takeIf { it.isFinite() && it > 0.0 }?.let { money(it) } ?: "N/A")
         val (mom5View, mom20View) = two(grid, "Momentum 5D", if (reliable) signedPct(t!!.momentum5D) else "N/A", "Momentum 20D", if (reliable) signedPct(t!!.momentum20D) else "N/A")

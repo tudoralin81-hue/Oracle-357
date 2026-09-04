@@ -423,6 +423,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             isFocusable = true
             contentDescription = "Download Growth journal as PDF"
             setOnClickListener {
+                if (OracleDemo.active(host.root.context)) { Toast.makeText(host.root.context, "${OracleDemo.LOCK} Exporting needs an account", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
                 val path = journalStore.exportPdf()
                 if (path != null) Toast.makeText(host.root.context, "Growth journal saved to Downloads.", Toast.LENGTH_LONG).show()
                 else Toast.makeText(host.root.context, "There are no recommendations to export.", Toast.LENGTH_SHORT).show()
@@ -483,10 +484,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                 top.addView(identity, LinearLayout.LayoutParams(0, -2, 1f))
                 top.addView(text(item.horizon, 9f, Typeface.DEFAULT_BOLD, accent, 0, 0))
                 addView(top)
+                val demo = OracleDemo.active(host.root.context)
                 val details = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, 0) }
                 details.addView(text(formatT0(item.referenceTimestamp), 9f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
-                details.addView(text("Forecast ${signedPct(item.forecastPct)}", 9f, Typeface.DEFAULT_BOLD, green, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
-                details.addView(text("Score ${item.score}/100", 9f, Typeface.DEFAULT_BOLD, cyan, 0, 0), LinearLayout.LayoutParams(0, -2, .8f))
+                details.addView(text(if (demo) "Forecast ${OracleDemo.LOCK}" else "Forecast ${signedPct(item.forecastPct)}", 9f, Typeface.DEFAULT_BOLD, green, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
+                details.addView(text(if (demo) "Score ${OracleDemo.LOCK}" else "Score ${item.score}/100", 9f, Typeface.DEFAULT_BOLD, cyan, 0, 0), LinearLayout.LayoutParams(0, -2, .8f))
                 addView(details)
             }
         }
