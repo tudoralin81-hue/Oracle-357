@@ -391,7 +391,8 @@ class OracleMysticActivity : Activity() {
         })
 
         val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
-        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true, onAutofilled = { view -> hideKeyboard(view) })
+        var afterPasswordAutofill: ((View) -> Unit)? = null
+        val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true, onAutofilled = { view -> afterPasswordAutofill?.invoke(view) })
 
         val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
         card.addView(error)
@@ -424,6 +425,15 @@ class OracleMysticActivity : Activity() {
                     }
                 }
             }.start()
+        }
+        // Autofill filled the password — if a username is present too, submit
+        // on its own, no tap needed. Only fires for genuine autofill, never
+        // for manual typing (see authField's onAutofilled contract).
+        afterPasswordAutofill = { view ->
+            hideKeyboard(view)
+            if (usernameField.text.toString().isNotBlank() && loginButton.isEnabled) {
+                view.postDelayed({ loginButton.performClick() }, 150L)
+            }
         }
         card.addView(loginButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
 
@@ -641,12 +651,12 @@ class OracleMysticActivity : Activity() {
         }, bootDurationMs)
     }
 
-    private fun checkAlertsStatusSilently(indicator: TextView) {
+    private fun checkAlertsStatusSilently(hero: OracleMysticStartView) {
         val notificationsEnabled = runCatching {
             (getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).areNotificationsEnabled()
         }.getOrDefault(false)
         if (!notificationsEnabled) {
-            indicator.text = "ALERTS OFF ✗"; indicator.setTextColor(Color.rgb(150, 150, 150))
+            hero.setAlertsStatus("ALERTS OFF", Color.rgb(150, 150, 150))
             return
         }
         // Local-only check: does this device actually have a working FCM
@@ -656,12 +666,11 @@ class OracleMysticActivity : Activity() {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 runOnUiThread {
                     val ok = task.isSuccessful && !task.result.isNullOrBlank()
-                    indicator.text = if (ok) "ALERTS ON ✓" else "ALERTS OFF ✗"
-                    indicator.setTextColor(if (ok) Color.rgb(105, 245, 35) else Color.rgb(150, 150, 150))
+                    hero.setAlertsStatus(if (ok) "ALERTS ON" else "ALERTS OFF", if (ok) Color.rgb(105, 245, 35) else Color.rgb(150, 150, 150))
                 }
             }
         }.onFailure {
-            indicator.text = "ALERTS OFF ✗"; indicator.setTextColor(Color.rgb(150, 150, 150))
+            hero.setAlertsStatus("ALERTS OFF", Color.rgb(150, 150, 150))
         }
     }
 
@@ -678,14 +687,7 @@ class OracleMysticActivity : Activity() {
         page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-
-        val alertsIndicator = TextView(this).apply {
-            text = "ALERTS …"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(150, 150, 150))
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            background = GradientDrawable().apply { setColor(Color.rgb(7, 14, 28)); cornerRadius = dp(10).toFloat(); setStroke(dp(1), Color.rgb(49, 82, 125)) }
-        }
-        root.addView(alertsIndicator, FrameLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.START; leftMargin = dp(14); topMargin = dp(14) })
-        checkAlertsStatusSilently(alertsIndicator)
+        checkAlertsStatusSilently(hero)
     }
 
     private fun showBackupScreen() {

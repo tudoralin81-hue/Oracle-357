@@ -22,6 +22,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private val hit = mutableListOf<Pair<RectF, String>>()
     private var sx = 1f; private var sy = 1f; private var ox = 0f; private var oy = 0f
     private val gold = Color.rgb(255, 205, 55); private val white = Color.rgb(245, 241, 231); private val green = Color.rgb(60, 255, 85)
+    /** Set from the Activity after the local, silent alerts check resolves. */
+    var alertsStatusText: String = "ALERTS \u2026"
+    var alertsStatusColor: Int = Color.rgb(150, 150, 150)
+    fun setAlertsStatus(text: String, color: Int) { alertsStatusText = text; alertsStatusColor = color; postInvalidate() }
     private val modules = listOf(
         M("growth", "GROWTH", "FUTURE SCAN", Color.rgb(120, 255, 45)),
         M("analysis", "ANALYSIS", "CHARTS & TOOLS", Color.rgb(20, 220, 255)),
@@ -73,15 +77,16 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f
         val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
-        val brandWidth=p.measureText("357AT2026")
-        val discX=brandX-brandWidth-S(20f)
-        c.drawText("DISCLAIMER",discX,brandY,p)
+
+        text(c,"DISCLAIMER",cx,brandY,S(10f),gold,Typeface.DEFAULT,.18f,true)
+        p.textAlign=Paint.Align.CENTER;p.textSize=S(10f);p.letterSpacing=.18f
         val discWidth=p.measureText("DISCLAIMER")
-        hit+=RectF(discX-discWidth-S(8f),brandY-S(18f),discX+S(8f),brandY+S(8f)) to "disclaimer"
-        val backupY=brandY-S(22f)
-        c.drawText("BACKUP",brandX,backupY,p)
-        val backupWidth=p.measureText("BACKUP")
-        hit+=RectF(brandX-backupWidth-S(8f),backupY-S(18f),brandX+S(8f),backupY+S(8f)) to "backup"
+        hit+=RectF(cx-discWidth/2f-S(10f),brandY-S(18f),cx+discWidth/2f+S(10f),brandY+S(8f)) to "disclaimer"
+
+        val alertsX=X(if(wide)100f else 60f)
+        p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=255;p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText(alertsStatusText,alertsX,brandY,p)
+
         postInvalidateDelayed(32L)
     }
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
