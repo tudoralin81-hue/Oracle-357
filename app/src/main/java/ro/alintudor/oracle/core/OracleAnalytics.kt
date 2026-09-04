@@ -75,7 +75,18 @@ object OracleAnalytics {
      *   7. Otherwise HOLD, with the score in the reason.
      * score is a signed conviction (−100..100) used by Alerts: |score| ≥ 70 alerts.
      */
-    fun actionFor(position: OraclePosition, tech: OracleTechnicalSnapshot?, peakPrice: Double?): OracleAction {
+    fun actionFor(position: OraclePosition, tech: OracleTechnicalSnapshot?, peakPrice: Double?, positionCount: Int = 0): OracleAction {
+        val raw = decide(position, tech, peakPrice, positionCount)
+        // A REDUCE is only meaningful if there is something to trim: with a
+        // single share the honest advice is HOLD plus the note — or, for a
+        // weakening trend, a heads-up that the exit would be a full close.
+        if (raw.action == "REDUCE" && position.shares < 2.0) {
+            return raw.copy(action = "HOLD", score = 0.0, reason = "Single share \u2014 nothing to trim. ${raw.reason}. Balance by adding elsewhere, or close fully if a SELL rule fires.")
+        }
+        return raw
+    }
+
+    private fun decide(position: OraclePosition, tech: OracleTechnicalSnapshot?, peakPrice: Double?, positionCount: Int): OracleAction {
         val now = System.currentTimeMillis()
         val p = position.currentPrice; val entry = position.avgCost
         val atr = tech?.atr14?.takeIf { it.isFinite() && it > 0.0 }
@@ -106,8 +117,10 @@ object OracleAnalytics {
                     OracleAction(position.ticker, "REDUCE", -45.0, "Trend weakening: below SMA50 (${money(sma50)}) with score ${score ?: "n/a"} \u2014 take part of the ${pct(position.pnlPercent)} gain", now)
             }
         }
-        // 4. concentration
-        if (position.weight >= 35.0) return OracleAction(position.ticker, "REDUCE", -40.0, "Concentration: ${String.format(java.util.Locale.US, "%.0f", position.weight)}% of the portfolio in one name", now)
+        // 4. concentration — with 3 or fewer positions some concentration is
+        // unavoidable, so the bar is 50% there and 35% for wider portfolios.
+        val concentrationBar = if (positionCount in 1..3) 50.0 else 35.0
+        if (position.weight >= concentrationBar) return OracleAction(position.ticker, "REDUCE", -40.0, "Concentration: ${String.format(java.util.Locale.US, "%.0f", position.weight)}% of the portfolio in one name (bar ${String.format(java.util.Locale.US, "%.0f", concentrationBar)}% for $positionCount positions)", now)
         // 5. overextension
         if (position.pnlPercent >= 25.0 && (rsi ?: 50.0) >= 75.0) return OracleAction(position.ticker, "REDUCE", -40.0, "Overextended: ${pct(position.pnlPercent)} with RSI ${String.format(java.util.Locale.US, "%.0f", rsi!!)} \u2014 take partial profit", now)
         // 6. add
@@ -125,7 +138,7 @@ object OracleAnalytics {
             val tech = OracleTechnicalIndicators.forTicker(p.ticker, history)
             val peak = OracleTechnicalCache.peak(p.ticker)
                 ?: history.filter { it.ticker.equals(p.ticker, true) && it.price > 0.0 }.maxOfOrNull { it.price }
-            actionFor(p, tech, peak)
+            actionFor(p, tech, peak, normalized.size)
         }.sortedByDescending { abs(it.score) }
     }
 }

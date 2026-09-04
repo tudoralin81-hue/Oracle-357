@@ -101,7 +101,7 @@ object OracleLocalProcessor {
         // Decisions are recomputed on EVERY refresh — a stored action never
         // outranks a fresh one (that is exactly how HOLD used to get frozen).
         val technicalByKey = technical.associateBy { it.ticker.uppercase(Locale.US) }
-        val actions = normalized.map { p -> OracleAnalytics.actionFor(p, technicalByKey[p.ticker.uppercase(Locale.US)], peaks[p.ticker.uppercase(Locale.US)]) }
+        val actions = normalized.map { p -> OracleAnalytics.actionFor(p, technicalByKey[p.ticker.uppercase(Locale.US)], peaks[p.ticker.uppercase(Locale.US)], normalized.size) }
             .sortedByDescending { kotlin.math.abs(it.score) }
 
         // Growth is generated through the same single-flight snapshot path used
