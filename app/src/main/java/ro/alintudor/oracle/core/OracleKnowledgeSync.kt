@@ -33,7 +33,7 @@ object OracleKnowledgeSync {
     // just how the site presents its one and only stream of trading-education
     // articles). So no server-side or client-side filtering is needed or even
     // possible here — every published post IS a Knowledge article.
-    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_fields=id,date,link,title,excerpt,content"
+    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_embed=wp:featuredmedia&_fields=id,date,link,title,excerpt,content,featured_media,_links,_embedded"
     private const val PREFS = "oracle_knowledge"
     private const val ITEMS = "articles"
     private const val LAST_SUCCESS = "last_success"
@@ -107,21 +107,25 @@ object OracleKnowledgeSync {
             val excerptHtml = item.optJSONObject("excerpt")?.optString("rendered", "") ?: ""
             val content = cleanText(contentHtml)
             var excerpt = cleanText(excerptHtml).ifBlank { content }.take(420)
-            var imageUrl = ""
+            var imageUrl = featuredImageFromEmbed(item)
             // A membership plugin gates the full article behind a login/
             // register wall — confirmed by fetching a real article's own
             // public page: the REST API's excerpt/content fields come back
             // as that same restriction notice rather than real text. The
-            // page's own <meta name="description">/<meta property="og:image">
-            // tags are NOT gated (they're what the site's own /knowledge/
-            // listing and any social-media share preview use), so read the
-            // real preview text and image straight off the page itself
-            // rather than trust the REST fields at all.
+            // page's own <meta name="description"> tag is NOT gated (it's
+            // what the site's own /knowledge/ listing shows as the free
+            // preview), so read the real preview text straight off the page.
+            //
+            // Image priority: the post's real featured image (embedded via
+            // the REST API above), then the featured <img> in the page
+            // itself, and only then og:image — which on this site resolves
+            // to the SITE LOGO (the SEO plugin's default social image, the
+            // same file used as the site icon), not the article's picture.
             if (i < MAX_PAGE_FETCHES) {
                 val page = runCatching { getHtml(url) }.getOrNull()
                 if (page != null) {
                     extractMetaDescription(page)?.takeIf { it.isNotBlank() }?.let { excerpt = it }
-                    imageUrl = extractMetaImage(page) ?: ""
+                    if (imageUrl.isBlank()) imageUrl = extractFeaturedImage(page) ?: extractMetaImage(page) ?: ""
                 }
             }
             if (looksRestricted(excerpt)) {
@@ -140,6 +144,35 @@ object OracleKnowledgeSync {
     private fun looksRestricted(text: String): Boolean {
         val t = text.lowercase(Locale.US)
         return t.contains("restricted to site members") || t.contains("must be logged in") || t.contains("please log in") || t.contains("new user registration")
+    }
+
+    /** The post's real featured image, from the media object the REST API
+     *  embeds when asked with _embed=wp:featuredmedia. Prefers a mid-size
+     *  rendition (plenty for a phone popup) over the full-resolution original. */
+    private fun featuredImageFromEmbed(item: JSONObject): String {
+        val media = item.optJSONObject("_embedded")?.optJSONArray("wp:featuredmedia")?.optJSONObject(0) ?: return ""
+        val sizes = media.optJSONObject("media_details")?.optJSONObject("sizes")
+        for (size in listOf("large", "medium_large", "medium", "full")) {
+            val u = sizes?.optJSONObject(size)?.optString("source_url", "")?.trim() ?: ""
+            if (u.isNotBlank()) return u
+        }
+        return media.optString("source_url", "").trim()
+    }
+
+    // WordPress tags the featured image it renders with the wp-post-image
+    // class — a far more specific marker than og:image for "this article's
+    // own picture". Both attribute orders (class before src, src before class).
+    private val featuredImagePatterns = listOf(
+        Regex("""<img[^>]+class=["'][^"']*wp-post-image[^"']*["'][^>]*src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+        Regex("""<img[^>]+src=["']([^"']+)["'][^>]*class=["'][^"']*wp-post-image[^"']*["']""", RegexOption.IGNORE_CASE)
+    )
+
+    private fun extractFeaturedImage(html: String): String? {
+        for (pattern in featuredImagePatterns) {
+            val text = pattern.find(html)?.groupValues?.get(1)?.trim()
+            if (!text.isNullOrBlank()) return text
+        }
+        return null
     }
 
     fun scheduleDaily(context: Context) {
