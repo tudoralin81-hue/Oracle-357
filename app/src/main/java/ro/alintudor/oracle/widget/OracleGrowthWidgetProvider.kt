@@ -37,6 +37,7 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
         private const val ACTION_REFRESH = "ro.alintudor.oracle.widget.ACTION_REFRESH_GROWTH"
         private const val ALARM_REQUEST_CODE = 35701
         private const val LAUNCH_REQUEST_CODE = 35702
+        private const val SETTINGS_REQUEST_CODE = 35703
         private const val REFRESH_INTERVAL_MS = 3L * 60L * 1000L
 
         private data class Slot(val horizon: String, val tickerId: Int, val signalId: Int, val riskId: Int, val potentialId: Int, val accent: Int)
@@ -70,8 +71,24 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             for (id in ids) manager.updateAppWidget(id, views)
         }
 
+        private fun generateBackgroundBitmap(baseColor: Int): android.graphics.Bitmap {
+            val width = 320; val height = 200
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            val corner = 28f
+            val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = baseColor }
+            canvas.drawRoundRect(android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), corner, corner, bgPaint)
+            val linePaint = android.graphics.Paint().apply { color = Color.argb(70, 255, 255, 255); strokeWidth = 1f }
+            var x = 0
+            while (x <= width) { canvas.drawLine(x.toFloat(), 0f, x.toFloat(), height.toFloat(), linePaint); x += 20 }
+            var y = 0
+            while (y <= height) { canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), linePaint); y += 20 }
+            return bitmap
+        }
+
         private fun buildViews(context: Context, items: List<OracleGrowthRecommendation>): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.oracle_growth_widget)
+            views.setImageViewBitmap(R.id.widget_bg_image, generateBackgroundBitmap(OracleWidgetSettingsStore.color(context)))
             val cyan = Color.rgb(75, 225, 255)
             val orange = Color.rgb(255, 160, 25)
             val green = Color.rgb(105, 245, 35)
@@ -135,6 +152,12 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             }
             val launchPending = PendingIntent.getActivity(context, LAUNCH_REQUEST_CODE, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             views.setOnClickPendingIntent(R.id.widget_root, launchPending)
+
+            val settingsIntent = Intent(context, OracleWidgetConfigActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val settingsPending = PendingIntent.getActivity(context, SETTINGS_REQUEST_CODE, settingsIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.widget_settings_button, settingsPending)
             return views
         }
     }

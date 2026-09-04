@@ -292,7 +292,7 @@ class OracleMysticActivity : Activity() {
             val answeredCount = questionAnswerFields.values.count { it.text.toString().isNotBlank() }
             error.text = when {
                 username.isBlank() -> "Enter a username."
-                password.length < 4 -> "Password needs at least 4 characters."
+                password.length < 8 -> "Password needs at least 8 characters."
                 password != confirm -> "Passwords don't match."
                 answeredCount < OracleAuthStore.REQUIRED_SECURITY_ANSWERS -> "Answer at least ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} security questions — they're the only way to reset your password later."
                 !termsCheckbox.isChecked -> "You need to accept the Terms & Conditions to continue."
@@ -518,7 +518,7 @@ class OracleMysticActivity : Activity() {
             val confirm = confirmField.text.toString()
             error.text = when {
                 username.isBlank() -> "Enter your username."
-                newPassword.length < 4 -> "Password needs at least 4 characters."
+                newPassword.length < 8 -> "Password needs at least 8 characters."
                 newPassword != confirm -> "Passwords don't match."
                 answers.isEmpty() && backupCode.isBlank() -> "Answer at least one security question, or provide your backup code."
                 else -> ""
