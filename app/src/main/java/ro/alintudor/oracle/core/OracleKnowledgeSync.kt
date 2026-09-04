@@ -125,7 +125,20 @@ object OracleKnowledgeSync {
                 val page = runCatching { getHtml(url) }.getOrNull()
                 if (page != null) {
                     extractMetaDescription(page)?.takeIf { it.isNotBlank() }?.let { excerpt = it }
-                    if (imageUrl.isBlank()) imageUrl = extractFeaturedImage(page) ?: extractMetaImage(page) ?: ""
+                    if (imageUrl.isBlank()) {
+                        // The membership plugin (WP-Members) also hides the
+                        // featured-media embed from anonymous REST callers,
+                        // and this theme (Kubio) doesn't tag its featured
+                        // <img> with wp-post-image — but the image itself IS
+                        // in the anonymous page, right after the <h1>. So:
+                        // first uploads/ image after the title, never the
+                        // site logo that og:image points at.
+                        val logo = extractMetaImage(page)
+                        imageUrl = extractFeaturedImage(page)
+                            ?: extractFirstContentImage(page, exclude = logo)
+                            ?: logo
+                            ?: ""
+                    }
                 }
             }
             if (looksRestricted(excerpt)) {
@@ -171,6 +184,24 @@ object OracleKnowledgeSync {
         for (pattern in featuredImagePatterns) {
             val text = pattern.find(html)?.groupValues?.get(1)?.trim()
             if (!text.isNullOrBlank()) return text
+        }
+        return null
+    }
+
+    // Any <img> (src or lazy-load data-src) — scanned from the article's
+    // <h1> onward, so header/menu/logo images above the title are skipped.
+    private val anyImagePattern = Regex("""<img[^>]+(?:data-src|src)=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+
+    private fun extractFirstContentImage(html: String, exclude: String?): String? {
+        val start = Regex("<h1[\\s>]", RegexOption.IGNORE_CASE).find(html)?.range?.first ?: 0
+        val excludeName = exclude?.substringAfterLast('/')?.substringBefore('?')?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+        for (match in anyImagePattern.findAll(html, start)) {
+            val src = match.groupValues[1].trim()
+            if (src.startsWith("data:", ignoreCase = true)) continue
+            if (!src.contains("/wp-content/uploads/", ignoreCase = true)) continue
+            // Skip the site logo (any rendition of it: -300x300 etc.).
+            if (excludeName != null && src.contains(excludeName, ignoreCase = true)) continue
+            return src
         }
         return null
     }
