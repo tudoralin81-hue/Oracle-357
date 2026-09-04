@@ -790,6 +790,32 @@ class OracleMysticActivity : Activity() {
         card.addView(batteryStatus)
 
         card.addView(TextView(this).apply {
+            text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
+        })
+        card.addView(TextView(this).apply {
+            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.rgb(255, 110, 110))
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
+            setPadding(0, dp(14), 0, dp(14))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                    .setTitle("Log out?")
+                    .setMessage("You'll need your username and password (or fingerprint, if enabled) to log back in.")
+                    .setPositiveButton("Log out") { _, _ ->
+                        val store = OracleAuthStore(this@OracleMysticActivity)
+                        store.clearSession()
+                        authPassedThisProcess = false
+                        currentModule = null
+                        showLogin(store)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
             isClickable = true; isFocusable = true
             setOnClickListener { showHub() }
