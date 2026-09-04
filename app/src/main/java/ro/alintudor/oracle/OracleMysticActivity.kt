@@ -641,6 +641,30 @@ class OracleMysticActivity : Activity() {
         }, bootDurationMs)
     }
 
+    private fun checkAlertsStatusSilently(indicator: TextView) {
+        val notificationsEnabled = runCatching {
+            (getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).areNotificationsEnabled()
+        }.getOrDefault(false)
+        if (!notificationsEnabled) {
+            indicator.text = "ALERTS OFF ✗"; indicator.setTextColor(Color.rgb(150, 150, 150))
+            return
+        }
+        // Local-only check: does this device actually have a working FCM
+        // token available? No network call to our own server, no push or
+        // email sent — purely "is the plumbing on this device functional".
+        runCatching {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                runOnUiThread {
+                    val ok = task.isSuccessful && !task.result.isNullOrBlank()
+                    indicator.text = if (ok) "ALERTS ON ✓" else "ALERTS OFF ✗"
+                    indicator.setTextColor(if (ok) Color.rgb(105, 245, 35) else Color.rgb(150, 150, 150))
+                }
+            }
+        }.onFailure {
+            indicator.text = "ALERTS OFF ✗"; indicator.setTextColor(Color.rgb(150, 150, 150))
+        }
+    }
+
     private fun showHub() {
         currentModule = null
         root.removeAllViews()
@@ -654,6 +678,14 @@ class OracleMysticActivity : Activity() {
         page.addView(hero, LinearLayout.LayoutParams(-1, heroHeight))
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+
+        val alertsIndicator = TextView(this).apply {
+            text = "ALERTS …"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(150, 150, 150))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = GradientDrawable().apply { setColor(Color.rgb(7, 14, 28)); cornerRadius = dp(10).toFloat(); setStroke(dp(1), Color.rgb(49, 82, 125)) }
+        }
+        root.addView(alertsIndicator, FrameLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.START; leftMargin = dp(14); topMargin = dp(14) })
+        checkAlertsStatusSilently(alertsIndicator)
     }
 
     private fun showBackupScreen() {
@@ -666,34 +698,9 @@ class OracleMysticActivity : Activity() {
 
         card.addView(TextView(this).apply { text = "BACKUP"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
         card.addView(TextView(this).apply {
-            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge, as an extra local file you control. Your account itself lives on alintudor.ro now — recover it by logging in again, not by restoring this file."
+            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge sync automatically to alintudor.ro in the background, right after every change — no manual export needed. Your account itself lives on alintudor.ro too, recovered by logging in again."
             textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(26))
         })
-
-        val lastExport = OracleBackupManager.lastExportTimestamp(this)
-        val statusLabel = TextView(this).apply {
-            text = if (lastExport > 0L) "Last exported: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date(lastExport))}" else "No backup exported yet."
-            textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(18))
-        }
-        card.addView(statusLabel)
-
-        card.addView(TextView(this).apply {
-            text = "EXPORT BACKUP"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = GradientDrawable().apply { setColor(Color.rgb(20, 90, 60)); cornerRadius = dp(12).toFloat() }
-            setPadding(0, dp(15), 0, dp(15))
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                val name = "oracle-backup-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json"
-                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/json"
-                    putExtra(Intent.EXTRA_TITLE, name)
-                }
-                runCatching { startActivityForResult(intent, REQUEST_CODE_EXPORT_BACKUP) }
-                    .onFailure { Toast.makeText(this@OracleMysticActivity, "Couldn't open the file picker.", Toast.LENGTH_LONG).show() }
-            }
-        }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "RESTORE FROM BACKUP"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
@@ -709,11 +716,11 @@ class OracleMysticActivity : Activity() {
                 runCatching { startActivityForResult(intent, REQUEST_CODE_IMPORT_BACKUP) }
                     .onFailure { Toast.makeText(this@OracleMysticActivity, "Couldn't open the file picker.", Toast.LENGTH_LONG).show() }
             }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
-            text = "Your data also syncs automatically to alintudor.ro in the background, right after every change — this local file is a second, offline copy under your own control."
-            textSize = 11f; setTextColor(muted); setPadding(0, dp(18), 0, 0)
+            text = "A reserve option — for importing a backup file from elsewhere. Not needed for normal recovery; logging back in already brings your data with it."
+            textSize = 11f; setTextColor(muted); setPadding(0, dp(10), 0, dp(18))
         })
 
         val pushStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
