@@ -1,11 +1,9 @@
 package ro.alintudor.oracle.nativeui
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -94,21 +92,9 @@ class OracleNativeModule(
 
     private fun button(symbol:String,desc:String,color:Int,click:()->Unit)=TextView(context).apply{ text=symbol;textSize=30f;gravity=Gravity.CENTER;contentDescription=desc;typeface=Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);background=rounded(Color.rgb(5,8,17),dp(13),color,dp(1));isClickable=true;isFocusable=true;setOnClickListener{click()} }
     fun addCard(heading:String,body:String){
-        val isKnowledge = heading.equals("KNOWLEDGE", ignoreCase = true)
-        val card=LinearLayout(context).apply{ orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)); background=rounded(Color.rgb(7,11,22),dp(15),if(isKnowledge) Color.rgb(255,205,55) else Color.rgb(42,52,76),dp(1))
-            if (isKnowledge) { isClickable = true; isFocusable = true; contentDescription = "Open Knowledge: https://alintudor.ro/knowledge/"; setOnClickListener { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://alintudor.ro/knowledge/"))) } } }
-        }
+        val card=LinearLayout(context).apply{ orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)); background=rounded(Color.rgb(7,11,22),dp(15),Color.rgb(42,52,76),dp(1)) }
         card.addView(TextView(context).apply{text=heading.uppercase();textSize=17f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.04f;setTextColor(Color.WHITE)})
-        card.addView(TextView(context).apply{text=body;textSize=14f;setTextColor(if(isKnowledge) Color.WHITE else Color.rgb(175,182,198));setPadding(0,dp(7),0,0)})
-        if (isKnowledge) {
-            card.addView(TextView(context).apply {
-                text = "PRESS HERE FOR TRADING KNOWLEDGE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(255, 205, 55)); setPadding(0, dp(10), 0, 0)
-                android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.35f, 1f).apply {
-                    duration = 1150L; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.RESTART; start()
-                }
-            })
-        }
+        card.addView(TextView(context).apply{text=body;textSize=14f;setTextColor(Color.rgb(175,182,198));setPadding(0,dp(7),0,0)})
         content.addView(card,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,dp(10))})
     }
     fun addSectionLabel(text:String,sectionAccent:Int=accent){content.addView(TextView(context).apply{this.text=text.uppercase();textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.14f;setTextColor(sectionAccent);setPadding(dp(5),dp(8),dp(5),dp(7))})}

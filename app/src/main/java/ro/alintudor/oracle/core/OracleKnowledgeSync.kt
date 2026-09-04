@@ -269,15 +269,35 @@ object OracleKnowledgeSync {
         return null
     }
 
-    fun scheduleDaily(context: Context) {
+    /** Checks for new articles roughly once an hour, Monday–Friday only —
+     *  skips weekends entirely (the site doesn't publish then) by jumping
+     *  straight to Monday 08:00 instead of firing through Saturday/Sunday.
+     *  Self-reschedules from the receiver below, and once more from app
+     *  startup / device boot to keep the chain alive. */
+    fun scheduleNextCheck(context: Context) {
         val app = context.applicationContext
         val alarm = app.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
         val intent = Intent(app, OracleKnowledgeRefreshReceiver::class.java)
         val pending = android.app.PendingIntent.getBroadcast(app, 7107, intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
         alarm.cancel(pending)
-        val first = System.currentTimeMillis() + 24L * 60L * 60L * 1000L
-        if (android.os.Build.VERSION.SDK_INT >= 23) alarm.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, first, pending)
-        else alarm.set(android.app.AlarmManager.RTC_WAKEUP, first, pending)
+        val next = nextWeekdayCheckTime()
+        if (android.os.Build.VERSION.SDK_INT >= 23) alarm.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, next, pending)
+        else alarm.set(android.app.AlarmManager.RTC_WAKEUP, next, pending)
+    }
+
+    private fun nextWeekdayCheckTime(): Long {
+        val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.HOUR_OF_DAY, 1) }
+        val daysToMonday = when (cal.get(java.util.Calendar.DAY_OF_WEEK)) {
+            java.util.Calendar.SATURDAY -> 2
+            java.util.Calendar.SUNDAY -> 1
+            else -> 0
+        }
+        if (daysToMonday > 0) {
+            cal.add(java.util.Calendar.DAY_OF_YEAR, daysToMonday)
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 8)
+            cal.set(java.util.Calendar.MINUTE, 0); cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
     }
 
     private fun get(url: String): String {
@@ -387,12 +407,12 @@ object OracleKnowledgeSync {
 class OracleKnowledgeRefreshReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
-            OracleKnowledgeSync.scheduleDaily(context.applicationContext); return
+            OracleKnowledgeSync.scheduleNextCheck(context.applicationContext); return
         }
         val pending = goAsync()
         Thread {
             try { runCatching { OracleKnowledgeSync.refreshBlocking(context.applicationContext) }.onFailure { context.applicationContext.getSharedPreferences("oracle_knowledge", Context.MODE_PRIVATE).edit().putString("last_error", it.message ?: it.javaClass.simpleName).apply() } }
-            finally { OracleKnowledgeSync.scheduleDaily(context.applicationContext); pending.finish() }
+            finally { OracleKnowledgeSync.scheduleNextCheck(context.applicationContext); pending.finish() }
         }.start()
     }
 }

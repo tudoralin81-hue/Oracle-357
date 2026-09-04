@@ -127,7 +127,7 @@ class OracleMysticActivity : Activity() {
         }
         runCatching {
             OracleBootstrap.ensure(repository)
-            OracleKnowledgeSync.scheduleDaily(this)
+            OracleKnowledgeSync.scheduleNextCheck(this)
             showBootLoader()
         }.onFailure { proceedingPastAuth = false; showFatalError("Oracle failed to start", it) }
     }
