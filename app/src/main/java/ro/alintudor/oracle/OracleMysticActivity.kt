@@ -72,6 +72,18 @@ class OracleMysticActivity : Activity() {
         The developer of this app assumes no responsibility for any financial loss resulting from its use.
     """.trimIndent()
 
+    private fun offerBiometricEnrollIfNeeded(store: OracleAuthStore, onDone: () -> Unit) {
+        if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable()) { onDone(); return }
+        store.setBiometricOffered(true)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Enable fingerprint unlock?")
+            .setMessage("Skip typing your password next time you open Oracle — unlock with your fingerprint instead.")
+            .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); onDone() }
+            .setNegativeButton("Not now") { _, _ -> onDone() }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun legalDialog(title: String, body: String) {
         val panel = Color.rgb(7, 14, 28)
         val muted = Color.rgb(200, 206, 220)
@@ -314,6 +326,7 @@ class OracleMysticActivity : Activity() {
                         val (token, backupCode) = pair
                         store.saveSession(username, token)
                         store.setBiometricEnabled(biometricWanted)
+                        store.setBiometricOffered(true)
                         OracleFirebaseMessagingService.registerCurrentToken(this@OracleMysticActivity)
                         if (notifyEmail.isNotBlank()) {
                             store.setNotificationEmail(notifyEmail)
@@ -421,8 +434,10 @@ class OracleMysticActivity : Activity() {
                         store.saveSession(username, token)
                         OracleFirebaseMessagingService.registerCurrentToken(this@OracleMysticActivity)
                         OracleSyncManager.pullAll(this@OracleMysticActivity, token) {
-                            authPassedThisProcess = true
-                            proceedPastAuth()
+                            offerBiometricEnrollIfNeeded(store) {
+                                authPassedThisProcess = true
+                                proceedPastAuth()
+                            }
                         }
                     }.onFailure {
                         loginButton.isEnabled = true; loginButton.text = "LOG IN"

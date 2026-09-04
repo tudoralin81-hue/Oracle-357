@@ -40,6 +40,12 @@ class OracleAuthStore(context: Context) {
     fun biometricEnabled(): Boolean = prefs.getBoolean("biometric_enabled", false)
     fun setBiometricEnabled(value: Boolean) { prefs.edit().putBoolean("biometric_enabled", value).apply() }
 
+    // Whether the one-time "enable fingerprint unlock?" prompt has already
+    // been shown after a login — so declining it once doesn't mean asking
+    // again on every future login.
+    fun biometricOffered(): Boolean = prefs.getBoolean("biometric_offered", false)
+    fun setBiometricOffered(value: Boolean) { prefs.edit().putBoolean("biometric_offered", value).apply() }
+
     fun notificationEmail(): String = prefs.getString("notification_email", "") ?: ""
     fun setNotificationEmail(value: String) { prefs.edit().putString("notification_email", value.trim()).apply() }
 }

@@ -4,20 +4,37 @@ package ro.alintudor.oracle.core
  * Single source of truth for the per-module build version shown at the
  * bottom of every Oracle module (e.g. "BUILD OR-GR-357.1.0" on Growth).
  *
- * Format: OR-<module code>-357.<MAJOR>.<MINOR>
- *   - MINOR bumps by 1 on every change made to the app going forward.
- *   - MAJOR bumps by 1 (and MINOR resets to 0) once per calendar month —
- *     tracked in memory (not in this file) as the month this was last
- *     bumped, so it only rolls over once even across many sessions in
- *     the same month.
+ * Format: OR-<module code>-357.<MAJOR>.<MINOR>, tracked SEPARATELY per
+ * module in VERSIONS below:
+ *   - MINOR bumps by 1 for a module on every change made to that module.
+ *   - MAJOR bumps by 1 (MINOR resets to 0) once per calendar month for that
+ *     module, the first time it's touched that month.
  *
- * When making ANY change to the app: bump MINOR by 1 here (or MAJOR+reset
- * if the calendar month has changed since the last bump) before packaging
- * the build for the user.
+ * When making a change: bump ONLY the VERSIONS entry for the module(s) you
+ * actually touched before packaging the build. Every other module's number
+ * must be left exactly as it was — that's what makes the number mean
+ * anything (when THIS module last changed, not the whole app).
  */
 object OracleBuildInfo {
-    const val MAJOR = 1
-    const val MINOR = 17
+    // Each module tracks its own MAJOR.MINOR independently — the number on
+    // screen means "when was THIS module last changed", not "when was
+    // anything in the app last changed". When making a change: bump ONLY
+    // the entry for the module(s) actually touched; every other module's
+    // number must stay exactly as it was. MAJOR bumps (MINOR resets to 0)
+    // once per calendar month for a module, the first time that module is
+    // touched that month.
+    private data class Version(val major: Int, val minor: Int)
+
+    private val VERSIONS = mapOf(
+        "PORTFOLIO" to Version(1, 17),
+        "ALERTS" to Version(1, 17),
+        "NEWS" to Version(1, 17),
+        "GROWTH" to Version(1, 17),
+        "KNOWLEDGE" to Version(1, 19),
+        "ANALYSIS" to Version(1, 17),
+        "WATCHLIST" to Version(1, 17),
+        "ACTIVITY JOURNAL" to Version(1, 17)
+    )
 
     private val MODULE_CODES = mapOf(
         "PORTFOLIO" to "PO",
@@ -31,7 +48,9 @@ object OracleBuildInfo {
     )
 
     fun label(moduleTitle: String): String {
-        val code = MODULE_CODES[moduleTitle.uppercase()] ?: moduleTitle.take(2).uppercase()
-        return "BUILD OR-$code-357.$MAJOR.$MINOR"
+        val key = moduleTitle.uppercase()
+        val code = MODULE_CODES[key] ?: moduleTitle.take(2).uppercase()
+        val v = VERSIONS[key] ?: Version(1, 0)
+        return "BUILD OR-$code-357.${v.major}.${v.minor}"
     }
 }
