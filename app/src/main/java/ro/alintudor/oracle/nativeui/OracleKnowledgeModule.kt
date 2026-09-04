@@ -50,7 +50,11 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
                 setOnClickListener { showArticlePopup(context, article) }
             }
             card.addView(TextView(context).apply { text = article.title; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
-            if (article.publishedAt > 0L) card.addView(TextView(context).apply { text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(article.publishedAt)); textSize = 11f; setTextColor(host.accent); setPadding(0, host.dp(5), 0, 0) })
+            val meta = listOfNotNull(
+                article.category.takeIf { it.isNotBlank() }?.uppercase(Locale.getDefault()),
+                article.publishedAt.takeIf { it > 0L }?.let { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it)) }
+            ).joinToString("  •  ")
+            if (meta.isNotBlank()) card.addView(TextView(context).apply { text = meta; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.05f; setTextColor(host.accent); setPadding(0, host.dp(5), 0, 0) })
             card.addView(TextView(context).apply { text = article.excerpt; textSize = 13f; setTextColor(Color.rgb(175, 183, 201)); setPadding(0, host.dp(8), 0, 0) })
             host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
         }

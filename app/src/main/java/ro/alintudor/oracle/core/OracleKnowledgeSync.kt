@@ -20,6 +20,7 @@ data class OracleKnowledgeArticle(
     val excerpt: String,
     val content: String,
     val imageUrl: String,
+    val category: String,
     val publishedAt: Long,
     val refreshedAt: Long
 )
@@ -33,11 +34,16 @@ object OracleKnowledgeSync {
     // just how the site presents its one and only stream of trading-education
     // articles). So no server-side or client-side filtering is needed or even
     // possible here — every published post IS a Knowledge article.
-    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_embed=wp:featuredmedia&_fields=id,date,link,title,excerpt,content,featured_media,_links,_embedded"
+    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_embed=wp:featuredmedia,wp:term&_fields=id,date,link,title,excerpt,content,featured_media,_links,_embedded"
     private const val PREFS = "oracle_knowledge"
     private const val ITEMS = "articles"
     private const val LAST_SUCCESS = "last_success"
     private const val LAST_ERROR = "last_error"
+    // Bump whenever the cached article format changes: load() then ignores
+    // the old cache and the module re-syncs on its own next time it opens,
+    // so a new build never shows data written in an older build's format.
+    private const val CACHE_VERSION_KEY = "cache_version"
+    private const val CACHE_VERSION = 3
     private const val MAX_ARTICLES = 100
     // Bounds how many articles get their own page fetched per refresh (for
     // the description + image below) — a generous cap for a personal blog's
@@ -49,11 +55,13 @@ object OracleKnowledgeSync {
     private val executor = Executors.newSingleThreadExecutor()
 
     fun load(context: Context): List<OracleKnowledgeArticle> = runCatching {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(ITEMS, "[]") ?: "[]"
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getInt(CACHE_VERSION_KEY, 0) != CACHE_VERSION) return emptyList()
+        val raw = prefs.getString(ITEMS, "[]") ?: "[]"
         val a = JSONArray(raw)
         List(a.length()) { i ->
             val o = a.getJSONObject(i)
-            OracleKnowledgeArticle(o.optString("title"), o.optString("url"), o.optString("excerpt"), o.optString("content"), o.optString("imageUrl"), o.optLong("publishedAt"), o.optLong("refreshedAt"))
+            OracleKnowledgeArticle(o.optString("title"), o.optString("url"), o.optString("excerpt"), o.optString("content"), o.optString("imageUrl"), o.optString("category"), o.optLong("publishedAt"), o.optLong("refreshedAt"))
         }
     }.getOrDefault(emptyList())
 
@@ -86,12 +94,12 @@ object OracleKnowledgeSync {
             apiItems.forEach { a ->
                 put(JSONObject().apply {
                     put("title", a.title); put("url", a.url); put("excerpt", a.excerpt); put("content", a.content)
-                    put("imageUrl", a.imageUrl); put("publishedAt", a.publishedAt); put("refreshedAt", a.refreshedAt)
+                    put("imageUrl", a.imageUrl); put("category", a.category); put("publishedAt", a.publishedAt); put("refreshedAt", a.refreshedAt)
                 })
             }
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(ITEMS, payload.toString()).putLong(LAST_SUCCESS, now).remove(LAST_ERROR).apply()
+            .putString(ITEMS, payload.toString()).putInt(CACHE_VERSION_KEY, CACHE_VERSION).putLong(LAST_SUCCESS, now).remove(LAST_ERROR).apply()
         return apiItems
     }
 
@@ -113,6 +121,7 @@ object OracleKnowledgeSync {
             // back to the preview text instead.
             val content = if (contentText.isBlank() || looksRestricted(contentText)) "" else sanitizeArticleHtml(contentHtml)
             var imageUrl = featuredImageFromEmbed(item)
+            val category = categoryFromEmbed(item)
             // A membership plugin gates the full article behind a login/
             // register wall — confirmed by fetching a real article's own
             // public page: the REST API's excerpt/content fields come back
@@ -154,9 +163,10 @@ object OracleKnowledgeSync {
                 excerpt = "Full article requires a free alintudor.ro account to read."
             }
             val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
-            out += OracleKnowledgeArticle(title, url, excerpt, content.take(80000), imageUrl, publishedAt, refreshedAt)
+            out += OracleKnowledgeArticle(title, url, excerpt, content.take(80000), imageUrl, category, publishedAt, refreshedAt)
         }
-        return out.distinctBy { it.url }.sortedByDescending { it.publishedAt }.take(MAX_ARTICLES)
+        // Chronological (oldest first): these are chapters, read in order.
+        return out.distinctBy { it.url }.sortedBy { it.publishedAt }.take(MAX_ARTICLES)
     }
 
     private fun looksRestricted(text: String): Boolean {
@@ -175,6 +185,24 @@ object OracleKnowledgeSync {
             if (u.isNotBlank()) return u
         }
         return media.optString("source_url", "").trim()
+    }
+
+    /** The post's category name(s) — on this site the category is the
+     *  chapter ("Chapter 1"), shown on the page next to the date. Embedded
+     *  via _embed=wp:term as one array per taxonomy. */
+    private fun categoryFromEmbed(item: JSONObject): String {
+        val groups = item.optJSONObject("_embedded")?.optJSONArray("wp:term") ?: return ""
+        val names = ArrayList<String>()
+        for (g in 0 until groups.length()) {
+            val terms = groups.optJSONArray(g) ?: continue
+            for (t in 0 until terms.length()) {
+                val term = terms.optJSONObject(t) ?: continue
+                if (term.optString("taxonomy") != "category") continue
+                val name = decodeHtml(term.optString("name", ""))
+                if (name.isNotBlank() && !name.equals("Uncategorized", ignoreCase = true)) names += name
+            }
+        }
+        return names.joinToString(" • ")
     }
 
     // WordPress tags the featured image it renders with the wp-post-image

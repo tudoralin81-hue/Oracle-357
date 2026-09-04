@@ -86,15 +86,21 @@ fun showArticlePopup(context: Context, article: OracleKnowledgeArticle) {
         text = article.title; textSize = 21f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
         setLineSpacing(dp(2).toFloat(), 1f)
     })
-    if (article.publishedAt > 0L) content.addView(TextView(context).apply {
-        text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(article.publishedAt))
-        textSize = 12f; setTextColor(Color.rgb(255, 205, 45)); setPadding(0, dp(6), 0, dp(14))
+    val meta = listOfNotNull(
+        article.category.takeIf { it.isNotBlank() }?.uppercase(Locale.getDefault()),
+        article.publishedAt.takeIf { it > 0L }?.let { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(it)) }
+    ).joinToString("  •  ")
+    if (meta.isNotBlank()) content.addView(TextView(context).apply {
+        text = meta; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f
+        setTextColor(Color.rgb(255, 205, 45)); setPadding(0, dp(6), 0, dp(14))
     })
     if (article.content.isNotBlank()) {
         // Full article (available once the site serves it unrestricted):
         // rendered natively with headings / paragraphs / bold / lists kept.
         content.addView(TextView(context).apply {
-            text = Html.fromHtml(article.content, Html.FROM_HTML_MODE_COMPACT)
+            // LEGACY mode keeps a blank line between paragraphs/headings —
+            // COMPACT runs them together on a phone screen.
+            text = Html.fromHtml(article.content, Html.FROM_HTML_MODE_LEGACY)
             textSize = 15f; setTextColor(Color.rgb(200, 207, 222)); setLineSpacing(dp(4).toFloat(), 1f)
         })
     } else {
