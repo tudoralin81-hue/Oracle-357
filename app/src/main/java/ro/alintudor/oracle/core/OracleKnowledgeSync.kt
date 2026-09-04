@@ -11,6 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URI
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.Executors
 
 data class OracleKnowledgeArticle(
@@ -99,11 +100,28 @@ object OracleKnowledgeSync {
             val contentHtml = item.optJSONObject("content")?.optString("rendered", "") ?: ""
             val excerptHtml = item.optJSONObject("excerpt")?.optString("rendered", "") ?: ""
             val content = cleanText(contentHtml)
-            val excerpt = cleanText(excerptHtml).ifBlank { content }.take(420)
+            var excerpt = cleanText(excerptHtml).ifBlank { content }.take(420)
+            // Confirmed by fetching a real article's own public page: a
+            // membership plugin gates the full article behind a login/register
+            // wall, and the REST API's excerpt/content fields come back as
+            // that same restriction notice rather than real text. The
+            // <meta name="description"> tag on the article's public page is
+            // NOT gated — it's the exact free-preview text the site's own
+            // /knowledge/ listing shows — so fall back to reading that
+            // directly off the page when the REST fields turn out to be the
+            // restriction notice instead of real content.
+            if (looksRestricted(excerpt)) {
+                excerpt = runCatching { extractMetaDescription(getHtml(url)) }.getOrNull()?.takeIf { it.isNotBlank() } ?: excerpt
+            }
             val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
             out += OracleKnowledgeArticle(title, url, excerpt, content.take(12000), publishedAt, refreshedAt)
         }
         return out.distinctBy { it.url }.sortedByDescending { it.publishedAt }.take(MAX_ARTICLES)
+    }
+
+    private fun looksRestricted(text: String): Boolean {
+        val t = text.lowercase(Locale.US)
+        return t.contains("restricted to site members") || t.contains("must be logged in") || t.contains("please log in") || t.contains("new user registration")
     }
 
     fun scheduleDaily(context: Context) {
@@ -130,6 +148,35 @@ object OracleKnowledgeSync {
             if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode} pentru Knowledge REST API")
             c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally { c.disconnect() }
+    }
+
+    /** Plain HTML GET for an article's own public page (used only to read its
+     *  unrestricted <meta name="description"> tag — see looksRestricted). */
+    private fun getHtml(url: String): String {
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = REQUEST_TIMEOUT; readTimeout = REQUEST_TIMEOUT; useCaches = false; requestMethod = "GET"
+            setRequestProperty("User-Agent", "OracleKnowledge/3.0")
+        }
+        return try {
+            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode} fetching article page")
+            c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally { c.disconnect() }
+    }
+
+    private val metaDescriptionPatterns = listOf(
+        Regex("""<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*name=["']description["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*property=["']og:description["']""", RegexOption.IGNORE_CASE)
+    )
+
+    private fun extractMetaDescription(html: String): String? {
+        for (pattern in metaDescriptionPatterns) {
+            val match = pattern.find(html) ?: continue
+            val text = cleanText(match.groupValues[1])
+            if (text.isNotBlank()) return text
+        }
+        return null
     }
 
     private fun decodeHtml(raw: String): String = cleanText(raw)
