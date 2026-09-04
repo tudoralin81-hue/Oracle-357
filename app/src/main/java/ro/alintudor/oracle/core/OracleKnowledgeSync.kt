@@ -34,7 +34,7 @@ object OracleKnowledgeSync {
     // just how the site presents its one and only stream of trading-education
     // articles). So no server-side or client-side filtering is needed or even
     // possible here — every published post IS a Knowledge article.
-    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_embed=wp:featuredmedia,wp:term&_fields=id,date,link,title,excerpt,content,featured_media,_links,_embedded"
+    private const val POSTS_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_embed=wp:featuredmedia,wp:term&_fields=id,date,date_gmt,link,title,excerpt,content,featured_media,_links,_embedded"
     private const val PREFS = "oracle_knowledge"
     private const val ITEMS = "articles"
     private const val LAST_SUCCESS = "last_success"
@@ -43,7 +43,7 @@ object OracleKnowledgeSync {
     // the old cache and the module re-syncs on its own next time it opens,
     // so a new build never shows data written in an older build's format.
     private const val CACHE_VERSION_KEY = "cache_version"
-    private const val CACHE_VERSION = 3
+    private const val CACHE_VERSION = 4
     private const val MAX_ARTICLES = 100
     // Bounds how many articles get their own page fetched per refresh (for
     // the description + image below) — a generous cap for a personal blog's
@@ -51,6 +51,10 @@ object OracleKnowledgeSync {
     // the site ever grows a large backlog.
     private const val MAX_PAGE_FETCHES = 40
     private const val STALE_MS = 20L * 60L * 60L * 1000L
+    private const val LAST_ATTEMPT = "last_attempt"
+    // Auto-sync runs whenever the Knowledge screen renders, throttled so a
+    // render triggered by a sync finishing (or a failing one) can't loop.
+    private const val AUTO_SYNC_MIN_GAP_MS = 60L * 1000L
     private const val REQUEST_TIMEOUT = 15000
     private val executor = Executors.newSingleThreadExecutor()
 
@@ -69,8 +73,17 @@ object OracleKnowledgeSync {
     fun lastError(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(LAST_ERROR, "") ?: ""
     fun isStale(context: Context): Boolean = System.currentTimeMillis() - lastSuccess(context) >= STALE_MS
 
+    /** True when an automatic background sync should start now: nothing
+     *  cached yet, or at least AUTO_SYNC_MIN_GAP_MS since the last attempt. */
+    fun shouldAutoSync(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getInt(CACHE_VERSION_KEY, 0) != CACHE_VERSION) return true
+        return System.currentTimeMillis() - prefs.getLong(LAST_ATTEMPT, 0L) >= AUTO_SYNC_MIN_GAP_MS
+    }
+
     fun refreshAsync(context: Context, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
         val app = context.applicationContext
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(LAST_ATTEMPT, System.currentTimeMillis()).apply()
         executor.execute {
             val result = runCatching { refreshBlocking(app) }
             Handler(Looper.getMainLooper()).post {
@@ -105,7 +118,7 @@ object OracleKnowledgeSync {
 
     private fun parseRestArticles(raw: String, refreshedAt: Long): List<OracleKnowledgeArticle> {
         val array = JSONArray(raw)
-        val out = ArrayList<OracleKnowledgeArticle>()
+        val out = ArrayList<Pair<Long, OracleKnowledgeArticle>>()
         for (i in 0 until array.length()) {
             val item = array.getJSONObject(i)
             val title = decodeHtml(item.optJSONObject("title")?.optString("rendered", "") ?: "")
@@ -162,11 +175,28 @@ object OracleKnowledgeSync {
                 // more honest either way.
                 excerpt = "Full article requires a free alintudor.ro account to read."
             }
-            val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
-            out += OracleKnowledgeArticle(title, url, excerpt, content.take(80000), imageUrl, category, publishedAt, refreshedAt)
+            val publishedAt = parseWpDate(item)
+            val wpId = item.optLong("id", 0L)
+            out += wpId to OracleKnowledgeArticle(title, url, excerpt, content.take(80000), imageUrl, category, publishedAt, refreshedAt)
         }
-        // Chronological (oldest first): these are chapters, read in order.
-        return out.distinctBy { it.url }.sortedBy { it.publishedAt }.take(MAX_ARTICLES)
+        // Chronological, oldest first — these are chapters, read in order.
+        // WordPress post id breaks ties (it only ever grows with creation).
+        return out.distinctBy { it.second.url }
+            .sortedWith(compareBy({ it.second.publishedAt }, { it.first }))
+            .map { it.second }
+            .take(MAX_ARTICLES)
+    }
+
+    /** WordPress REST dates carry no offset ("2026-09-04T13:00:08"), so
+     *  Instant.parse() rejects them. date_gmt is UTC; date is site-local. */
+    private fun parseWpDate(item: JSONObject): Long {
+        item.optString("date_gmt", "").takeIf { it.isNotBlank() }?.let { s ->
+            runCatching { java.time.LocalDateTime.parse(s).toInstant(java.time.ZoneOffset.UTC).toEpochMilli() }.getOrNull()?.let { return it }
+        }
+        val local = item.optString("date", "")
+        if (local.isBlank()) return 0L
+        return runCatching { Instant.parse(local).toEpochMilli() }.getOrNull()
+            ?: runCatching { java.time.LocalDateTime.parse(local).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrDefault(0L)
     }
 
     private fun looksRestricted(text: String): Boolean {

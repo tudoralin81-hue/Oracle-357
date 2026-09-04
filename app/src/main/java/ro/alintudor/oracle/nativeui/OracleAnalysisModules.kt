@@ -43,16 +43,11 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     private fun renderKnowledgeSynced() {
         val context = host.root.context
         val cached = OracleKnowledgeSync.load(context)
-        OracleKnowledgeModule(host).render(
-            items = cached,
-            onRefresh = {
-                OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
-            }
-        )
-        // First-ever open (nothing cached yet) or stale cache: refresh silently
-        // in the background so the list fills in without the user having to
-        // find and tap the refresh button themselves.
-        if (cached.isEmpty() || OracleKnowledgeSync.isStale(context)) {
+        OracleKnowledgeModule(host).render(items = cached)
+        // Automatic: every time this screen renders (open, header refresh),
+        // sync in the background and re-render once it lands. Throttled in
+        // shouldAutoSync so the re-render can't retrigger it in a loop.
+        if (cached.isEmpty() || OracleKnowledgeSync.shouldAutoSync(context)) {
             OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
         }
     }
