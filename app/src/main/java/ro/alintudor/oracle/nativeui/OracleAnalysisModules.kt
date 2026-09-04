@@ -45,7 +45,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         val cached = OracleKnowledgeSync.load(context)
         OracleKnowledgeModule(host).render(
             items = cached,
-            onOpen = { url -> runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } },
             onRefresh = {
                 OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
             }
