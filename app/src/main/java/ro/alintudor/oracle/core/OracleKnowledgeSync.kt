@@ -19,6 +19,7 @@ data class OracleKnowledgeArticle(
     val url: String,
     val excerpt: String,
     val content: String,
+    val imageUrl: String,
     val publishedAt: Long,
     val refreshedAt: Long
 )
@@ -38,6 +39,11 @@ object OracleKnowledgeSync {
     private const val LAST_SUCCESS = "last_success"
     private const val LAST_ERROR = "last_error"
     private const val MAX_ARTICLES = 100
+    // Bounds how many articles get their own page fetched per refresh (for
+    // the description + image below) — a generous cap for a personal blog's
+    // article count, keeping a REFRESH KNOWLEDGE press from taking minutes if
+    // the site ever grows a large backlog.
+    private const val MAX_PAGE_FETCHES = 40
     private const val STALE_MS = 20L * 60L * 60L * 1000L
     private const val REQUEST_TIMEOUT = 15000
     private val executor = Executors.newSingleThreadExecutor()
@@ -47,7 +53,7 @@ object OracleKnowledgeSync {
         val a = JSONArray(raw)
         List(a.length()) { i ->
             val o = a.getJSONObject(i)
-            OracleKnowledgeArticle(o.optString("title"), o.optString("url"), o.optString("excerpt"), o.optString("content"), o.optLong("publishedAt"), o.optLong("refreshedAt"))
+            OracleKnowledgeArticle(o.optString("title"), o.optString("url"), o.optString("excerpt"), o.optString("content"), o.optString("imageUrl"), o.optLong("publishedAt"), o.optLong("refreshedAt"))
         }
     }.getOrDefault(emptyList())
 
@@ -80,7 +86,7 @@ object OracleKnowledgeSync {
             apiItems.forEach { a ->
                 put(JSONObject().apply {
                     put("title", a.title); put("url", a.url); put("excerpt", a.excerpt); put("content", a.content)
-                    put("publishedAt", a.publishedAt); put("refreshedAt", a.refreshedAt)
+                    put("imageUrl", a.imageUrl); put("publishedAt", a.publishedAt); put("refreshedAt", a.refreshedAt)
                 })
             }
         }
@@ -101,25 +107,32 @@ object OracleKnowledgeSync {
             val excerptHtml = item.optJSONObject("excerpt")?.optString("rendered", "") ?: ""
             val content = cleanText(contentHtml)
             var excerpt = cleanText(excerptHtml).ifBlank { content }.take(420)
-            // Confirmed by fetching a real article's own public page: a
-            // membership plugin gates the full article behind a login/register
-            // wall, and the REST API's excerpt/content fields come back as
-            // that same restriction notice rather than real text. The
-            // <meta name="description"> tag on the article's public page is
-            // NOT gated — it's the exact free-preview text the site's own
-            // /knowledge/ listing shows — so fall back to reading that
-            // directly off the page when the REST fields turn out to be the
-            // restriction notice instead of real content.
+            var imageUrl = ""
+            // A membership plugin gates the full article behind a login/
+            // register wall — confirmed by fetching a real article's own
+            // public page: the REST API's excerpt/content fields come back
+            // as that same restriction notice rather than real text. The
+            // page's own <meta name="description">/<meta property="og:image">
+            // tags are NOT gated (they're what the site's own /knowledge/
+            // listing and any social-media share preview use), so read the
+            // real preview text and image straight off the page itself
+            // rather than trust the REST fields at all.
+            if (i < MAX_PAGE_FETCHES) {
+                val page = runCatching { getHtml(url) }.getOrNull()
+                if (page != null) {
+                    extractMetaDescription(page)?.takeIf { it.isNotBlank() }?.let { excerpt = it }
+                    imageUrl = extractMetaImage(page) ?: ""
+                }
+            }
             if (looksRestricted(excerpt)) {
-                val fetched = runCatching { extractMetaDescription(getHtml(url)) }.getOrNull()?.takeIf { it.isNotBlank() }
-                // If the live page's meta description can't be read either
-                // (network hiccup, tag format changed), don't leave the raw
-                // server restriction notice sitting in the UI — it reads like
-                // an app error. A plain local note is more honest either way.
-                excerpt = fetched ?: "Full article requires a free alintudor.ro account to read."
+                // Page fetch above failed too, or the tag itself was missing
+                // — don't leave the raw server restriction notice sitting in
+                // the UI, it reads like an app error. A plain local note is
+                // more honest either way.
+                excerpt = "Full article requires a free alintudor.ro account to read."
             }
             val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
-            out += OracleKnowledgeArticle(title, url, excerpt, content.take(12000), publishedAt, refreshedAt)
+            out += OracleKnowledgeArticle(title, url, excerpt, content.take(12000), imageUrl, publishedAt, refreshedAt)
         }
         return out.distinctBy { it.url }.sortedByDescending { it.publishedAt }.take(MAX_ARTICLES)
     }
@@ -187,6 +200,20 @@ object OracleKnowledgeSync {
         for (pattern in metaDescriptionPatterns) {
             val match = pattern.find(html) ?: continue
             val text = cleanText(match.groupValues[1])
+            if (text.isNotBlank()) return text
+        }
+        return null
+    }
+
+    private val metaImagePatterns = listOf(
+        Regex("""<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*property=["']og:image["']""", RegexOption.IGNORE_CASE)
+    )
+
+    private fun extractMetaImage(html: String): String? {
+        for (pattern in metaImagePatterns) {
+            val match = pattern.find(html) ?: continue
+            val text = match.groupValues[1].trim()
             if (text.isNotBlank()) return text
         }
         return null
