@@ -35,6 +35,9 @@ object OracleSyncManager {
                     if (data.has(type)) editor.putString(type, data.getJSONArray(type).toString())
                 }
                 editor.apply()
+                if (data.has("widget")) {
+                    ro.alintudor.oracle.widget.OracleWidgetSettingsStore.restoreFromServerPayload(context, data.optJSONObject("widget"))
+                }
             }
             // onDone touches UI (it ultimately calls proceedPastAuth, which
             // rebuilds the screen) — must run on the main thread, never here.

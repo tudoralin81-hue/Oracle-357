@@ -39,12 +39,13 @@
                 android:letterSpacing="0.05" />
             <TextView
                 android:id="@+id/widget_settings_button"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:gravity="center"
                 android:text="&#9881;"
-                android:textColor="#7D879B"
-                android:textSize="16sp" />
+                android:textColor="#4BE1FF"
+                android:textSize="18sp"
+                android:background="@drawable/widget_settings_button_bg" />
         </LinearLayout>
 
         <LinearLayout

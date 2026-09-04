@@ -1,15 +1,20 @@
 package ro.alintudor.oracle.widget
 
 import android.content.Context
+import org.json.JSONObject
+import ro.alintudor.oracle.core.OracleApiClient
+import ro.alintudor.oracle.core.OracleAuthStore
 
 /** The widget's background color is user-configurable (gear icon on the
- *  widget itself, or Android's own "widget settings" on long-press) — this
- *  just remembers the choice. Default is a light, fairly transparent gray. */
+ *  widget itself, or Android's own "widget settings" on long-press). Kept
+ *  locally, and also synced to the account on alintudor.ro (data type
+ *  "widget"), the same way every other setting in this app is — so it
+ *  survives a login on a fresh install. */
 object OracleWidgetSettingsStore {
     private const val PREFS_NAME = "oracle_widget_settings"
     private const val KEY_COLOR = "background_color"
 
-    // Light gray, more transparent than before by default.
+    // Light gray, fairly transparent by default.
     const val DEFAULT_COLOR = 0x96CDD0D6.toInt() // ARGB: alpha 0x96 (~59%), rgb (205,208,214)
 
     val PRESETS = listOf(
@@ -24,7 +29,22 @@ object OracleWidgetSettingsStore {
     fun color(context: Context): Int =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_COLOR, DEFAULT_COLOR)
 
+    /** Saves locally and, if logged in, pushes to the account in the
+     *  background — same fire-and-forget pattern as every other setting. */
     fun setColor(context: Context, color: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(KEY_COLOR, color).apply()
+        val auth = OracleAuthStore(context)
+        if (auth.hasSession()) {
+            val payload = JSONObject().apply { put("background_color", color) }.toString()
+            Thread { OracleApiClient.saveData(auth.token(), "widget", payload) }.start()
+        }
+    }
+
+    /** Called after login/pullAll to restore the color from the account,
+     *  if the server has one. Safe to call with no "widget" data present. */
+    fun restoreFromServerPayload(context: Context, payload: JSONObject?) {
+        val color = payload?.optInt("background_color", Int.MIN_VALUE) ?: return
+        if (color == Int.MIN_VALUE) return
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(KEY_COLOR, color).apply()
     }
 }
