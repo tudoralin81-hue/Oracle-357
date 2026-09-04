@@ -17,7 +17,7 @@ package ro.alintudor.oracle.core
  */
 object OracleBuildInfo {
     const val MAJOR = 1
-    const val MINOR = 13
+    const val MINOR = 14
 
     private val MODULE_CODES = mapOf(
         "PORTFOLIO" to "PO",

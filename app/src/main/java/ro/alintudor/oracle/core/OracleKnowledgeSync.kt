@@ -105,8 +105,13 @@ object OracleKnowledgeSync {
             if (title.isBlank() || url.isBlank()) continue
             val contentHtml = item.optJSONObject("content")?.optString("rendered", "") ?: ""
             val excerptHtml = item.optJSONObject("excerpt")?.optString("rendered", "") ?: ""
-            val content = cleanText(contentHtml)
-            var excerpt = cleanText(excerptHtml).ifBlank { content }.take(420)
+            val contentText = cleanText(contentHtml)
+            var excerpt = cleanText(excerptHtml).ifBlank { contentText }.take(420)
+            // Full article body, kept as light HTML (paragraphs, headings,
+            // bold, lists) so the popup can render it readably. Empty while
+            // the membership plugin still gates it — the popup then falls
+            // back to the preview text instead.
+            val content = if (contentText.isBlank() || looksRestricted(contentText)) "" else sanitizeArticleHtml(contentHtml)
             var imageUrl = featuredImageFromEmbed(item)
             // A membership plugin gates the full article behind a login/
             // register wall — confirmed by fetching a real article's own
@@ -149,7 +154,7 @@ object OracleKnowledgeSync {
                 excerpt = "Full article requires a free alintudor.ro account to read."
             }
             val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
-            out += OracleKnowledgeArticle(title, url, excerpt, content.take(12000), imageUrl, publishedAt, refreshedAt)
+            out += OracleKnowledgeArticle(title, url, excerpt, content.take(80000), imageUrl, publishedAt, refreshedAt)
         }
         return out.distinctBy { it.url }.sortedByDescending { it.publishedAt }.take(MAX_ARTICLES)
     }
@@ -292,6 +297,18 @@ object OracleKnowledgeSync {
     }
 
     private fun decodeHtml(raw: String): String = cleanText(raw)
+
+    /** Strips what Html.fromHtml can't render or shouldn't (scripts, styles,
+     *  iframes, images, forms, comments) and keeps the text structure. */
+    private fun sanitizeArticleHtml(raw: String): String = raw
+        .replace(Regex("<!--[\\s\\S]*?-->"), " ")
+        .replace(Regex("<script[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("<style[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("<iframe[\\s\\S]*?</iframe>", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("<form[\\s\\S]*?</form>", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("<(?:img|input|button|svg)[^>]*>", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("</?(?:figure|figcaption|picture|source|video|audio|noscript)[^>]*>", RegexOption.IGNORE_CASE), " ")
+        .trim()
 
     private fun cleanText(raw: String): String {
         var s = raw.replace(Regex("<script[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), " ")

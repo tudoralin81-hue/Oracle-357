@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Handler
 import android.os.Looper
+import android.text.Html
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -89,9 +90,18 @@ fun showArticlePopup(context: Context, article: OracleKnowledgeArticle) {
         text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(article.publishedAt))
         textSize = 12f; setTextColor(Color.rgb(255, 205, 45)); setPadding(0, dp(6), 0, dp(14))
     })
-    content.addView(TextView(context).apply {
-        text = article.excerpt; textSize = 15f; setTextColor(Color.rgb(200, 207, 222)); setLineSpacing(dp(4).toFloat(), 1f)
-    })
+    if (article.content.isNotBlank()) {
+        // Full article (available once the site serves it unrestricted):
+        // rendered natively with headings / paragraphs / bold / lists kept.
+        content.addView(TextView(context).apply {
+            text = Html.fromHtml(article.content, Html.FROM_HTML_MODE_COMPACT)
+            textSize = 15f; setTextColor(Color.rgb(200, 207, 222)); setLineSpacing(dp(4).toFloat(), 1f)
+        })
+    } else {
+        content.addView(TextView(context).apply {
+            text = article.excerpt; textSize = 15f; setTextColor(Color.rgb(200, 207, 222)); setLineSpacing(dp(4).toFloat(), 1f)
+        })
+    }
 
     scroll.addView(content)
     root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
