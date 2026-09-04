@@ -818,9 +818,7 @@ class OracleMysticActivity : Activity() {
         // On a refresh of an already-open screen, skip this immediate render:
         // the screen already shows this exact data, so redrawing it here only
         // to redraw it again a moment later (once the background refresh below
-        // lands) is a redundant full rebuild — fresh ScrollView, every card
-        // re-animating in, borders re-pulsing from zero. That double rebuild is
-        // what reads as the screen "jumping" / losing scroll position on refresh.
+        // lands) is a redundant rebuild.
         if (!isRefreshOfOpenScreen) runCatching { renderModule(key) }.onFailure { showModuleError(key, it) }
 
         // GROWTH is a live, independent module. The real launcher is
@@ -832,7 +830,7 @@ class OracleMysticActivity : Activity() {
                 mainHandler.post {
                     if (currentModule != "growth" || isFinishing) return@post
                     result.onSuccess {
-                        runCatching { renderModule("growth") }
+                        runCatching { renderModule("growth", reuseHost = isRefreshOfOpenScreen) }
                             .onFailure { showModuleError("growth", it) }
                     }.onFailure { error ->
                         showGrowthCalculationError(error)
@@ -846,28 +844,44 @@ class OracleMysticActivity : Activity() {
             // Analysis has no background refresh step, so a refresh press here
             // needs its own explicit render (the general skip above only defers
             // to a render that happens later — there is no "later" for Analysis).
-            if (isRefreshOfOpenScreen) runCatching { renderModule(key) }.onFailure { showModuleError(key, it) }
+            if (isRefreshOfOpenScreen) runCatching { renderModule(key, reuseHost = true) }.onFailure { showModuleError(key, it) }
             return
         }
         Thread {
             val result = runCatching { OracleLocalProcessor.refresh(repository) }
             mainHandler.post {
                 if (currentModule != key || isFinishing) return@post
-                // silent = true only for a refresh of the already-open screen:
-                // the same screen updates its numbers in place, without replaying
-                // entrance animations or losing scroll position. A genuine
-                // navigation into the module still gets the normal entrance.
-                result.onSuccess { runCatching { renderModule(key, silent = isRefreshOfOpenScreen) }.onFailure { showModuleError(key, it) } }
+                // On a refresh of the already-open screen: update in place (same
+                // ScrollView instance, no rebuild) and skip entrance animations —
+                // reusing the exact same View is what actually guarantees the
+                // scroll position can't move, rather than relying on restoring a
+                // saved offset into a freshly built one. A genuine navigation
+                // into the module still gets the normal fresh build + entrance.
+                result.onSuccess { runCatching { renderModule(key, silent = isRefreshOfOpenScreen, reuseHost = isRefreshOfOpenScreen) }.onFailure { showModuleError(key, it) } }
                     .onFailure { Toast.makeText(this, "Local refresh failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
 
-    private fun renderModule(key: String, silent: Boolean = false) {
-        root.removeAllViews()
+    /** The currently mounted module shell, kept so a refresh can update its
+     *  content in place (reuseHost) instead of tearing down and rebuilding the
+     *  ScrollView — the only way to guarantee the scroll position truly cannot
+     *  move. Always discarded on the next fresh navigation (reuseHost = false
+     *  rebuilds and replaces it), and implicitly invalidated by showHub()
+     *  setting currentModule = null, which makes isRefreshOfOpenScreen false
+     *  for any subsequent openModule() call. */
+    private var activeHost: OracleNativeModule? = null
+
+    private fun renderModule(key: String, silent: Boolean = false, reuseHost: Boolean = false) {
         val moduleTitle = titles[key] ?: key.uppercase()
-        val host = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) })
-        root.addView(host.root, FrameLayout.LayoutParams(-1, -1))
+        val existing = activeHost
+        val host = if (reuseHost && existing != null) existing else {
+            root.removeAllViews()
+            val fresh = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) })
+            root.addView(fresh.root, FrameLayout.LayoutParams(-1, -1))
+            activeHost = fresh
+            fresh
+        }
         val data = repository.snapshot()
         when (key) {
             "portfolio" -> OraclePortfolioModule(host).render(data.positions, silent)
@@ -880,6 +894,7 @@ class OracleMysticActivity : Activity() {
                 onWatchlistTickerClick = { ticker -> openWatchlistTicker(ticker) }
             ).render(actions = data.actions, knowledge = data.knowledge, positions = data.positions, history = data.history)
         }
+
     }
 
     private fun openWatchlistTicker(ticker: String) {
