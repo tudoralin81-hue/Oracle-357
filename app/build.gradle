@@ -41,7 +41,19 @@ android {
                 signingConfig signingConfigs.debug
             }
             debuggable false
-            minifyEnabled false
+            // R8: renames classes/methods/fields to short meaningless names,
+            // inlines and dead-code-strips aggressively, and drops unused
+            // resources. This is what actually makes a decompiled APK show
+            // "class a { fun b(c: Int) }" instead of readable Oracle source
+            // — a real, meaningful barrier against casual cloning. It is not
+            // a total defense: the app still has to run the logic on the
+            // device, so a determined analyst with enough time can still
+            // recover it from the obfuscated bytecode. Nothing client-side
+            // makes that impossible; only moving the sensitive calculation
+            // to the server removes it from the APK entirely.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

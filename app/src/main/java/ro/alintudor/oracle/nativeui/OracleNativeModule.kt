@@ -46,10 +46,10 @@ class OracleNativeModule(
         val center = LinearLayout(context).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER }
         center.addView(TextView(context).apply { text="ORACLE";textSize=21f;typeface=Typeface.create(Typeface.SERIF,Typeface.BOLD);setTextColor(Color.WHITE);gravity=Gravity.CENTER;includeFontPadding=true })
         center.addView(TextView(context).apply { text=title;textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.18f;setTextColor(accent);gravity=Gravity.CENTER;includeFontPadding=true })
-        center.addView(TextView(context).apply { text="BUILD 506 • FINAL";textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
-        header.addView(center,LinearLayout.LayoutParams(0,dp(54),1f))
+        center.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
+        header.addView(center,LinearLayout.LayoutParams(0,dp(76),1f))
         header.addView(button("↻","Refresh",Color.rgb(255,205,45)) { onRefresh() }, LinearLayout.LayoutParams(dp(46),dp(46)))
-        root.addView(header,LinearLayout.LayoutParams(-1,dp(62)))
+        root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
         root.addView(View(context).apply{setBackgroundColor(accent)},LinearLayout.LayoutParams(-1,dp(1)).apply{setMargins(dp(6),0,dp(6),dp(5))})
         if (title.equals("GROWTH", true)) {
             val statusView = TextView(context).apply {
@@ -80,9 +80,13 @@ class OracleNativeModule(
         root.setOnApplyWindowInsetsListener { _, insets ->
             val top = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.statusBars()).top else 0
             val bottom = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom else 0
-            root.setPadding(dp(10), top + dp(2), dp(10), bottom); content.setPadding(dp(2),dp(10),dp(2),bottom + dp(24)); insets
+            root.setPadding(dp(10), top + dp(16), dp(10), bottom); content.setPadding(dp(2),dp(10),dp(2),bottom + dp(32)); insets
         }
-        root.requestApplyInsets(); scrollView.post { scrollView.scrollTo(0, scrollPositions[title] ?: 0) }
+        root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) { root.requestApplyInsets() }
+            override fun onViewDetachedFromWindow(v: View) = Unit
+        })
+        scrollView.post { scrollView.scrollTo(0, scrollPositions[title] ?: 0) }
     }
 
     fun getScrollY(): Int = if (::scrollView.isInitialized) scrollView.scrollY else 0
@@ -95,7 +99,16 @@ class OracleNativeModule(
             if (isKnowledge) { isClickable = true; isFocusable = true; contentDescription = "Open Knowledge: https://alintudor.ro/knowledge/"; setOnClickListener { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://alintudor.ro/knowledge/"))) } } }
         }
         card.addView(TextView(context).apply{text=heading.uppercase();textSize=17f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.04f;setTextColor(Color.WHITE)})
-        card.addView(TextView(context).apply{text=if(isKnowledge) "$body\n\nOPEN: https://alintudor.ro/knowledge/" else body;textSize=14f;setTextColor(if(isKnowledge) Color.WHITE else Color.rgb(175,182,198));setPadding(0,dp(7),0,0)})
+        card.addView(TextView(context).apply{text=body;textSize=14f;setTextColor(if(isKnowledge) Color.WHITE else Color.rgb(175,182,198));setPadding(0,dp(7),0,0)})
+        if (isKnowledge) {
+            card.addView(TextView(context).apply {
+                text = "PRESS HERE FOR TRADING KNOWLEDGE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(255, 205, 55)); setPadding(0, dp(10), 0, 0)
+                android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.35f, 1f).apply {
+                    duration = 1150L; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.RESTART; start()
+                }
+            })
+        }
         content.addView(card,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,dp(10))})
     }
     fun addSectionLabel(text:String,sectionAccent:Int=accent){content.addView(TextView(context).apply{this.text=text.uppercase();textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.14f;setTextColor(sectionAccent);setPadding(dp(5),dp(8),dp(5),dp(7))})}

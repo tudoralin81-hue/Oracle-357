@@ -13,9 +13,9 @@ import android.widget.*
 import ro.alintudor.oracle.core.OracleAccountMailer
 import ro.alintudor.oracle.core.OracleApiClient
 import ro.alintudor.oracle.core.OracleAuthStore
-import ro.alintudor.oracle.core.OracleBackupManager
 import ro.alintudor.oracle.core.OracleBootstrap
 import ro.alintudor.oracle.core.OracleFirebaseMessagingService
+import ro.alintudor.oracle.core.OracleKnowledgeSync
 import ro.alintudor.oracle.core.OracleLoaderQuotes
 import ro.alintudor.oracle.core.OracleLocalProcessor
 import ro.alintudor.oracle.core.OracleRepository
@@ -30,16 +30,10 @@ import kotlin.math.*
 /** New Start experience. Module/data logic intentionally mirrors the stable activity. */
 class OracleMysticActivity : Activity() {
     companion object {
-        // Survives Activity recreation (e.g. rotation) as long as the app process
-        // stays alive, so the boot loader only shows on a genuine fresh launch —
-        // not every time the user returns from the background.
-        @Volatile private var bootLoaderShownThisProcess = false
         // Same idea for the login gate: once unlocked, stays unlocked for the
         // rest of this process (matches how most local-lock apps behave —
         // re-locking only on a genuine fresh process start).
         @Volatile private var authPassedThisProcess = false
-        private const val REQUEST_CODE_EXPORT_BACKUP = 4201
-        private const val REQUEST_CODE_IMPORT_BACKUP = 4202
     }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
@@ -116,15 +110,26 @@ class OracleMysticActivity : Activity() {
         Thread { runCatching { OracleLocalProcessor.refreshGrowthOnly(repository) } }.start()
     }
 
+    // Guards against proceedPastAuth() firing twice for one login (e.g. the
+    // auto-triggered biometric prompt plus a manual tap landing close
+    // together) - two overlapping calls would each start their own 5s boot
+    // loader timer, and whichever fires first cuts the other's countdown
+    // short from the user's perspective. Reset per Activity instance, not
+    // per process, so a genuine future login still gets its own loader.
+    private var proceedingPastAuth = false
+
     private fun proceedPastAuth() {
+        if (proceedingPastAuth) return
+        proceedingPastAuth = true
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357)
         }
         runCatching {
             OracleBootstrap.ensure(repository)
-            if (bootLoaderShownThisProcess) { showHub(); consumePendingModuleIntent() } else { bootLoaderShownThisProcess = true; showBootLoader() }
-        }.onFailure { showFatalError("Oracle failed to start", it) }
+            OracleKnowledgeSync.scheduleDaily(this)
+            showBootLoader()
+        }.onFailure { proceedingPastAuth = false; showFatalError("Oracle failed to start", it) }
     }
 
     // ---------------------------------------------------------------------
@@ -698,31 +703,10 @@ class OracleMysticActivity : Activity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
 
-        card.addView(TextView(this).apply { text = "BACKUP"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
+        card.addView(TextView(this).apply { text = "TOOLS"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold) })
         card.addView(TextView(this).apply {
-            text = "Portfolio, Growth history, Journal, Alerts, News, and Knowledge sync automatically to alintudor.ro in the background, right after every change — no manual export needed. Your account itself lives on alintudor.ro too, recovered by logging in again."
-            textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(26))
-        })
-
-        card.addView(TextView(this).apply {
-            text = "RESTORE FROM BACKUP"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(gold)
-            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), gold) }
-            setPadding(0, dp(15), 0, dp(15))
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/json"
-                }
-                runCatching { startActivityForResult(intent, REQUEST_CODE_IMPORT_BACKUP) }
-                    .onFailure { Toast.makeText(this@OracleMysticActivity, "Couldn't open the file picker.", Toast.LENGTH_LONG).show() }
-            }
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        card.addView(TextView(this).apply {
-            text = "A reserve option — for importing a backup file from elsewhere. Not needed for normal recovery; logging back in already brings your data with it."
-            textSize = 11f; setTextColor(muted); setPadding(0, dp(10), 0, dp(18))
+            text = "Your data syncs to your account automatically — nothing to manage here."
+            textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(26))
         })
 
         val pushStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
@@ -756,6 +740,40 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
         card.addView(pushStatus)
 
+        val batteryStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
+        card.addView(TextView(this).apply {
+            text = "WIDGET UPDATE RELIABILITY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        card.addView(TextView(this).apply {
+            text = "The Growth widget refreshes itself every 3 minutes via its own alarm. Android's battery-saving mode can still delay that while the screen is off for a while. Exempting Oracle from battery optimization keeps it closer to the 3-minute cadence — one tap, reversible any time from your phone's own Settings."
+            textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(14))
+        })
+        card.addView(TextView(this).apply {
+            text = "DISABLE BATTERY OPTIMIZATION FOR ORACLE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.rgb(105, 245, 35))
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(105, 245, 35)) }
+            setPadding(0, dp(14), 0, dp(14))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val pm = getSystemService(android.os.PowerManager::class.java)
+                if (pm.isIgnoringBatteryOptimizations(packageName)) {
+                    batteryStatus.setTextColor(green); batteryStatus.text = "Already exempt — the widget gets the best refresh reliability Android allows."
+                } else {
+                    runCatching {
+                        val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = android.net.Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                    }.onFailure {
+                        batteryStatus.setTextColor(Color.rgb(255, 90, 90))
+                        batteryStatus.text = "Couldn't open the system dialog. Try Settings > Apps > Oracle > Battery instead."
+                    }
+                }
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
+        card.addView(batteryStatus)
+
         card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
             isClickable = true; isFocusable = true
@@ -764,29 +782,6 @@ class OracleMysticActivity : Activity() {
 
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-    }
-
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != Activity.RESULT_OK || data?.data == null) return
-        val uri = data.data!!
-        when (requestCode) {
-            REQUEST_CODE_EXPORT_BACKUP -> runCatching {
-                contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(OracleBackupManager.buildExportJson(this).toString(2).toByteArray(Charsets.UTF_8))
-                } ?: throw IllegalStateException("Could not open the file for writing")
-                OracleBackupManager.markExported(this)
-                Toast.makeText(this, "Backup saved.", Toast.LENGTH_LONG).show()
-                if (currentModule == "backup") showBackupScreen()
-            }.onFailure { Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show() }
-            REQUEST_CODE_IMPORT_BACKUP -> runCatching {
-                val text = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                    ?: throw IllegalStateException("Could not read the selected file")
-                val restored = OracleBackupManager.restoreFromJson(this, org.json.JSONObject(text))
-                Toast.makeText(this, "Restored ${restored.size} data sets. Open a module to see it.", Toast.LENGTH_LONG).show()
-            }.onFailure { Toast.makeText(this, "Restore failed: ${it.message}", Toast.LENGTH_LONG).show() }
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -849,7 +844,8 @@ class OracleMysticActivity : Activity() {
 
     private fun renderModule(key: String) {
         root.removeAllViews()
-        val host = OracleNativeModule(this, titles[key] ?: key.uppercase(), { showHub() }, { openModule(key) })
+        val moduleTitle = titles[key] ?: key.uppercase()
+        val host = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) })
         root.addView(host.root, FrameLayout.LayoutParams(-1, -1))
         val data = repository.snapshot()
         when (key) {
@@ -859,7 +855,7 @@ class OracleMysticActivity : Activity() {
             "journal" -> OracleJournalModule(host).render(data.journal, data.history, data.alerts)
             "growth", "analysis", "watchlist", "knowledge" -> OracleSimpleModule(
                 host,
-                titles[key] ?: key.uppercase(),
+                moduleTitle,
                 onWatchlistTickerClick = { ticker -> openWatchlistTicker(ticker) }
             ).render(actions = data.actions, knowledge = data.knowledge, positions = data.positions, history = data.history)
         }

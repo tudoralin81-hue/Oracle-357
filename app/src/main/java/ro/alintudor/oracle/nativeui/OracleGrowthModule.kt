@@ -63,7 +63,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         if (ordered.isNotEmpty()) addRecommendations(ordered, fallbackNews)
         addNews(ordered, fallbackNews)
         addHistory(journalStore.load())
-        addBuildFooter()
     }
 
     // B540 — investor quotes rotated in the loader every 15s (Requirement #7).
@@ -115,7 +114,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(text("Analysis runs in the background. Values appear only once the current calculation finishes.", 9f, Typeface.DEFAULT, muted, 0, 9).apply { gravity = Gravity.CENTER })
         card.addView(text("Target maximum: 20 seconds", 9f, Typeface.DEFAULT_BOLD, muted, 0, 6).apply { gravity = Gravity.CENTER })
         host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(390)).apply { setMargins(0, 0, 0, host.dp(10)) })
-        addBuildFooter()
 
         val handler = Handler(Looper.getMainLooper())
         var quoteIndex = 0
@@ -174,7 +172,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(text("Growth recommendations could not be calculated (${progress.loaded} / ${progress.total} symbols received).", 11f, Typeface.DEFAULT, muted, 0, 6).apply { gravity = Gravity.CENTER })
         card.addView(text("Tap ↻ (top right) to retry.", 11f, Typeface.DEFAULT_BOLD, cyan, 0, 6).apply { gravity = Gravity.CENTER })
         host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(200)).apply { setMargins(0, 0, 0, host.dp(10)) })
-        addBuildFooter()
     }
 
     private fun formatEta(seconds: Double): String {
@@ -302,15 +299,16 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         if (weights.isEmpty()) return
         parent.addView(text("Weights", 10f, Typeface.DEFAULT_BOLD, white, 0, 5))
         val names = listOf("News", "BO", "Trend", "Mom", "Vol", "S/R", "Fund", "BB", "Ichimoku", "Mkt", "R/R", "ADX")
+        val maxWeight = weights.maxOrNull()?.takeIf { it > 0 } ?: 1
         val grid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, host.dp(2), 0, host.dp(1)) }
         val columns = 6
         for (r in 0 until 2) {
             val row = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             for (c in 0 until columns) {
                 val i = r * columns + c
-                val cell = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2)) }
-                cell.addView(text(names[i], 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
-                cell.addView(text(weights.getOrNull(i)?.takeIf { it > 0 }?.toString() ?: "—", 9f, Typeface.DEFAULT_BOLD, cyan, 0, 0))
+                val cell = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2)) }
+                cell.addView(text(names[i], 8f, Typeface.DEFAULT, muted, 0, 0))
+                addWeightBar(cell, weights.getOrNull(i) ?: 0, maxWeight)
                 row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
             }
             grid.addView(row)
@@ -318,10 +316,41 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         parent.addView(grid)
     }
 
+    /** A 5-segment horizontal bar (20% per segment) standing in for the raw
+     *  weight number — filled proportionally to this factor's importance
+     *  relative to the strongest factor for the horizon, colored by that
+     *  same proportion (green = high, orange = medium, red = low). */
+    private fun addWeightBar(parent: LinearLayout, value: Int, maxValue: Int) {
+        val pct = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+        val filledSegments = kotlin.math.round(pct * 5f).toInt().coerceIn(if (value > 0) 1 else 0, 5)
+        val color = when {
+            pct >= 0.6f -> green
+            pct >= 0.3f -> orange
+            else -> red
+        }
+        val bar = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, host.dp(3), 0, 0)
+        }
+        for (seg in 0 until 5) {
+            val filled = seg < filledSegments
+            val segView = android.view.View(host.root.context).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(if (filled) color else Color.TRANSPARENT)
+                    cornerRadius = host.dp(1).toFloat()
+                    if (!filled) setStroke(host.dp(1), Color.rgb(60, 68, 84))
+                }
+            }
+            bar.addView(segView, LinearLayout.LayoutParams(host.dp(7), host.dp(9)).apply { if (seg < 4) marginEnd = host.dp(2) })
+        }
+        parent.addView(bar)
+    }
+
     private fun addNews(items: List<OracleGrowthRecommendation>, fallbackNews: List<OracleNews>) {
+        fun isCleanTitle(title: String) = title.isNotBlank() && !title.contains("Google News", true) && !title.contains(" when:", true)
         val recent = items.mapNotNull { item ->
-            val n = fallbackNews.firstOrNull { it.ticker.equals(item.ticker, true) }
-            if (n != null) n else if (item.newsTitle.isNotBlank()) OracleNews(item.ticker, item.newsTitle, item.newsSource, "", item.referenceTimestamp, false) else null
+            val n = fallbackNews.firstOrNull { it.ticker.equals(item.ticker, true) && isCleanTitle(it.title) }
+            if (n != null) n else if (isCleanTitle(item.newsTitle)) OracleNews(item.ticker, item.newsTitle, item.newsSource, "", item.referenceTimestamp, false) else null
         }.distinctBy { it.ticker }
         if (recent.isEmpty()) return
         val card = card(12)
@@ -446,10 +475,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     }
 
     private fun horizonOrder(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> 0; "MEDIUM" -> 1; else -> 2 }
-    private fun addBuildFooter() {
-        host.content.addView(text("BUILD B535 • GROWTH", 9f, Typeface.DEFAULT_BOLD, Color.rgb(125, 135, 155), host.dp(4), 8), LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(18)) })
-    }
-
     private fun horizonLabel(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "●  SHORT TERM"; "MEDIUM" -> "●  MEDIUM TERM"; else -> "●  LONG TERM" }
     private fun horizonRange(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "1–10 trading days"; "MEDIUM" -> "2–12 weeks"; else -> "3–12 months" }
     private fun compactSignal(signal: String) = signal.replace("STRONG ", "STRONG\n").trim()

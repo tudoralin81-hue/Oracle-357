@@ -76,19 +76,65 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
             val corner = 28f
+            val roundRect = android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat())
             val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = baseColor }
-            canvas.drawRoundRect(android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), corner, corner, bgPaint)
+            canvas.drawRoundRect(roundRect, corner, corner, bgPaint)
+
+            val clipPath = android.graphics.Path().apply { addRoundRect(roundRect, corner, corner, android.graphics.Path.Direction.CW) }
+            canvas.save()
+            canvas.clipPath(clipPath)
+
             val linePaint = android.graphics.Paint().apply { color = Color.argb(70, 255, 255, 255); strokeWidth = 1f }
             var x = 0
             while (x <= width) { canvas.drawLine(x.toFloat(), 0f, x.toFloat(), height.toFloat(), linePaint); x += 20 }
             var y = 0
             while (y <= height) { canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), linePaint); y += 20 }
+
+            // Rising-trend arrow watermark, bottom-left corner to top-right corner —
+            // a subtle backdrop element, sits under the text content drawn on top.
+            val arrowColor = Color.argb(85, 105, 245, 35)
+            val arrowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = arrowColor; style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 7f; strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND
+            }
+            val pts = listOf(14f to 188f, 68f to 138f, 98f to 163f, 158f to 96f, 188f to 122f, 262f to 40f, 300f to 16f)
+            val arrowPath = android.graphics.Path().apply {
+                moveTo(pts[0].first, pts[0].second)
+                for (i in 1 until pts.size) lineTo(pts[i].first, pts[i].second)
+            }
+            canvas.drawPath(arrowPath, arrowPaint)
+            val (tipX, tipY) = pts.last()
+            val (prevX, prevY) = pts[pts.size - 2]
+            val dx = tipX - prevX; val dy = tipY - prevY
+            val len = kotlin.math.sqrt(dx * dx + dy * dy).takeIf { it > 0f } ?: 1f
+            val ux = dx / len; val uy = dy / len
+            val headLen = 22f; val headWidth = 13f
+            val baseX = tipX - ux * headLen; val baseY = tipY - uy * headLen
+            val perpX = -uy; val perpY = ux
+            val headFill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = arrowColor; style = android.graphics.Paint.Style.FILL }
+            val headPath = android.graphics.Path().apply {
+                moveTo(tipX, tipY)
+                lineTo(baseX + perpX * headWidth, baseY + perpY * headWidth)
+                lineTo(baseX - perpX * headWidth, baseY - perpY * headWidth)
+                close()
+            }
+            canvas.drawPath(headPath, headFill)
+
+            canvas.restore()
             return bitmap
         }
 
         private fun buildViews(context: Context, items: List<OracleGrowthRecommendation>): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.oracle_growth_widget)
             views.setImageViewBitmap(R.id.widget_bg_image, generateBackgroundBitmap(OracleWidgetSettingsStore.color(context)))
+            val gold = Color.rgb(255, 205, 55) // matches the START screen's ORACLE title color
+            val titleGreen = Color.rgb(105, 245, 35)
+            val titleText = "ORACLE GROWTH"
+            val titleSpanned = android.text.SpannableString(titleText).apply {
+                setSpan(android.text.style.ForegroundColorSpan(gold), 0, 6, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                setSpan(android.text.style.ForegroundColorSpan(titleGreen), 6, titleText.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            views.setTextViewText(R.id.widget_title, titleSpanned)
             val cyan = Color.rgb(75, 225, 255)
             val orange = Color.rgb(255, 160, 25)
             val green = Color.rgb(105, 245, 35)

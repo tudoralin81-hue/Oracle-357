@@ -30,7 +30,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             "GROWTH" -> renderGrowth()
             "ANALYSIS" -> renderAnalysis()
             "WATCHLIST" -> renderWatchlist(watchlist)
-            "KNOWLEDGE" -> renderKnowledge(knowledge)
+            "KNOWLEDGE" -> renderKnowledgeSynced()
             else -> renderActions(if (computed.isNotEmpty()) computed else actions)
         }
     }
@@ -38,6 +38,24 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     private fun renderGrowth() {
         val r = OracleRepository(host.root.context)
         OracleGrowthModule(host).render(r.cachedGrowth(), r.cachedNews())
+    }
+
+    private fun renderKnowledgeSynced() {
+        val context = host.root.context
+        val cached = OracleKnowledgeSync.load(context)
+        OracleKnowledgeModule(host).render(
+            items = cached,
+            onOpen = { url -> runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } },
+            onRefresh = {
+                OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
+            }
+        )
+        // First-ever open (nothing cached yet) or stale cache: refresh silently
+        // in the background so the list fills in without the user having to
+        // find and tap the refresh button themselves.
+        if (cached.isEmpty() || OracleKnowledgeSync.isStale(context)) {
+            OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
+        }
     }
 
     private fun renderAnalysis() {
@@ -308,17 +326,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             Toast.makeText(host.root.context, if (!present) "$watchTicker added to Watchlist" else "$watchTicker removed from Watchlist", Toast.LENGTH_SHORT).show()
         }
         host.content.addView(watchButton, LinearLayout.LayoutParams(-1, host.dp(50)).apply { setMargins(0, 0, 0, host.dp(16)) })
-
-// BUILD_VERSION_BOTTOM_V1
-host.content.addView(TextView(host.root.context).apply {
-    text = "ORACLE • V6g-FINAL-B514"
-    textSize = 10f
-    typeface = Typeface.DEFAULT_BOLD
-    letterSpacing = .08f
-    gravity = Gravity.CENTER
-    setTextColor(Color.rgb(110, 120, 140))
-    setPadding(0, host.dp(6), 0, host.dp(18))
-}, LinearLayout.LayoutParams(-1, -2))
     }
 
     private fun addMetricGrid(container: LinearLayout, items: List<Pair<String, String>>) {
@@ -785,11 +792,14 @@ host.content.addView(TextView(host.root.context).apply {
         headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
         card.addView(headerRow)
         card.addView(TextView(host.root.context).apply {
-            text = "OPEN: https://alintudor.ro/knowledge/"
+            text = "PRESS HERE FOR TRADING KNOWLEDGE"
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(255, 205, 55))
             setPadding(0, host.dp(12), 0, 0)
+            android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.35f, 1f).apply {
+                duration = 1150L; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.RESTART; start()
+            }
         })
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
 

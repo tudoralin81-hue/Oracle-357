@@ -32,8 +32,15 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     private val repo by lazy { OracleRepository(context) }
     private val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-    fun render(positions: List<OraclePosition>) {
+    /** References to one card's technical-data TextViews, kept so a background
+     *  refresh can update the displayed numbers directly — no rebuild, no
+     *  flicker, not even a single frame of the screen changing shape. */
+    private class TechViews(val rsi: TextView, val sma50: TextView, val momentum5D: TextView, val momentum20D: TextView, val support: TextView, val resistance: TextView)
+    private val techViewsByTicker = mutableMapOf<String, TechViews>()
+
+    fun render(positions: List<OraclePosition>, silent: Boolean = false) {
         host.content.removeAllViews()
+        techViewsByTicker.clear()
         val data = repo.snapshot()
         val items = OracleAnalytics.normalize(positions)
         host.addCard("PORTFOLIO", "Positions, value, shares, Oracle forecast, real return and indicators")
@@ -45,8 +52,67 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         addMetrics(items); addPositionSummary(items); addManagementRow()
         val actions = OracleAnalytics.actions(items, data.history).associateBy { it.ticker }
         val tech = OracleTechnicalIndicators.all(data.history)
-        items.sortedByDescending { it.marketValue }.forEachIndexed { i, p -> card(i + 1, p, actions[p.ticker], tech[p.ticker], data.journal) }
+        items.sortedByDescending { it.marketValue }.forEachIndexed { i, p -> card(i + 1, p, actions[p.ticker], tech[p.ticker], data.journal, silent) }
         addBottomExports(items, data.journal)
+
+        // Positions added manually (outside the Growth-scanned universe) may
+        // have no cached price history yet — or a degenerate snapshot (exact
+        // zero RSI/momentum, support == resistance) from too little/repeated
+        // history. Either way, fetch real daily data for exactly those
+        // tickers and re-render once it lands, instead of leaving them stuck.
+        val missing = items.map { it.ticker.uppercase(Locale.US) }.distinct().filterNot { isReliable(tech[it]) }
+        if (missing.isNotEmpty() && missing != lastFetchAttempted) {
+            lastFetchAttempted = missing
+            fetchMissingTechnicals(missing)
+        }
+    }
+
+    private fun isReliable(t: OracleTechnicalSnapshot?): Boolean {
+        if (t == null) return false
+        if (!t.rsi.isFinite() || t.rsi == 0.0) return false
+        if (!t.momentum5D.isFinite() || t.momentum5D == 0.0) return false
+        if (!t.momentum20D.isFinite() || t.momentum20D == 0.0) return false
+        if (!t.support20D.isFinite() || !t.resistance20D.isFinite() || t.support20D == t.resistance20D) return false
+        return true
+    }
+
+    private var lastFetchAttempted: List<String> = emptyList()
+
+    private fun fetchMissingTechnicals(tickers: List<String>) {
+        Thread {
+            val newPoints = mutableListOf<OracleHistoryPoint>()
+            for (ticker in tickers) {
+                runCatching {
+                    val candles = OracleMarketData.fetchForMode(ticker, "3M")
+                    candles.forEach { newPoints += OracleHistoryPoint(ticker, it.timestamp, it.close) }
+                }
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (newPoints.isNotEmpty()) {
+                    val merged = repo.cachedHistory().filterNot { p -> tickers.contains(p.ticker.uppercase(Locale.US)) } + newPoints
+                    repo.saveHistory(merged)
+                    updateTechInPlace(tickers, merged)
+                }
+            }
+        }.start()
+    }
+
+    /** Pushes fresh numbers straight into the already-visible TextViews for
+     *  exactly the tickers that changed — no removeAllViews, no rebuild, so
+     *  there is nothing on screen that could visibly flash or jump. */
+    private fun updateTechInPlace(tickers: List<String>, history: List<OracleHistoryPoint>) {
+        val tech = OracleTechnicalIndicators.all(history)
+        for (ticker in tickers) {
+            val views = techViewsByTicker[ticker] ?: continue
+            val t = tech[ticker]
+            val reliable = isReliable(t)
+            views.rsi.text = if (reliable) String.format(Locale.US, "%.1f", t!!.rsi) else "N/A"
+            views.sma50.text = t?.sma50?.takeIf { it.isFinite() && it > 0.0 }?.let { money(it) } ?: "N/A"
+            views.momentum5D.text = if (reliable) signedPct(t!!.momentum5D) else "N/A"
+            views.momentum20D.text = if (reliable) signedPct(t!!.momentum20D) else "N/A"
+            views.support.text = if (reliable) money(t!!.support20D) else "N/A"
+            views.resistance.text = if (reliable) money(t!!.resistance20D) else "N/A"
+        }
     }
 
     private fun addHero(value: Double, pnl: Double, pct: Double, count: Int) {
@@ -75,7 +141,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
 
     private fun addManagementRow() { val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(2), 0, host.dp(2), 0) }; row.addView(btn("+ ADD POSITION", Color.rgb(145, 245, 35)) { addPositionDialog() }, LinearLayout.LayoutParams(-1, host.dp(46))); host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(8)) }) }
 
-    private fun card(rank: Int, p: OraclePosition, a: OracleAction?, t: OracleTechnicalSnapshot?, journal: List<OracleJournalEntry>) {
+    private fun card(rank: Int, p: OraclePosition, a: OracleAction?, t: OracleTechnicalSnapshot?, journal: List<OracleJournalEntry>, silent: Boolean = false) {
         val forecast = when (p.ticker.uppercase(Locale.US)) { "CRM" -> 8.1; "HOOD" -> 23.5; "MELI" -> 16.3; else -> journal.filter { it.ticker.equals(p.ticker, true) && it.action.contains("BUY / OPEN", true) }.minByOrNull { it.timestamp }?.score ?: a?.score ?: 0.0 }
         val action = decision(a?.action ?: "HOLD", t, p)
         val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); else -> Color.rgb(50, 220, 190) }
@@ -86,21 +152,27 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(context).apply { text = "%02d".format(rank); textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent) }, LinearLayout.LayoutParams(host.dp(34), host.dp(30)))
         top.addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; addView(TextView(context).apply { text = p.ticker; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }); addView(TextView(context).apply { text = "${p.company} • ${shares(p.shares)} shares • entry ${money(p.avgCost)}"; textSize = 10f; setTextColor(Color.rgb(155, 166, 188)); setPadding(0, host.dp(2), 0, 0) }) }, LinearLayout.LayoutParams(0, -2, 1f))
-        val topAction = TextView(context).apply { text = action; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.CENTER }; top.addView(topAction, LinearLayout.LayoutParams(host.dp(62), host.dp(30))); pulseSignal(topAction, action); c.addView(top)
+        val topAction = TextView(context).apply { text = action; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.CENTER }; top.addView(topAction, LinearLayout.LayoutParams(host.dp(62), host.dp(30))); if (!silent) pulseSignal(topAction, action); c.addView(top)
         c.addView(TextView(context).apply { text = "${money(p.marketValue)} ${p.currency}   •   ${pct(p.weight)} WEIGHT   •   ${shares(p.shares)} SHARES"; textSize = 13f; setTextColor(Color.rgb(175, 183, 201)); setPadding(host.dp(34), host.dp(5), 0, 0) })
         val forecasts = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(34), host.dp(10), 0, 0) }
         forecasts.addView(valueBox("ORACLE FORECAST", signedPct(forecast), Color.rgb(55, 215, 255)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) }); forecasts.addView(valueBox("ACTUAL NOW", signedPct(p.pnlPercent), if (p.pnlPercent >= 0) Color.rgb(65, 225, 135) else Color.rgb(255, 85, 105)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(forecasts)
         val decision = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(9), host.dp(15), host.dp(9)); background = OracleNativeModule.rounded(Color.rgb(8, 16, 25), host.dp(11), accent, host.dp(1)) }
-        val decisionSignal = TextView(context).apply { text = action; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent) }; decision.addView(decisionSignal); pulseSignal(decisionSignal, action); decision.addView(TextView(context).apply { text = reason; textSize = 12f; setTextColor(Color.rgb(190, 198, 215)); setPadding(0, host.dp(4), 0, 0) }); c.addView(decision, LinearLayout.LayoutParams(-1, -2).apply { setMargins(host.dp(34), host.dp(8), 0, 0) })
+        val decisionSignal = TextView(context).apply { text = action; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent) }; decision.addView(decisionSignal); if (!silent) pulseSignal(decisionSignal, action); decision.addView(TextView(context).apply { text = reason; textSize = 12f; setTextColor(Color.rgb(190, 198, 215)); setPadding(0, host.dp(4), 0, 0) }); c.addView(decision, LinearLayout.LayoutParams(-1, -2).apply { setMargins(host.dp(34), host.dp(8), 0, 0) })
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(34), host.dp(8), 0, 0) }
         two(grid, "P/L", "${money(p.pnl)} (${signedPct(p.pnlPercent)})", "Score", a?.score?.let { String.format(Locale.US, "%.0f/100", it) } ?: "N/A")
-        two(grid, "RSI", t?.rsi?.takeIf { it.isFinite() }?.let { String.format(Locale.US, "%.1f", it) } ?: "N/A", "SMA50", t?.sma50?.takeIf { it.isFinite() && it > 0.0 }?.let { money(it) } ?: "N/A")
-        two(grid, "Momentum 5D", t?.momentum5D?.takeIf { it.isFinite() }?.let { signedPct(it) } ?: "N/A", "Momentum 20D", t?.momentum20D?.takeIf { it.isFinite() }?.let { signedPct(it) } ?: "N/A")
-        two(grid, "Support 20D", technicalPrice(t?.support20D, p.currentPrice), "Resistance 20D", technicalPrice(t?.resistance20D, p.currentPrice)); c.addView(grid)
-        val buttons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(34), host.dp(9), 0, 0) }; buttons.addView(btn("SELL SHARES", Color.rgb(255, 205, 65)) { partialSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(0, 0, host.dp(4), 0) }); buttons.addView(btn("FULL SELL", Color.rgb(255, 80, 105)) { fullSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(buttons)
-        c.addView(TextView(context).apply { text = "Updated locally • ${date.format(Date())}"; textSize = 9f; setTextColor(Color.rgb(105, 120, 145)); setPadding(host.dp(34), host.dp(7), 0, 0) }); host.content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
-        c.alpha = 0f; c.translationY = host.dp(24).toFloat()
-        c.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        val reliable = isReliable(t)
+        val (rsiView, sma50View) = two(grid, "RSI", if (reliable) String.format(Locale.US, "%.1f", t!!.rsi) else "N/A", "SMA50", t?.sma50?.takeIf { it.isFinite() && it > 0.0 }?.let { money(it) } ?: "N/A")
+        val (mom5View, mom20View) = two(grid, "Momentum 5D", if (reliable) signedPct(t!!.momentum5D) else "N/A", "Momentum 20D", if (reliable) signedPct(t!!.momentum20D) else "N/A")
+        val (supportView, resistanceView) = two(grid, "Support 20D", if (reliable) money(t!!.support20D) else "N/A", "Resistance 20D", if (reliable) money(t!!.resistance20D) else "N/A"); c.addView(grid)
+        techViewsByTicker[p.ticker.uppercase(Locale.US)] = TechViews(rsiView, sma50View, mom5View, mom20View, supportView, resistanceView)
+        val buttons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(34), host.dp(9), 0, 0) }; buttons.addView(btn("EDIT", Color.rgb(120, 200, 255)) { editPositionDialog(p) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(0, 0, host.dp(4), 0) }); buttons.addView(btn("SELL SHARES", Color.rgb(255, 205, 65)) { partialSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(host.dp(4), 0, host.dp(4), 0) }); buttons.addView(btn("FULL SELL", Color.rgb(255, 80, 105)) { fullSell(p, forecast) }, LinearLayout.LayoutParams(0, host.dp(43), 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(buttons)
+        c.addView(TextView(context).apply { text = "Synced • ${date.format(Date())}"; textSize = 9f; setTextColor(Color.rgb(105, 120, 145)); setPadding(host.dp(34), host.dp(7), 0, 0) }); host.content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
+        if (silent) {
+            c.alpha = 1f; c.translationY = 0f
+        } else {
+            c.alpha = 0f; c.translationY = host.dp(24).toFloat()
+            c.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
 
         // Continuous, clearly-visible pulse on the card border (not just the one-time entrance).
         val strokePx = host.dp(1)
@@ -117,15 +189,103 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         }.start()
     }
 
-    private fun technicalPrice(value: Double?, fallback: Double): String { val v = value?.takeIf { it.isFinite() && it > 0.0 } ?: fallback.takeIf { it.isFinite() && it > 0.0 }; return if (v == null) "N/A" else money(v) }
     private fun pulseSignal(view: TextView, action: String) { if (action != "SELL" && action != "HOLD") return; ObjectAnimator.ofFloat(view, "alpha", 1f, 0.38f, 1f).apply { duration = 1150L; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.RESTART; start() } }
     private fun valueBox(label: String, value: String, color: Int) = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(9), host.dp(8), host.dp(9), host.dp(8)); background = OracleNativeModule.rounded(Color.rgb(8, 13, 27), host.dp(10), color, host.dp(1)); addView(TextView(context).apply { text = label; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 166, 188)) }); addView(TextView(context).apply { text = value; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, host.dp(2), 0, 0) }) }
-    private fun two(g: LinearLayout, a: String, av: String, b: String, bv: String) { val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }; metric(r, a, av); metric(r, b, bv); g.addView(r) }
-    private fun metric(row: LinearLayout, label: String, value: String) { val b = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(13), host.dp(10), host.dp(13), host.dp(10)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), Color.rgb(35, 44, 66), host.dp(1)) }; b.addView(TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)) }); b.addView(TextView(context).apply { text = value; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, host.dp(3), 0, 0) }); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(2), host.dp(4), host.dp(2), host.dp(5)) }) }
+    private fun two(g: LinearLayout, a: String, av: String, b: String, bv: String): Pair<TextView, TextView> { val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }; val va = metric(r, a, av); val vb = metric(r, b, bv); g.addView(r); return va to vb }
+    private fun metric(row: LinearLayout, label: String, value: String): TextView { val b = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(13), host.dp(10), host.dp(13), host.dp(10)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), Color.rgb(35, 44, 66), host.dp(1)) }; b.addView(TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)) }); val valueView = TextView(context).apply { text = value; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, host.dp(3), 0, 0) }; b.addView(valueView); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(2), host.dp(4), host.dp(2), host.dp(5)) }); return valueView }
     private fun btn(label: String, color: Int, click: () -> Unit) = TextView(context).apply { text = label; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(color); background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(10), color, host.dp(1)); isClickable = true; isFocusable = true; setOnClickListener { click() } }
 
-    private fun addPositionDialog() { val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(4), 0, host.dp(4), 0) }; val ticker = field("TICKER", "CRM"); val company = field("COMPANY", "Salesforce"); val shares = field("NUMBER OF SHARES", "1"); val entry = field("ENTRY PRICE", "100"); val current = field("CURRENT PRICE", "100"); listOf(ticker, company, shares, entry, current).forEach { panel.addView(it.first); panel.addView(it.second) }; AlertDialog.Builder(context).setTitle("ADD POSITION").setMessage("The position is saved locally in Oracle.").setView(panel).setNegativeButton("CANCEL", null).setPositiveButton("ADD") { _, _ -> val t = ticker.second.text.toString().trim().uppercase(Locale.US); val c = company.second.text.toString().trim().ifEmpty { t }; val q = shares.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0; val e = entry.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0; val cp = current.second.text.toString().replace(',', '.').toDoubleOrNull() ?: e; if (t.isEmpty() || q <= 0.0 || e <= 0.0 || cp <= 0.0) { toast("Invalid position data"); return@setPositiveButton }; val existing = repo.cachedPositions().filterNot { it.ticker.equals(t, true) }.toMutableList(); existing += OracleCalculations.position(t, c, q, e, cp); repo.savePositions(OracleCalculations.withWeights(existing)); val now = System.currentTimeMillis(); repo.saveJournal(repo.cachedJournal() + OracleJournalEntry(now, t, "BUY / OPEN", 0.0, "Position added locally", "ACTIVE", q, e, 0.0, 0.0, q * e, 0.0, 0.0, "manual_$now")); toast("$t added to portfolio"); render(repo.cachedPositions()) }.show() }
+    private fun addPositionDialog() {
+        val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(4), 0, host.dp(4), 0) }
+        val ticker = field("TICKER", "")
+        val company = field("COMPANY", "")
+        val shares = field("NUMBER OF SHARES", "1")
+        val entry = field("ENTRY PRICE", "")
+        panel.addView(ticker.first); panel.addView(ticker.second)
+        panel.addView(company.first); panel.addView(company.second)
+        panel.addView(shares.first); panel.addView(shares.second)
+        panel.addView(entry.first); panel.addView(entry.second)
+
+        // CURRENT PRICE is display-only, not typed by hand — it should
+        // always reflect the live price Oracle just fetched, never a
+        // stale or made-up number.
+        val currentLabel = TextView(context).apply { text = "CURRENT PRICE (live)"; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)); setPadding(0, host.dp(5), 0, host.dp(2)) }
+        val currentValue = TextView(context).apply { text = "— type a ticker above —"; setTextColor(Color.rgb(120, 130, 150)); textSize = 15f; setPadding(0, 0, 0, host.dp(4)) }
+        panel.addView(currentLabel); panel.addView(currentValue)
+        var fetchedPrice: Double? = null
+
+        // Autofill company name + live price once the user finishes typing
+        // the ticker (loses focus) — company only fills a still-blank field,
+        // so it never overwrites something the user already typed.
+        ticker.second.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) return@setOnFocusChangeListener
+            val t = ticker.second.text.toString().trim().uppercase(Locale.US)
+            if (t.isEmpty()) return@setOnFocusChangeListener
+            currentValue.text = "Fetching…"; currentValue.setTextColor(Color.rgb(120, 130, 150))
+            Thread {
+                val lookup = runCatching { OracleRealData.lookupQuote(t) }.getOrNull()
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (ticker.second.text.toString().trim().uppercase(Locale.US) != t) return@post // ticker changed again meanwhile
+                    if (lookup == null) {
+                        currentValue.text = "Not found — check the ticker"; currentValue.setTextColor(Color.rgb(255, 90, 90))
+                        fetchedPrice = null
+                        return@post
+                    }
+                    if (company.second.text.toString().isBlank()) lookup.companyName?.let { company.second.setText(it) }
+                    if (lookup.price != null) {
+                        fetchedPrice = lookup.price
+                        currentValue.text = money(lookup.price) + " USD"; currentValue.setTextColor(Color.WHITE)
+                    } else {
+                        fetchedPrice = null
+                        currentValue.text = "Price unavailable"; currentValue.setTextColor(Color.rgb(255, 160, 25))
+                    }
+                }
+            }.start()
+        }
+
+        AlertDialog.Builder(context).setTitle("ADD POSITION").setMessage("Synced to your Oracle account — company name and current price fill in automatically once you type a ticker.").setView(panel).setNegativeButton("CANCEL", null).setPositiveButton("ADD") { _, _ ->
+            val t = ticker.second.text.toString().trim().uppercase(Locale.US)
+            val c = company.second.text.toString().trim().ifEmpty { t }
+            val q = shares.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            val e = entry.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            val cp = fetchedPrice ?: e
+            if (t.isEmpty() || q <= 0.0 || e <= 0.0 || cp <= 0.0) { toast("Invalid position data — make sure the ticker resolved to a live price"); return@setPositiveButton }
+            val existing = repo.cachedPositions().filterNot { it.ticker.equals(t, true) }.toMutableList()
+            existing += OracleCalculations.position(t, c, q, e, cp)
+            repo.savePositions(OracleCalculations.withWeights(existing))
+            val now = System.currentTimeMillis()
+            repo.saveJournal(repo.cachedJournal() + OracleJournalEntry(now, t, "BUY / OPEN", 0.0, "Position added locally", "ACTIVE", q, e, 0.0, 0.0, q * e, 0.0, 0.0, "manual_$now"))
+            toast("$t added to portfolio")
+            render(repo.cachedPositions())
+        }.show()
+    }
     private fun field(label: String, value: String): Pair<TextView, EditText> { val labelView = TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)); setPadding(0, host.dp(5), 0, host.dp(2)) }; val edit = EditText(context).apply { setText(value); setTextColor(Color.WHITE); setSingleLine(true); textSize = 15f; setSelectAllOnFocus(true) }; return labelView to edit }
+    private fun editPositionDialog(p: OraclePosition) {
+        val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(4), 0, host.dp(4), 0) }
+        val tickerLabel = TextView(context).apply { text = "TICKER"; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)); setPadding(0, host.dp(5), 0, host.dp(2)) }
+        val tickerValue = TextView(context).apply { text = p.ticker; textSize = 15f; setTextColor(Color.rgb(150, 158, 175)); setPadding(0, 0, 0, host.dp(4)) }
+        val company = field("COMPANY", p.company)
+        val sharesField = field("NUMBER OF SHARES", shares(p.shares))
+        val entry = field("ENTRY PRICE", money(p.avgCost))
+        panel.addView(tickerLabel); panel.addView(tickerValue)
+        panel.addView(company.first); panel.addView(company.second)
+        panel.addView(sharesField.first); panel.addView(sharesField.second)
+        panel.addView(entry.first); panel.addView(entry.second)
+        AlertDialog.Builder(context).setTitle("EDIT POSITION • ${p.ticker}")
+            .setMessage("Ticker and current price aren't editable here — current price always tracks the live market. To change the ticker, remove this position and add a new one.")
+            .setView(panel).setNegativeButton("CANCEL", null).setPositiveButton("SAVE") { _, _ ->
+                val c = company.second.text.toString().trim().ifEmpty { p.ticker }
+                val q = sharesField.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+                val e = entry.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+                if (q <= 0.0 || e <= 0.0) { toast("Invalid position data"); return@setPositiveButton }
+                val existing = repo.cachedPositions().filterNot { it.ticker.equals(p.ticker, true) }.toMutableList()
+                existing += OracleCalculations.position(p.ticker, c, q, e, p.currentPrice, p.currency, p.status)
+                repo.savePositions(OracleCalculations.withWeights(existing))
+                toast("${p.ticker} updated")
+                render(repo.cachedPositions())
+            }.show()
+    }
+
     private fun partialSell(p: OraclePosition, forecast: Double) { val input = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText(shares(p.shares / 2)) }; AlertDialog.Builder(context).setTitle("SELL SHARES • ${p.ticker}").setMessage("This action is local to Oracle; it does not execute broker trades.\n\nQuantity:").setView(input).setNegativeButton("CANCEL", null).setPositiveButton("CONFIRM") { _, _ -> val q = input.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0; if (q <= 0 || q > p.shares) { toast("Invalid quantity"); return@setPositiveButton }; sell(p, q, false, forecast) }.show() }
     private fun fullSell(p: OraclePosition, forecast: Double) { AlertDialog.Builder(context).setTitle("FULL SELL • ${p.ticker}").setMessage("Closes the local position at ${money(p.currentPrice)}. Not sent to the broker.").setNegativeButton("CANCEL", null).setPositiveButton("FULL SELL") { _, _ -> sell(p, p.shares, true, forecast) }.show() }
     private fun sell(p: OraclePosition, q: Double, full: Boolean, forecast: Double) { val now = System.currentTimeMillis(); val old = repo.cachedPositions().filterNot { it.ticker.equals(p.ticker, true) }.toMutableList(); val remain = p.shares - q; if (!full && remain > 0) old += p.copy(shares = remain); repo.savePositions(OracleCalculations.withWeights(old)); val j = repo.cachedJournal().toMutableList(); j += OracleJournalEntry(now, p.ticker, if (full) "SELL (FULL)" else "SELL (PARTIAL)", forecast, if (full) "Local position closed" else "Local partial sale", if (full) "CLOSED" else "ACTIVE", q, p.avgCost, p.currentPrice, if (p.shares <= 0.0) 100.0 else q / p.shares * 100.0, q * p.avgCost, q * p.currentPrice, q * (p.currentPrice - p.avgCost), "sell_$now"); repo.saveJournal(j); toast(if (full) "${p.ticker}: position closed locally" else "${p.ticker}: sale recorded"); render(repo.cachedPositions()) }

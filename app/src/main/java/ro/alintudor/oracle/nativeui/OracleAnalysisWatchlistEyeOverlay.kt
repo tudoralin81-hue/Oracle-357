@@ -141,8 +141,10 @@ object OracleAnalysisWatchlistEyeOverlay {
 
     private fun openAnalysis(activity: Activity, ticker: String) {
         OracleSimpleModule.setTickerDraft(ticker)
-        // MainActivity owns navigation; invoke its private openModule method only for
-        // this bridge. This avoids changing the Watchlist layout or data model.
+        // OracleMysticActivity owns navigation; invoke its private openModule
+        // method only for this bridge. This avoids changing the Watchlist
+        // layout or data model. Kept unobfuscated by name via proguard-rules.pro
+        // — R8 would otherwise rename openModule and break this lookup.
         runCatching {
             val method = activity.javaClass.getDeclaredMethod("openModule", String::class.java)
             method.isAccessible = true

@@ -14,7 +14,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:paddingLeft="12dp"
+        android:paddingTop="12dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="34dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -34,18 +37,9 @@
                 android:layout_weight="1"
                 android:text="ORACLE GROWTH"
                 android:textColor="#69F523"
-                android:textSize="12sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:letterSpacing="0.05" />
-            <TextView
-                android:id="@+id/widget_settings_button"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
-                android:gravity="center"
-                android:text="&#9881;"
-                android:textColor="#4BE1FF"
-                android:textSize="18sp"
-                android:background="@drawable/widget_settings_button_bg" />
         </LinearLayout>
 
         <LinearLayout
@@ -208,24 +202,38 @@
             android:id="@+id/widget_market_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
+            android:layout_marginTop="30dp"
+            android:paddingLeft="9dp"
+            android:paddingRight="9dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
             android:textColor="#69F523"
-            android:textSize="10sp"
+            android:textSize="11.5sp"
             android:textStyle="bold"
             android:text="—" />
 
-        <TextView
-            android:id="@+id/widget_updated"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:textColor="#7D879B"
-            android:textSize="9sp"
-            android:text="—" />
-
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_updated"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="10dp"
+        android:textColor="#7D879B"
+        android:textSize="9sp"
+        android:text="—" />
+
+    <TextView
+        android:id="@+id/widget_settings_button"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="10dp"
+        android:gravity="center"
+        android:text="&#9881;"
+        android:textColor="#4BE1FF"
+        android:textSize="18sp"
+        android:background="@drawable/widget_settings_button_bg" />
+
 </FrameLayout>

@@ -60,15 +60,19 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun X(v:Float)=ox+v*sx; private fun Y(v:Float)=oy+v*sy; private fun S(v:Float)=v*min(sx,sy)
 
     private var introStartNanos = 0L
+    private var eyeCx = 0f; private var eyeCy = 0f; private var eyeRadius = 0f
+    private var explosionStartNanos = 0L
     override fun onDraw(c:Canvas){
         super.onDraw(c); val w=width.toFloat(); val h=height.toFloat(); if(w<=0f||h<=0f)return
         if(introStartNanos==0L) introStartNanos=System.nanoTime()
         val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1120f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
+        eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR
         stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
         text(c,"ORACLE",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
+        drawEyeExplosion(c)
         val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0; val introDuration=0.7
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
@@ -89,6 +93,13 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawCircle(dotCx,dotCy,dotR,p)
         p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText(alertsStatusText,dotCx+dotR+S(5f),brandY,p)
+
+        val toolsY=brandY+S(24f)
+        p.color=Color.rgb(150,160,182);p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        val toolsLabel="\uD83D\uDD27  TOOLS"
+        c.drawText(toolsLabel,alertsX,toolsY,p)
+        val toolsWidth=p.measureText(toolsLabel)
+        hit+=RectF(alertsX-S(6f),toolsY-S(12f),alertsX+toolsWidth+S(6f),toolsY+S(6f)) to "backup"
 
         postInvalidateDelayed(32L)
     }
@@ -161,6 +172,32 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         p.style=Paint.Style.FILL; p.color=Color.argb((235*fade).toInt(),255,255,255); c.drawCircle(hx,hy,S(2.1f),p)
     }
     private fun grid(c:Canvas,cx:Float,cy:Float,first:Float,step:Float){p.style=Paint.Style.STROKE;p.strokeWidth=S(.55f);p.color=Color.argb(48,205,175,65);for(i in 0 until 14)c.drawCircle(cx,cy,first+i*step,p);for(i in 0 until 32){val a=i*Math.PI/16.0;val dx=cos(a).toFloat();val dy=sin(a).toFloat();c.drawLine(cx+dx*(first-S(16f)),cy+dy*(first-S(16f)),cx+dx*(first+S(255f)),cy+dy*(first+S(255f)),p)}}
+    private fun drawEyeExplosion(c: Canvas) {
+        if (explosionStartNanos == 0L) return
+        val elapsedMs = (System.nanoTime() - explosionStartNanos) / 1_000_000.0
+        if (elapsedMs > 3000.0) { explosionStartNanos = 0L; return }
+        val t = (elapsedMs / 3000.0).toFloat().coerceIn(0f, 1f)
+        val alpha = ((1f - t) * 255f).toInt().coerceIn(0, 255)
+        val maxRadius = eyeRadius * 2.6f
+        val radius = maxRadius * (0.12f + 0.88f * t)
+        val rayCount = 36
+        p.style = Paint.Style.STROKE
+        p.strokeCap = Paint.Cap.ROUND
+        for (i in 0 until rayCount) {
+            val angle = i * (2.0 * Math.PI / rayCount)
+            val cosA = cos(angle).toFloat(); val sinA = sin(angle).toFloat()
+            val innerR = radius * 0.5f
+            val sx = eyeCx + cosA * innerR; val sy = eyeCy + sinA * innerR
+            val ex = eyeCx + cosA * radius; val ey = eyeCy + sinA * radius
+            p.color = when (i % 3) { 0 -> gold; 1 -> green; else -> Color.rgb(255, 105, 35) }
+            p.alpha = alpha
+            p.strokeWidth = S(2.4f) * (1f - t * 0.4f)
+            c.drawLine(sx, sy, ex, ey, p)
+        }
+        p.color = white; p.alpha = (alpha * 0.65f).toInt(); p.strokeWidth = S(1.4f)
+        c.drawCircle(eyeCx, eyeCy, radius * 0.5f, p)
+    }
+
     private fun eye(c:Canvas,x:Float,y:Float,r:Float,time:Double){val q=(.5+.5*sin(time*1.25)).toFloat();p.style=Paint.Style.STROKE;path.reset();path.moveTo(x-r,y);path.cubicTo(x-r*.58f,y-r*.55f,x+r*.58f,y-r*.55f,x+r,y);path.cubicTo(x+r*.58f,y+r*.55f,x-r*.58f,y+r*.55f,x-r,y);p.color=gold;p.alpha=(180+70*q).toInt();p.strokeWidth=S(2f);c.drawPath(path,p);p.color=green;p.alpha=(55+90*q).toInt();p.strokeWidth=S(1.2f);c.drawCircle(x,y,r*(.48f+.035f*q),p);p.alpha=(160+90*q).toInt();p.strokeWidth=S(2f);c.drawCircle(x,y,r*.29f,p);p.style=Paint.Style.FILL;p.color=Color.rgb(2,10,4);p.alpha=255;c.drawCircle(x,y,r*.275f,p);p.color=green;p.alpha=(165+90*q).toInt();c.drawCircle(x,y,r*(.09f+.035f*q),p);p.color=Color.argb((30+80*q).toInt(),60,255,85);c.drawCircle(x,y,r*(.15f+.05f*q),p);p.style=Paint.Style.STROKE;p.color=Color.rgb(255,105,35);p.alpha=(70+90*q).toInt();p.strokeWidth=S(.8f);for(i in 0 until 28){val a=i*Math.PI/14.0;val inn=r*.40f;val out=r*(.56f+.05f*q);c.drawLine(x+cos(a).toFloat()*inn,y+sin(a).toFloat()*inn,x+cos(a).toFloat()*out,y+sin(a).toFloat()*out,p)}}
     private fun drawCards(c:Canvas,left:Float,top:Float,cw:Float,ch:Float,gap:Float,time:Double,wide:Boolean){
         val rowGapFactor=if(wide) 2.3f else 2.8f
@@ -192,6 +229,6 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     private fun diamond(c:Canvas,x:Float,y:Float,r:Float,color:Int){p.style=Paint.Style.STROKE;p.color=color;p.alpha=220;p.strokeWidth=S(.8f);path.reset();path.moveTo(x,y-r);path.lineTo(x+r,y);path.lineTo(x,y+r);path.lineTo(x-r,y);path.close();c.drawPath(path,p)}
     private fun line(c:Canvas,x1:Float,y1:Float,x2:Float,y2:Float,color:Int,alpha:Int,width:Float){p.style=Paint.Style.STROKE;p.color=color;p.alpha=alpha;p.strokeWidth=S(width);c.drawLine(x1,y1,x2,y2,p)}
     private fun text(c:Canvas,s:String,x:Float,y:Float,size:Float,color:Int,typeface:Typeface,spacing:Float,bold:Boolean){p.style=Paint.Style.FILL;p.color=color;p.alpha=255;p.textSize=size;p.typeface=if(bold)Typeface.create(typeface,Typeface.BOLD) else typeface;p.textAlign=Paint.Align.CENTER;p.letterSpacing=spacing;c.drawText(s,x,y,p)}
-    override fun onTouchEvent(e:MotionEvent):Boolean{if(e.actionMasked==MotionEvent.ACTION_UP){for((r,key)in hit)if(r.contains(e.x,e.y)){performClick();onModule(key);return true}};return true}
+    override fun onTouchEvent(e:MotionEvent):Boolean{if(e.actionMasked==MotionEvent.ACTION_UP){val dx=e.x-eyeCx;val dy=e.y-eyeCy;if(dx*dx+dy*dy<=eyeRadius*eyeRadius){performClick();explosionStartNanos=System.nanoTime();postInvalidate();return true};for((r,key)in hit)if(r.contains(e.x,e.y)){performClick();onModule(key);return true}};return true}
     override fun performClick():Boolean{super.performClick();return true}
 }

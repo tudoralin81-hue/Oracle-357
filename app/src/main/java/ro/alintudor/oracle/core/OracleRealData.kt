@@ -145,6 +145,26 @@ object OracleRealData {
         "https://query1.finance.yahoo.com/v7/finance/quote?symbols=$symbol&formatted=false&lang=en-US&region=US"
     )
 
+    /** Company name + current price for the Portfolio "Add Position" autofill.
+     *  Reuses the same authenticated Yahoo session as fundamentals()/quote()
+     *  above — the plain, unauthenticated quote endpoint no longer answers
+     *  reliably on its own. Returns null (never throws) on any failure; the
+     *  caller leaves the field blank for the person to fill in by hand. */
+    fun lookupQuote(ticker: String): OracleQuoteLookup? = try {
+        val symbol = ticker.trim().uppercase(Locale.US)
+        if (symbol.isBlank()) null
+        else {
+            val q = yahooQuote(symbol).optJSONObject("quoteResponse")?.optJSONArray("result")?.optJSONObject(0)
+            if (q == null) null else {
+                val name = q.optString("longName").takeIf { it.isNotBlank() } ?: q.optString("shortName").takeIf { it.isNotBlank() }
+                val price = if (q.has("regularMarketPrice")) q.optDouble("regularMarketPrice", Double.NaN) else Double.NaN
+                if (name == null && price.isNaN()) null else OracleQuoteLookup(name, price.takeIf { it.isFinite() && it > 0.0 })
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
     private fun fetchTimeseries(symbol:String):JSONObject {
         val now=System.currentTimeMillis()/1000L
         val period1=now-6L*365L*24L*60L*60L
@@ -252,7 +272,7 @@ object OracleRealData {
     fun newsContext(ticker:String):OracleNewsContext=try{
         val q=URLEncoder.encode(ticker.uppercase(Locale.US)+" stock when:7d","UTF-8")
         val body=getText("https://news.google.com/rss/search?q=$q&hl=en-US&gl=US&ceid=US:en")
-        val titles=Regex("<title>(.*?)</title>",RegexOption.IGNORE_CASE).findAll(body).map{it.groupValues[1].replace("&amp;","&").replace("&quot;","'")}.filter{!it.equals("Google News",true)}.take(8).toList()
+        val titles=Regex("<title>(.*?)</title>",RegexOption.IGNORE_CASE).findAll(body).map{it.groupValues[1].replace("&amp;","&").replace("&quot;","'")}.drop(1).filter{!it.contains("Google News",true) && !it.contains(" when:",true)}.take(8).toList()
         val positive=listOf("beat","upgrade","buy","bullish","record","strong","surge","contract","partnership","deal","approval","launch","growth","profit")
         val negative=listOf("miss","downgrade","sell","bearish","lawsuit","investigation","warning","cut guidance","recall","layoff","fraud","delay","loss","decline","plunge","offering","dilution","bankruptcy")
         val pos=titles.sumOf{t->positive.count{t.contains(it,true)}}

@@ -14,6 +14,11 @@ data class OracleOhlcvPoint(
     val volume: Double
 )
 
+data class OracleQuoteLookup(
+    val companyName: String?,
+    val price: Double?
+)
+
 object OracleMarketData {
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 12_000

@@ -99,21 +99,27 @@ object OracleLocalProcessor {
         val alertsByKey=(oldAlerts+signalAlerts+criticalAlerts).groupBy{"${it.ticker}|${it.kind}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
 
         // Push-notify at most once per ticker+kind+day, so a still-active
-        // condition doesn't re-alert on every single refresh. If an email is
-        // registered, tapping the notification opens a pre-filled draft for
-        // that alert — see OracleNotifier for why it isn't a silent auto-send.
-        if (criticalAlerts.isNotEmpty()) {
+        // condition doesn't re-alert on every single refresh. Only outside
+        // market hours are alerts suppressed entirely — nothing meaningfully
+        // new happens to a price while the market is closed.
+        if (criticalAlerts.isNotEmpty() && OracleMarketCalendar.status(now).open) {
             val settings = OracleAlertSettingsStore(repository.context)
             val auth = OracleAuthStore(repository.context)
             val dayKey = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
             for (alert in criticalAlerts) {
                 val notifyKey = "${alert.ticker}|${alert.kind}|$dayKey"
                 if (!settings.alreadyNotified(notifyKey)) {
-                    OracleNotifier.notify(repository.context, alert, settings.email())
+                    // The server path (email + real push via Firebase) is the
+                    // one true notification. OracleNotifier (fully local, no
+                    // server) is only a fallback for the rare case there's no
+                    // session — with a session, using both used to mean two
+                    // pushes plus an email for the same single alert.
                     if (auth.hasSession()) {
                         OracleApiClient.notify(auth.token(),
                             "Oracle alert — ${alert.ticker}: ${alert.title}",
-                            "${alert.message}\n\nSent by Oracle. Informational only — not investment advice.")
+                            "Dear investor,\n\nOracle has an alert for you.\n\n${alert.ticker} — ${alert.title}\n${alert.message}\n\n— Oracle")
+                    } else {
+                        OracleNotifier.notify(repository.context, alert, settings.email())
                     }
                     settings.markNotified(notifyKey)
                 }
