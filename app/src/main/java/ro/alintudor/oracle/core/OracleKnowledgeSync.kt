@@ -24,9 +24,17 @@ data class OracleKnowledgeArticle(
 
 object OracleKnowledgeSync {
     const val SOURCE_URL = "https://alintudor.ro/knowledge/"
-    // Do not depend on a guessed WordPress category ID. The Knowledge section is
-    // identified by the canonical /knowledge/ URL path of each published article.
-    private const val REST_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_fields=id,date,link,title,excerpt,content"
+    // /knowledge/ is a WordPress category-archive page (its permalink base has
+    // the usual "/category/" prefix stripped) — it is NOT a URL prefix that
+    // individual articles share. A post's own permalink lives at the site
+    // root (e.g. /cum-identifici-o-miscare-sanatoasa-a-pretului-inainte-sa-
+    // intri-in-tranzactie/), confirmed against a real published article.
+    // Filtering by URL path therefore always matched zero posts. Resolve the
+    // real "knowledge" category (or tag, as a fallback) id instead and scope
+    // the posts query to it server-side.
+    private const val CATEGORY_LOOKUP_URL = "https://alintudor.ro/wp-json/wp/v2/categories?slug=knowledge&_fields=id,slug"
+    private const val TAG_LOOKUP_URL = "https://alintudor.ro/wp-json/wp/v2/tags?slug=knowledge&_fields=id,slug"
+    private const val POSTS_BASE_URL = "https://alintudor.ro/wp-json/wp/v2/posts?per_page=100&orderby=date&order=desc&_fields=id,date,link,title,excerpt,content"
     private const val PREFS = "oracle_knowledge"
     private const val ITEMS = "articles"
     private const val LAST_SUCCESS = "last_success"
@@ -67,8 +75,19 @@ object OracleKnowledgeSync {
 
     fun refreshBlocking(context: Context): List<OracleKnowledgeArticle> {
         val now = System.currentTimeMillis()
-        val json = get(REST_URL)
-        val apiItems = parseRestArticles(json, now)
+        // Resolving the category (or tag) id can fail on its own (network
+        // hiccup, taxonomy renamed) without that being a reason to give up —
+        // fall back to the unscoped posts feed so a transient lookup failure
+        // degrades gracefully instead of surfacing as "no articles found".
+        val termId = runCatching { resolveTermId(CATEGORY_LOOKUP_URL) }.getOrNull()
+            ?: runCatching { resolveTermId(TAG_LOOKUP_URL) }.getOrNull()
+        val postsUrl = if (termId != null) "$POSTS_BASE_URL&categories=$termId" else POSTS_BASE_URL
+        val json = get(postsUrl)
+        // Once the query is scoped server-side to the real "knowledge" term,
+        // every post returned already belongs to Knowledge — the old
+        // path-based check no longer applies (and never matched anyway).
+        // Only fall back to the path check if term scoping wasn't available.
+        val apiItems = parseRestArticles(json, now, requirePathMatch = termId == null)
         if (apiItems.isEmpty()) throw IllegalStateException("No published articles found in /knowledge/ via the WordPress REST API.")
         val payload = JSONArray().apply {
             apiItems.forEach { a ->
@@ -83,15 +102,24 @@ object OracleKnowledgeSync {
         return apiItems
     }
 
-    private fun parseRestArticles(raw: String, refreshedAt: Long): List<OracleKnowledgeArticle> {
+    /** Looks up a taxonomy term's id by its "knowledge" slug. Returns null if
+     *  the term doesn't exist or the request fails (caller decides fallback). */
+    private fun resolveTermId(lookupUrl: String): Int? {
+        val raw = get(lookupUrl)
+        val arr = JSONArray(raw)
+        if (arr.length() == 0) return null
+        return arr.getJSONObject(0).optInt("id", -1).takeIf { it > 0 }
+    }
+
+    private fun parseRestArticles(raw: String, refreshedAt: Long, requirePathMatch: Boolean): List<OracleKnowledgeArticle> {
         val array = JSONArray(raw)
         val out = ArrayList<OracleKnowledgeArticle>()
         for (i in 0 until array.length()) {
             val item = array.getJSONObject(i)
             val title = decodeHtml(item.optJSONObject("title")?.optString("rendered", "") ?: "")
             val url = normalizeUrl(item.optString("link", "").trim())
-            // Only articles actually belonging to the public Knowledge section.
-            if (title.isBlank() || url.isBlank() || !isKnowledgeUrl(url)) continue
+            if (title.isBlank() || url.isBlank()) continue
+            if (requirePathMatch && !isKnowledgeUrl(url)) continue
             val contentHtml = item.optJSONObject("content")?.optString("rendered", "") ?: ""
             val excerptHtml = item.optJSONObject("excerpt")?.optString("rendered", "") ?: ""
             val content = cleanText(contentHtml)
@@ -102,6 +130,8 @@ object OracleKnowledgeSync {
         return out.distinctBy { it.url }.sortedByDescending { it.publishedAt }.take(MAX_ARTICLES)
     }
 
+    // Kept only as the last-resort fallback path (see requirePathMatch above)
+    // for the rare case term-id lookup itself fails.
     private fun isKnowledgeUrl(url: String): Boolean = runCatching {
         val u = URI(url)
         val path = u.path.trimEnd('/')
