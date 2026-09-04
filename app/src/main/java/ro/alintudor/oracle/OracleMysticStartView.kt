@@ -78,14 +78,17 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
 
-        text(c,"DISCLAIMER",cx,brandY,S(10f),gold,Typeface.DEFAULT,.18f,true)
+        text(c,"DISCLAIMER",cx,brandY,S(10f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
         p.textAlign=Paint.Align.CENTER;p.textSize=S(10f);p.letterSpacing=.18f
         val discWidth=p.measureText("DISCLAIMER")
         hit+=RectF(cx-discWidth/2f-S(10f),brandY-S(18f),cx+discWidth/2f+S(10f),brandY+S(8f)) to "disclaimer"
 
         val alertsX=X(if(wide)100f else 60f)
-        p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=255;p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
-        c.drawText(alertsStatusText,alertsX,brandY,p)
+        val dotR=S(3f); val dotCx=alertsX+dotR; val dotCy=brandY-S(2.5f)
+        p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=255
+        c.drawCircle(dotCx,dotCy,dotR,p)
+        p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText(alertsStatusText,dotCx+dotR+S(5f),brandY,p)
 
         postInvalidateDelayed(32L)
     }
