@@ -27,7 +27,7 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
         // for Knowledge elsewhere in the app — opens the site directly, so no
         // separate button is needed here.
         host.addCard("KNOWLEDGE", "Access articles, analysis and ideas for intelligent investors.")
-        host.addCard("INDEPENDENT CONTENT", "No sign-in required. Opens in the browser.")
+        host.addCard("INDEPENDENT CONTENT", "Opens right here in the app. Some articles may require a free alintudor.ro account to read in full.")
 
         val refreshBtn = actionButton("REFRESH KNOWLEDGE", host.accent)
         refreshBtn.setOnClickListener {
@@ -46,6 +46,8 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(15), host.dp(13))
                 background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(12), Color.rgb(35, 44, 66), host.dp(1))
+                isClickable = true; isFocusable = true
+                setOnClickListener { showArticleWebView(context, article.url, article.title) }
             }
             card.addView(TextView(context).apply { text = article.title; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
             if (article.publishedAt > 0L) card.addView(TextView(context).apply { text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(article.publishedAt)); textSize = 11f; setTextColor(host.accent); setPadding(0, host.dp(5), 0, 0) })

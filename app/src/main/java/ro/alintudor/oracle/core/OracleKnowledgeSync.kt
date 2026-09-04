@@ -111,7 +111,12 @@ object OracleKnowledgeSync {
             // directly off the page when the REST fields turn out to be the
             // restriction notice instead of real content.
             if (looksRestricted(excerpt)) {
-                excerpt = runCatching { extractMetaDescription(getHtml(url)) }.getOrNull()?.takeIf { it.isNotBlank() } ?: excerpt
+                val fetched = runCatching { extractMetaDescription(getHtml(url)) }.getOrNull()?.takeIf { it.isNotBlank() }
+                // If the live page's meta description can't be read either
+                // (network hiccup, tag format changed), don't leave the raw
+                // server restriction notice sitting in the UI — it reads like
+                // an app error. A plain local note is more honest either way.
+                excerpt = fetched ?: "Full article requires a free alintudor.ro account to read."
             }
             val publishedAt = runCatching { Instant.parse(item.optString("date")).toEpochMilli() }.getOrDefault(0L)
             out += OracleKnowledgeArticle(title, url, excerpt, content.take(12000), publishedAt, refreshedAt)
@@ -151,11 +156,19 @@ object OracleKnowledgeSync {
     }
 
     /** Plain HTML GET for an article's own public page (used only to read its
-     *  unrestricted <meta name="description"> tag — see looksRestricted). */
+     *  unrestricted <meta name="description"> tag — see looksRestricted).
+     *  Uses a real browser User-Agent: the site's membership plugin gates
+     *  the rendered article body per-session regardless of caller, but some
+     *  security/anti-bot layers key off User-Agent specifically, so this
+     *  avoids the app's own identifying UA tripping one of those on the
+     *  full themed page route (the JSON REST endpoint is a separate route
+     *  and was already confirmed reachable with that UA). */
     private fun getHtml(url: String): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = REQUEST_TIMEOUT; readTimeout = REQUEST_TIMEOUT; useCaches = false; requestMethod = "GET"
-            setRequestProperty("User-Agent", "OracleKnowledge/3.0")
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+            setRequestProperty("Accept", "text/html,application/xhtml+xml")
         }
         return try {
             if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode} fetching article page")
