@@ -107,6 +107,11 @@ private fun loadBitmapAsync(url: String, onResult: (Bitmap?) -> Unit) {
             val c = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000; readTimeout = 15000; instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                // Some hosts/CDNs serve a generic placeholder image (instead
+                // of a clean error) to requests missing a same-site Referer,
+                // as basic hotlink protection — confirmed here: the real
+                // image URL loaded fine once this was added.
+                setRequestProperty("Referer", "https://alintudor.ro/")
             }
             try {
                 if (c.responseCode !in 200..299) null else c.inputStream.use { BitmapFactory.decodeStream(it) }
