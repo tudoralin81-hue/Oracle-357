@@ -207,14 +207,22 @@ object OracleKnowledgeSync {
 
     private val metaImagePatterns = listOf(
         Regex("""<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*property=["']og:image["']""", RegexOption.IGNORE_CASE)
+        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*property=["']og:image["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+name=["']twitter:image["'][^>]*content=["']([^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""<meta[^>]+content=["']([^"']*)["'][^>]*name=["']twitter:image["']""", RegexOption.IGNORE_CASE)
     )
 
     private fun extractMetaImage(html: String): String? {
         for (pattern in metaImagePatterns) {
-            val match = pattern.find(html) ?: continue
-            val text = match.groupValues[1].trim()
-            if (text.isNotBlank()) return text
+            // Pages here carry two og:image tags: a generic site-logo one
+            // output by the theme, and the real per-article one added later
+            // in <head> by the SEO plugin — confirmed by comparing the app's
+            // output against the actual page. .find() (first match) grabbed
+            // the wrong, generic one; the real image is reliably the LAST
+            // match for a given tag rather than the first.
+            val matches = pattern.findAll(html).toList()
+            val text = matches.lastOrNull()?.groupValues?.get(1)?.trim()
+            if (!text.isNullOrBlank()) return text
         }
         return null
     }
