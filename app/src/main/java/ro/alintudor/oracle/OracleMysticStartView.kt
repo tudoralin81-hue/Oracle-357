@@ -216,7 +216,24 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             val t=if(row==0) top else top+ch+gap*1.6f
             val r=RectF(X(l),Y(t),X(l+cw),Y(t+ch))
             hit+=r to modules[i].key
-            card(c,r,modules[i],time,i,wide)
+            // Entrance: each card flies in from beyond the screen edge on its
+            // own side (left half from the left, right half from the right,
+            // bottom row also from below), staggered 70 ms apart, easing out
+            // as it settles into its slot — the row "gathers" into place.
+            val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0
+            val delay=0.12+i*0.07; val dur=0.55
+            val raw=((introElapsed-delay)/dur).coerceIn(0.0,1.0).toFloat()
+            val e=1f-(1f-raw)*(1f-raw)*(1f-raw)   // ease-out cubic
+            if(e<1f){
+                val fromX=if(col<2) -(r.right+c.width*.15f) else (c.width-r.left)+c.width*.15f
+                val fromY=if(row==0) 0f else c.height*.35f
+                val dx=fromX*(1f-e); val dy=fromY*(1f-e)
+                val scale=0.72f+0.28f*e
+                c.saveLayerAlpha(r.left-S(40f),r.top-S(40f),r.right+S(40f),r.bottom+S(40f),(60+195*e).toInt())
+                c.translate(dx,dy); c.scale(scale,scale,r.centerX(),r.centerY())
+                card(c,r,modules[i],time,i,wide)
+                c.restore()
+            } else card(c,r,modules[i],time,i,wide)
         }
     }
     private fun card(c:Canvas,r:RectF,m:M,time:Double,index:Int,wide:Boolean){val q=(.5+.5*sin(time*1.1+index*.53)).toFloat();val cx=r.centerX();val cy=r.top+r.height()*.39f;val rr=min(r.width(),r.height())*.255f;p.style=Paint.Style.FILL;p.color=Color.rgb(2,4,8);p.alpha=248;c.drawRoundRect(r,S(10f),S(10f),p);p.style=Paint.Style.STROKE;p.color=m.color;p.alpha=(155+95*q).toInt();p.strokeWidth=S(1.15f);c.drawRoundRect(r,S(10f),S(10f),p);p.alpha=(35+95*q).toInt();p.strokeWidth=S(1f);c.drawCircle(cx,cy,rr*(1.16f+.06f*q),p);p.alpha=(100+130*q).toInt();c.drawCircle(cx,cy,rr,p);p.alpha=90;c.drawCircle(cx,cy,rr*.78f,p);p.alpha=255;p.strokeWidth=S(1.8f);when(m.key){"watchlist"->miniEye(c,cx,cy,rr*.72f,m.color);"portfolio"->{c.drawRect(cx-rr*.5f,cy-rr*.38f,cx+rr*.5f,cy+rr*.38f,p);c.drawCircle(cx+rr*.22f,cy+rr*.17f,rr*.16f,p)};"analysis"->{path.reset();path.moveTo(cx-rr*.58f,cy+rr*.35f);path.lineTo(cx-rr*.2f,cy);path.lineTo(cx,cy+rr*.12f);path.lineTo(cx+rr*.56f,cy-rr*.5f);c.drawPath(path,p)};"growth"->{path.reset();path.moveTo(cx-rr*.6f,cy+rr*.34f);path.lineTo(cx-rr*.2f,cy+.05f);path.lineTo(cx+rr*.04f,cy+.18f);path.lineTo(cx+rr*.58f,cy-rr*.5f);c.drawPath(path,p)};"alerts"->{c.drawArc(RectF(cx-rr*.46f,cy-rr*.48f,cx+rr*.46f,cy+rr*.42f),210f,120f,false,p);c.drawLine(cx-rr*.2f,cy+rr*.42f,cx+rr*.2f,cy+rr*.42f,p)};"news"->{c.drawRect(cx-rr*.46f,cy-rr*.44f,cx+rr*.46f,cy+rr*.44f,p);for(j in -1..1)c.drawLine(cx-rr*.28f,cy+j*rr*.19f,cx+rr*.28f,cy+j*rr*.19f,p)};"knowledge"->{c.drawRect(cx-rr*.48f,cy-rr*.44f,cx,cy+rr*.44f,p);c.drawRect(cx,cy-rr*.44f,cx+rr*.48f,cy+rr*.44f,p)};"journal"->{c.drawRect(cx-rr*.46f,cy-rr*.44f,cx+rr*.46f,cy+rr*.44f,p);path.reset();path.moveTo(cx-rr*.3f,cy+rr*.22f);path.lineTo(cx-rr*.06f,cy-rr*.02f);path.lineTo(cx+rr*.08f,cy+rr*.1f);path.lineTo(cx+rr*.32f,cy-rr*.24f);c.drawPath(path,p)}};text(c,m.title,cx,r.top+r.height()*.73f,S(if(wide)11.5f else 11f),white,Typeface.DEFAULT,.01f,true);text(c,m.sub,cx,r.top+r.height()*.88f,S(if(wide)7.7f else 7.2f),m.color,Typeface.DEFAULT,.02f,true);p.color=m.color;p.alpha=(130+115*q).toInt();p.strokeWidth=S(1f);c.drawLine(cx-S(32f),r.bottom-S(12f),cx+S(32f),r.bottom-S(12f),p);diamond(c,cx,r.bottom-S(12f),S(3.3f),m.color)}

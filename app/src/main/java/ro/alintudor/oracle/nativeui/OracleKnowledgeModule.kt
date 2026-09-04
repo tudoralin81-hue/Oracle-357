@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
+import ro.alintudor.oracle.core.OracleDemo
 import ro.alintudor.oracle.core.OracleKnowledgeArticle
 import ro.alintudor.oracle.core.OracleKnowledgeSync
 import java.text.SimpleDateFormat
@@ -55,7 +56,10 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
                 orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(15), host.dp(13))
                 background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(12), Color.rgb(35, 44, 66), host.dp(1))
                 isClickable = true; isFocusable = true
-                setOnClickListener { showArticlePopup(context, article) }
+                setOnClickListener {
+                    val locked = OracleDemo.active(context) && items.indexOf(article) > 0
+                    showArticlePopup(context, if (locked) article.copy(content = "", excerpt = "${OracleDemo.LOCK} In the demo only the first chapter opens in full. ${article.excerpt}") else article)
+                }
                 alpha = 0f; translationY = host.dp(24).toFloat()
             }
             card.addView(TextView(context).apply { text = article.title; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })

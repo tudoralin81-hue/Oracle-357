@@ -20,6 +20,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     companion object {
         @Volatile private var watchlistScoring = false
         @Volatile private var tickerDraft: String = ""
+        @Volatile private var compareDraft: String = ""
         fun setTickerDraft(ticker: String) { tickerDraft = ticker.trim().uppercase(Locale.US) }
     }
 
@@ -187,7 +188,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setOnClickListener {
                 val current = watchStore.load().toMutableList()
                 val present = current.any { it.equals(watchTicker, true) }
-                if (present) current.removeAll { it.equals(watchTicker, true) } else current.add(watchTicker)
+                if (!present && OracleDemo.active(host.root.context) && current.size >= 3) { Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo watchlist holds 3 tickers \u2014 create an account for more", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            if (present) current.removeAll { it.equals(watchTicker, true) } else current.add(watchTicker)
                 watchStore.save(current)
                 updateWatchUi(!present, this)
                 Toast.makeText(host.root.context, if (!present) "$watchTicker added to Watchlist" else "$watchTicker removed from Watchlist", Toast.LENGTH_SHORT).show()
@@ -315,6 +317,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         watchButton.setOnClickListener {
             val current = watchStore.load().toMutableList()
             val present = current.any { it.equals(watchTicker, true) }
+            if (!present && OracleDemo.active(host.root.context) && current.size >= 3) { Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo watchlist holds 3 tickers \u2014 create an account for more", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
             if (present) current.removeAll { it.equals(watchTicker, true) } else current.add(watchTicker)
             watchStore.save(current)
             updateWatchUi(!present, watchEye)
@@ -543,6 +546,27 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
         val chart = OracleAnalysisChartView(host.root.context, ticker)
         box.addView(chart, LinearLayout.LayoutParams(-1, host.dp(660)))
+        if (compareDraft.isNotBlank()) chart.setCompare(compareDraft)
+
+        // Compare with a second ticker — drawn as a relative line on the same chart.
+        val compareRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(host.dp(10), host.dp(8), host.dp(10), host.dp(4)) }
+        val compareInput = EditText(host.root.context).apply {
+            hint = "Compare with\u2026 (e.g. SPY)"; setSingleLine(true); textSize = 14f; setTextColor(Color.WHITE); setHintTextColor(Color.rgb(130, 145, 170))
+            setPadding(host.dp(12), host.dp(8), host.dp(12), host.dp(8)); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            background = GradientDrawable().apply { setColor(Color.rgb(8, 14, 28)); cornerRadius = host.dp(10).toFloat(); setStroke(host.dp(1), Color.rgb(255, 195, 35)) }
+            if (compareDraft.isNotBlank()) setText(compareDraft)
+        }
+        compareRow.addView(compareInput, LinearLayout.LayoutParams(0, -2, 1f))
+        compareRow.addView(Button(host.root.context).apply {
+            text = "COMPARE"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(8, 12, 20)); isAllCaps = false
+            background = GradientDrawable().apply { setColor(Color.rgb(255, 195, 35)); cornerRadius = host.dp(10).toFloat() }
+            setOnClickListener { compareDraft = compareInput.text.toString().trim().uppercase(Locale.US); chart.setCompare(compareDraft.ifBlank { null }) }
+        }, LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(8), 0, 0, 0) })
+        compareRow.addView(Button(host.root.context).apply {
+            text = "\u2715"; textSize = 14f; setTextColor(Color.rgb(255, 105, 105)); background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT); minWidth = 0; minimumWidth = 0
+            setOnClickListener { compareDraft = ""; compareInput.setText(""); chart.setCompare(null) }
+        }, LinearLayout.LayoutParams(host.dp(40), -2))
+        box.addView(compareRow)
 
         val ranges = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val activeRange = Color.rgb(20, 70, 105)

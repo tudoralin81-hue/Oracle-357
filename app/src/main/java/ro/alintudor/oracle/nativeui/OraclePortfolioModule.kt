@@ -28,6 +28,18 @@ import java.util.zip.ZipOutputStream
 
 /** Functional Portfolio module: local positions, journal and model-matched file exports. */
 class OraclePortfolioModule(private val host: OracleNativeModule) {
+    companion object {
+        const val CSV_IMPORT_REQUEST = 4242
+        /** Merges parsed rows into the stored positions (replaces same-ticker rows). */
+        fun applyImport(context: android.content.Context, rows: List<OracleCsvImport.Row>): Int {
+            if (rows.isEmpty()) return 0
+            val repo = OracleRepository(context)
+            val existing = repo.cachedPositions().filterNot { p -> rows.any { it.ticker.equals(p.ticker, true) } }.toMutableList()
+            rows.forEach { r -> existing += OracleCalculations.position(r.ticker, r.company, r.shares, r.avgCost, r.avgCost) }
+            repo.savePositions(OracleCalculations.withWeights(existing))
+            return rows.size
+        }
+    }
     private val context: Context get() = host.root.context
     private val repo by lazy { OracleRepository(context) }
     private val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -162,7 +174,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         host.content.addView(box, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, host.dp(8), 0, host.dp(8)) })
     }
 
-    private fun addManagementRow() { val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(2), 0, host.dp(2), 0) }; row.addView(btn("+ ADD POSITION", Color.rgb(145, 245, 35)) { addPositionDialog() }, LinearLayout.LayoutParams(-1, host.dp(46))); host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(8)) }) }
+    private fun addManagementRow() { val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(2), 0, host.dp(2), 0) }; row.addView(btn("+ ADD POSITION", Color.rgb(145, 245, 35)) { addPositionDialog() }, LinearLayout.LayoutParams(0, host.dp(46), 1.6f)); row.addView(btn("IMPORT CSV", Color.rgb(55, 215, 255)) { importCsv() }, LinearLayout.LayoutParams(0, host.dp(46), 1f).apply { setMargins(host.dp(6), 0, 0, 0) }); host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(8)) }) }
 
     private fun card(rank: Int, p: OraclePosition, a: OracleAction?, t: OracleTechnicalSnapshot?, journal: List<OracleJournalEntry>, silent: Boolean = false) {
         // "Forecast" = the Growth forecast recorded when the position was
@@ -170,11 +182,12 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         // definition Growth uses. Never a per-ticker constant.
         val forecast = journal.filter { it.ticker.equals(p.ticker, true) && it.action.contains("BUY / OPEN", true) }.minByOrNull { it.timestamp }?.score?.takeIf { it > 0.0 }
             ?: t?.atr14?.takeIf { it > 0.0 && p.currentPrice > 0.0 }?.let { (2.0 * it / p.currentPrice * 100.0).coerceAtMost(30.0) } ?: 0.0
-        val action = decision(a?.action ?: "HOLD", t, p)
+        val demo = OracleDemo.active(context)
+        val action = if (demo) OracleDemo.LOCK else decision(a?.action ?: "HOLD", t, p)
         val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); "REDUCE" -> Color.rgb(255, 170, 40); else -> Color.rgb(50, 220, 190) }
         val urgentSell = t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }
         // The engine's reason IS the reason — it names the rule that fired.
-        val reason = when { urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
+        val reason = when { demo -> "Oracle's decision and the rule behind it are for account holders. The indicators below are live."; urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
         val cardBg = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), accent, host.dp(1))
         val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = cardBg }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -224,6 +237,14 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     private fun two(g: LinearLayout, a: String, av: String, b: String, bv: String): Pair<TextView, TextView> { val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }; val va = metric(r, a, av); val vb = metric(r, b, bv); g.addView(r); return va to vb }
     private fun metric(row: LinearLayout, label: String, value: String): TextView { val b = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(13), host.dp(10), host.dp(13), host.dp(10)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), Color.rgb(35, 44, 66), host.dp(1)) }; b.addView(TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)) }); val valueView = TextView(context).apply { text = value; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, host.dp(3), 0, 0) }; b.addView(valueView); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(2), host.dp(4), host.dp(2), host.dp(5)) }); return valueView }
     private fun btn(label: String, color: Int, click: () -> Unit) = TextView(context).apply { text = label; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(color); background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(10), color, host.dp(1)); isClickable = true; isFocusable = true; setOnClickListener { click() } }
+
+    /** Opens the system file picker; OracleMysticActivity.onActivityResult
+     *  reads the file, parses it with OracleCsvImport and re-renders. */
+    private fun importCsv() {
+        val activity = context as? android.app.Activity ?: return
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(android.content.Intent.CATEGORY_OPENABLE); type = "*/*"; putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel")) }
+        runCatching { activity.startActivityForResult(intent, CSV_IMPORT_REQUEST) }.onFailure { toast("No file picker available") }
+    }
 
     private fun addPositionDialog() {
         val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(4), 0, host.dp(4), 0) }

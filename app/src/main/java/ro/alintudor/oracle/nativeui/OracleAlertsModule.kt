@@ -10,6 +10,7 @@ import android.app.AlertDialog
 import android.text.InputType
 import android.widget.EditText
 import ro.alintudor.oracle.core.OracleAlert
+import ro.alintudor.oracle.core.OracleDemo
 import ro.alintudor.oracle.core.OracleUserAlert
 import ro.alintudor.oracle.core.OracleUserAlertStore
 import ro.alintudor.oracle.core.OracleTickerScoreCache
@@ -78,7 +79,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
         host.content.addView(TextView(context).apply {
             text = "+ ADD ALERT"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(host.accent)
             background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(11), host.accent, host.dp(1)); isClickable = true; isFocusable = true
-            setOnClickListener { addAlertDialog() }
+            setOnClickListener { if (OracleDemo.active(context)) android.widget.Toast.makeText(context, "${OracleDemo.LOCK} Personal alerts need an account", android.widget.Toast.LENGTH_SHORT).show() else addAlertDialog() }
         }, LinearLayout.LayoutParams(-1, host.dp(44)).apply { setMargins(0, 0, 0, host.dp(12)) })
     }
 

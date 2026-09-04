@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.animation.ObjectAnimator
 import android.view.animation.LinearInterpolator
 import android.widget.Toast
+import ro.alintudor.oracle.core.OracleDemo
 import ro.alintudor.oracle.core.OracleGrowthEngine
 import ro.alintudor.oracle.core.OracleGrowthJournalStore
 import ro.alintudor.oracle.core.OracleGrowthPhase
@@ -248,10 +249,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(divider())
 
         val metrics = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(7), 0, host.dp(4)) }
-        metrics.addView(metric("SCORE", "${item.score}/100", cyan), LinearLayout.LayoutParams(0, -2, 1f))
+        val demo = OracleDemo.active(host.root.context)
+        metrics.addView(metric("SCORE", if (demo) OracleDemo.LOCK else "${item.score}/100", cyan), LinearLayout.LayoutParams(0, -2, 1f))
         metrics.addView(metric("SIGNAL", compactSignal(item.signal), signalColor(item.signal)), LinearLayout.LayoutParams(0, -2, 1.15f))
         metrics.addView(metric("RISK", item.risk, riskColor(item.risk)), LinearLayout.LayoutParams(0, -2, 1f))
-        metrics.addView(metric("ALLOCATION", "${format(item.allocationMax)}%", orange), LinearLayout.LayoutParams(0, -2, 1f))
+        metrics.addView(metric("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange), LinearLayout.LayoutParams(0, -2, 1f))
         card.addView(metrics)
 
         val lower = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, host.dp(4)) }
@@ -259,7 +261,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // Honest label: this number is the ATR-based expected range for the
         // horizon (2×/4.5×/8×ATR), not a prediction of where price will go.
         forecast.addView(text("Expected range (ATR)", 10f, Typeface.DEFAULT, muted, 0, 0))
-        forecast.addView(text(signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
+        forecast.addView(text(if (demo) OracleDemo.LOCK else signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
         item.earningsInDays?.takeIf { it <= 14 }?.let { d ->
             forecast.addView(text(if (d == 0) "Earnings today" else "Earnings in $d day${if (d == 1) "" else "s"}", 10f, Typeface.DEFAULT_BOLD, orange, 0, 2))
         }

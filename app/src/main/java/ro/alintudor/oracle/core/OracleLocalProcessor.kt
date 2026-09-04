@@ -78,7 +78,7 @@ object OracleLocalProcessor {
             val latestClose = candlesByTicker[p.ticker.uppercase(Locale.US)]?.lastOrNull()?.close
             if (latestClose != null && latestClose > 0.0) p.copy(currentPrice = latestClose) else p
         }
-        val normalized = OracleAnalytics.normalize(livePositions)
+        val normalized = OracleAnalytics.normalize(if (OracleDemo.active(repository.context)) livePositions.map { p -> if (p.avgCost <= 0.0 && p.currentPrice > 0.0) p.copy(avgCost = p.currentPrice * 0.96, entryTimestamp = System.currentTimeMillis()) else p } else livePositions)
         val now = System.currentTimeMillis()
         val recentHistory = current.history.filter { now - it.timestamp < 30L * 24L * 60L * 60L * 1000L }
         val newPoints = normalized.map { OracleHistoryPoint(it.ticker, now, it.currentPrice, it.marketValue, it.pnl) }
@@ -136,12 +136,16 @@ object OracleLocalProcessor {
         // Push-notify critical + user alerts (once per ticker+kind+day), only
         // while the market is open — nothing meaningfully new happens to a
         // price while it's closed.
-        if ((criticalAlerts.isNotEmpty() || userAlerts.isNotEmpty()) && OracleMarketCalendar.status(now).open) {
+        if ((criticalAlerts.isNotEmpty() || userAlerts.isNotEmpty()) && OracleMarketCalendar.status(now).open && !OracleDemo.active(repository.context)) {
             OracleAlertCenter.notify(repository.context, criticalAlerts + userAlerts)
         }
 
         val journal=OracleActivityJournal.merge(current.journal,actions)
-        val fetchedNews=runCatching{OracleNewsFetcher.fetch(150)}.getOrDefault(emptyList())
+        val priorityTerms=runCatching {
+            (normalized.flatMap { listOf(it.ticker, it.company) } + OracleWatchlistStore(repository.context).load() + growth.flatMap { listOf(it.ticker, it.company) })
+                .map { it.trim() }.filter { it.length >= 2 && !it.equals("Inc.", true) }.distinct()
+        }.getOrDefault(emptyList())
+        val fetchedNews=runCatching{OracleNewsFetcher.fetch(150, priorityTerms)}.getOrDefault(emptyList())
         val news=if(fetchedNews.isNotEmpty()) fetchedNews else current.news
         repository.saveNews(news); repository.savePositions(normalized); repository.saveActions(actions); repository.saveTechnical(technical); repository.saveHistory(history); repository.saveAlerts(alertsByKey); repository.saveJournal(journal)
         return repository.snapshot().copy(news=news)

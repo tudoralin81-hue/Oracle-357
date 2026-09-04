@@ -74,6 +74,13 @@ class OracleNativeModule(
             clipToPadding=false; isFillViewport=true; overScrollMode=View.OVER_SCROLL_ALWAYS; isNestedScrollingEnabled=false; addView(content)
             setOnScrollChangeListener { _, _, scrollY, _, _ -> scrollPositions[title] = scrollY }
         }
+        if (ro.alintudor.oracle.core.OracleDemo.active(context)) {
+            root.addView(TextView(context).apply {
+                text = "DEMO  \u00b7  ${ro.alintudor.oracle.core.OracleDemo.LOCK} locked values \u2014 create an account for full access"
+                textSize = 10.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = .06f; gravity = Gravity.CENTER; setTextColor(Color.rgb(255, 205, 45))
+                setPadding(dp(10), dp(7), dp(10), dp(7)); background = rounded(Color.rgb(20, 16, 6), dp(10), Color.rgb(255, 205, 45), dp(1))
+            }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(2), 0, dp(8)) })
+        }
         root.addView(scrollView, LinearLayout.LayoutParams(-1,0,1f))
         root.setOnApplyWindowInsetsListener { _, insets ->
             val top = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.statusBars()).top else 0

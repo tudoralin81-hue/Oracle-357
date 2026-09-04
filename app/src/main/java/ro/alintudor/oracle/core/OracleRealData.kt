@@ -288,11 +288,9 @@ object OracleRealData {
         val q=URLEncoder.encode(ticker.uppercase(Locale.US)+" stock when:7d","UTF-8")
         val body=getText("https://news.google.com/rss/search?q=$q&hl=en-US&gl=US&ceid=US:en")
         val titles=Regex("<title>(.*?)</title>",RegexOption.IGNORE_CASE).findAll(body).map{it.groupValues[1].replace("&amp;","&").replace("&quot;","'")}.drop(1).filter{!it.contains("Google News",true) && !it.contains(" when:",true)}.take(8).toList()
-        val positive=listOf("beat","upgrade","buy","bullish","record","strong","surge","contract","partnership","deal","approval","launch","growth","profit")
-        val negative=listOf("miss","downgrade","sell","bearish","lawsuit","investigation","warning","cut guidance","recall","layoff","fraud","delay","loss","decline","plunge","offering","dilution","bankruptcy")
-        val pos=titles.sumOf{t->positive.count{t.contains(it,true)}}
-        val neg=titles.sumOf{t->negative.count{t.contains(it,true)}}
-        OracleNewsContext((50+pos*5-neg*7).coerceIn(0,100),titles.size,pos,neg,titles.firstOrNull())
+        val per=titles.map{OracleSentiment.scoreOne(it)}
+        val pos=per.count{it>0.15}; val neg=per.count{it<-0.15}
+        OracleNewsContext(OracleSentiment.score(titles),titles.size,pos,neg,titles.firstOrNull())
     }catch(_:Exception){OracleNewsContext(50,0,0,0,null)}
 
     fun marketContext(sector:String?):OracleMarketContext{

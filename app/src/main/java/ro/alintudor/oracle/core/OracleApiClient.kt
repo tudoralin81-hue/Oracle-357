@@ -51,7 +51,10 @@ object OracleApiClient {
             put("notification_email", notificationEmail)
         }
         val response = post("/register", null, body)
-        response.getString("token") to response.getString("backup_code")
+        // With owner approval enabled server-side the token is absent until
+        // the account is approved; the app then shows the "awaiting approval"
+        // message instead of logging the person in.
+        response.optString("token", "") to response.optString("backup_code", "")
     }
 
     fun login(username: String, password: String): Result<String> = runCatching {

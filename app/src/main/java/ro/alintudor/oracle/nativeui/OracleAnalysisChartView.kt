@@ -32,6 +32,21 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
     private val cyan = Color.rgb(60, 205, 255)
     private val paints = Paint(Paint.ANTI_ALIAS_FLAG)
     private var data: List<OracleOhlcvPoint> = emptyList()
+    // Optional second ticker drawn as a percentage-relative line over the
+    // primary (both rebased to the first visible close), so two names can be
+    // compared on one chart regardless of their price levels.
+    private var compareTicker: String? = null
+    private var overlay: List<OracleOhlcvPoint> = emptyList()
+    fun setCompare(ticker: String?) {
+        compareTicker = ticker?.trim()?.uppercase()?.takeIf { it.isNotBlank() && it != this.ticker }
+        overlay = emptyList()
+        if (compareTicker == null) { invalidate(); return }
+        val requested = mode
+        Thread {
+            val fetched = runCatching { OracleMarketData.fetchForMode(compareTicker!!, requested) }.getOrDefault(emptyList())
+            post { if (mode == requested) { overlay = fetched; invalidate() } }
+        }.start()
+    }
     private var visible = 90
     private var offset = 0
     private var mode = "5M"
@@ -66,9 +81,11 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         invalidate()
         Thread {
             val fetched = runCatching { OracleMarketData.fetchForMode(ticker, requested) }.getOrDefault(emptyList())
+            val ov = compareTicker?.let { ct -> runCatching { OracleMarketData.fetchForMode(ct, requested) }.getOrDefault(emptyList()) } ?: emptyList()
             post {
                 if (mode == requested) {
                     data = fetched
+                    overlay = ov
                     loading = false
                     clampOffset()
                     selectedIndex = -1
@@ -209,6 +226,33 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         val bodyW = max(3f, step * .62f)
         fun y(v: Double): Float = bottom - ((v - minP) / span * (bottom - top - 22f)).toFloat()
         val closes = d.map { it.close }
+
+        if (overlay.isNotEmpty() && compareTicker != null && d.isNotEmpty()) {
+            // Rebase the overlay to the primary's first visible close, then
+            // draw it on the same axis: what you see is relative performance.
+            val ovSorted = overlay.sortedBy { it.timestamp }
+            fun overlayAt(ts: Long): Double? { var lo = 0; var hi = ovSorted.size - 1; var best = -1
+                while (lo <= hi) { val m = (lo + hi) / 2; if (ovSorted[m].timestamp <= ts) { best = m; lo = m + 1 } else hi = m - 1 }
+                return if (best >= 0) ovSorted[best].close else null }
+            val base = overlayAt(d.first().timestamp)
+            if (base != null && base > 0.0) {
+                val ratio = d.first().close / base
+                paints.style = Paint.Style.STROKE; paints.strokeWidth = 3f; paints.color = gold
+                val path = android.graphics.Path(); var started = false
+                d.forEachIndexed { i, pt ->
+                    val v = overlayAt(pt.timestamp)?.let { it * ratio } ?: return@forEachIndexed
+                    val x = left + step * i + step / 2f
+                    val yy = y(v.coerceIn(minP, maxP))
+                    if (!started) { path.moveTo(x, yy); started = true } else path.lineTo(x, yy)
+                }
+                c.drawPath(path, paints)
+                paints.style = Paint.Style.FILL
+                val last = overlayAt(d.last().timestamp)
+                val relPct = if (last != null && base > 0.0) (last / base - 1.0) * 100.0 else 0.0
+                val primPct = (d.last().close / d.first().close - 1.0) * 100.0
+                label(c, "$ticker ${"%+.1f".format(primPct)}%   vs   $compareTicker ${"%+.1f".format(relPct)}%", 14f, top + 14f, gold, 13f)
+            }
+        }
 
         if (showBB) {
             val upper = mutableListOf<Float>(); val mid = mutableListOf<Float>(); val lower = mutableListOf<Float>()

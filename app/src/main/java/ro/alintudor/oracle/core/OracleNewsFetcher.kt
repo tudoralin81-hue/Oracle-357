@@ -29,20 +29,49 @@ object OracleNewsFetcher {
     private val economicKeywords = listOf("stock","stocks","share","shares","equity","equities","market","markets","nasdaq","nyse","s&p","dow","index","indices","earnings","revenue","profit","loss","guidance","ipo","merger","acquisition","m&a","fed","federal reserve","interest rate","inflation","cpi","ppi","gdp","jobs","payroll","treasury","bond","yield","forex","currency","oil","gold","silver","bitcoin","crypto","investor","investing","wall street","business","finance","financial","economy","economic","tariff","trade","bank","banks","semiconductor","energy")
 
     /** Always performs a network read. No local news cache is used by the fetcher. */
-    fun fetch(limit: Int = 150): List<OracleNews> {
+    /**
+     * @param priorityTerms tickers and company names the person actually
+     *   holds / watches / was recommended — headlines mentioning them rank
+     *   first and carry a relevance score, so the feed is theirs, not generic.
+     */
+    fun fetch(limit: Int = 150, priorityTerms: List<String> = emptyList()): List<OracleNews> {
         val pool = Executors.newFixedThreadPool(feeds.size.coerceAtMost(10))
+        val terms = priorityTerms.map { it.trim() }.filter { it.length >= 2 }.distinct()
         return try {
             feeds.map { feed -> pool.submit(Callable { runCatching { readFeed(feed) }.getOrDefault(emptyList()) }) }
                 .flatMap { runCatching { it.get() }.getOrDefault(emptyList()) }
                 .filter { it.title.isNotBlank() && isEconomic(it) }
                 .groupBy { canonicalKey(it) }
                 .values
-                .mapNotNull { group -> group.maxByOrNull { it.publishedAt } }
-                .sortedWith(compareByDescending<OracleNews> { it.breaking }.thenByDescending { it.publishedAt })
+                // Prefer the original outlet over an aggregator copy of the same story.
+                .mapNotNull { group -> group.sortedWith(compareBy<OracleNews> { if (it.source.contains("Google News", true)) 1 else 0 }.thenByDescending { it.publishedAt }).firstOrNull() }
+                .map { n ->
+                    val matched = matchedTerm(n.title, terms)
+                    n.copy(
+                        ticker = n.ticker.ifBlank { matched?.takeIf { it.length <= 6 && it.uppercase(Locale.US) == it } ?: "" },
+                        relevanceScore = relevance(n.title, matched),
+                        sentimentScore = OracleSentiment.scoreOne(n.title).takeIf { it != 0.0 }
+                    )
+                }
+                .sortedWith(compareByDescending<OracleNews> { it.breaking }.thenByDescending { it.relevanceScore }.thenByDescending { it.publishedAt })
                 .take(limit)
         } finally {
             pool.shutdownNow()
         }
+    }
+
+    private fun matchedTerm(title: String, terms: List<String>): String? {
+        val t = " " + title.lowercase(Locale.US).replace(Regex("[^a-z0-9 ]"), " ") + " "
+        return terms.firstOrNull { term -> t.contains(" " + term.lowercase(Locale.US).replace(Regex("[^a-z0-9 ]"), " ").trim() + " ") }
+    }
+
+    private val marketTerms = listOf("stock", "shares", "earnings", "guidance", "fed", "rates", "inflation", "s&p", "nasdaq", "dow", "wall street", "treasury", "ipo", "upgrade", "downgrade")
+
+    private fun relevance(title: String, matched: String?): Double {
+        if (matched != null) return 100.0
+        val t = title.lowercase(Locale.US)
+        val hits = marketTerms.count { t.contains(it) }
+        return (30.0 + hits * 15.0).coerceAtMost(75.0)
     }
 
     private fun isEconomic(n: OracleNews): Boolean {
@@ -50,7 +79,10 @@ object OracleNewsFetcher {
         return economicKeywords.any { text.contains(it) }
     }
 
-    private fun canonicalKey(n: OracleNews): String = "title:" + canonicalTitle(n.title)
+    // Fuzzy key: the first 8 meaningful words. Two outlets writing the same
+    // story with slightly different headlines collapse into one item.
+    private val stopWords = setOf("the", "a", "an", "of", "to", "in", "on", "for", "and", "as", "at", "by", "with", "is", "are", "its", "it", "s", "from", "after", "amid", "over")
+    private fun canonicalKey(n: OracleNews): String = "title:" + canonicalTitle(n.title).split(" ").filter { it.isNotBlank() && it !in stopWords }.take(8).joinToString(" ")
 
     private fun canonicalTitle(value: String): String = value.trim().lowercase(Locale.US)
         .replace(Regex("\\s+"), " ")

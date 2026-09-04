@@ -325,6 +325,16 @@ class OracleMysticActivity : Activity() {
                 runOnUiThread {
                     result.onSuccess { pair ->
                         val (token, backupCode) = pair
+                        if (token.isBlank()) {
+                            // Server-side approval flow: the account exists but the
+                            // owner has to approve it before the first login.
+                            android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                                .setTitle("Account created \u2014 awaiting approval")
+                                .setMessage("Thanks, $username. New accounts are approved by hand. You'll be able to log in once it's approved${if (notifyEmail.isNotBlank()) " — we'll email $notifyEmail" else ""}.\n\nYour backup code: $backupCode\nKeep it — it's the only way to reset your password.")
+                                .setPositiveButton("OK") { _, _ -> showLogin(store) }
+                                .setCancelable(false).show()
+                            return@onSuccess
+                        }
                         store.saveSession(username, token)
                         store.setBiometricEnabled(biometricWanted)
                         store.setBiometricOffered(true)
@@ -442,7 +452,13 @@ class OracleMysticActivity : Activity() {
                         }
                     }.onFailure {
                         loginButton.isEnabled = true; loginButton.text = "LOG IN"
-                        error.text = it.message ?: "Wrong username or password."
+                        val msg = it.message ?: ""
+                        error.text = when {
+                            msg.contains("pending", true) || msg.contains("approv", true) -> "Your account is awaiting approval by the owner. You'll be notified when it's ready."
+                            msg.contains("rejected", true) || msg.contains("declined", true) -> "This account was not approved."
+                            msg.isNotBlank() -> msg
+                            else -> "Wrong username or password."
+                        }
                     }
                 }
             }.start()
@@ -473,6 +489,15 @@ class OracleMysticActivity : Activity() {
             text = "Don't have an account? Register"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(16), 0, 0)
             isClickable = true; isFocusable = true
             setOnClickListener { showRegister(store) }
+        })
+        card.addView(TextView(this).apply {
+            text = "\uD83D\uDD13  TRY THE DEMO \u2014 no account needed"; textSize = 12.5f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold); setPadding(0, dp(18), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                ro.alintudor.oracle.core.OracleDemo.enter(this@OracleMysticActivity)
+                authPassedThisProcess = true
+                proceedPastAuth()
+            }
         })
         card.addView(TextView(this).apply {
             text = "Forgot password?"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, 0)
@@ -794,18 +819,20 @@ class OracleMysticActivity : Activity() {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
         })
+        val demoNow = ro.alintudor.oracle.core.OracleDemo.active(this)
         card.addView(TextView(this).apply {
-            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = if (demoNow) "EXIT DEMO" else "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(255, 110, 110))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
             setPadding(0, dp(14), 0, dp(14))
             isClickable = true; isFocusable = true
             setOnClickListener {
                 android.app.AlertDialog.Builder(this@OracleMysticActivity)
-                    .setTitle("Log out?")
-                    .setMessage("You'll need your username and password (or fingerprint, if enabled) to log back in.")
-                    .setPositiveButton("Log out") { _, _ ->
+                    .setTitle(if (demoNow) "Exit the demo?" else "Log out?")
+                    .setMessage(if (demoNow) "The sample portfolio is removed. Create an account to keep your own." else "You'll need your username and password (or fingerprint, if enabled) to log back in.")
+                    .setPositiveButton(if (demoNow) "Exit" else "Log out") { _, _ ->
                         val store = OracleAuthStore(this@OracleMysticActivity)
+                        if (demoNow) ro.alintudor.oracle.core.OracleDemo.exit(this@OracleMysticActivity)
                         store.clearSession()
                         authPassedThisProcess = false
                         currentModule = null
@@ -824,6 +851,22 @@ class OracleMysticActivity : Activity() {
 
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != ro.alintudor.oracle.nativeui.OraclePortfolioModule.CSV_IMPORT_REQUEST || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        Thread {
+            val text = runCatching { contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "" }.getOrDefault("")
+            val rows = runCatching { ro.alintudor.oracle.core.OracleCsvImport.parse(text) }.getOrDefault(emptyList())
+            val n = if (rows.isNotEmpty()) ro.alintudor.oracle.nativeui.OraclePortfolioModule.applyImport(this, rows) else 0
+            runOnUiThread {
+                if (n == 0) Toast.makeText(this, "No positions recognized in that file (needs ticker, quantity and price columns).", Toast.LENGTH_LONG).show()
+                else { Toast.makeText(this, "Imported $n position${if (n == 1) "" else "s"} — prices refresh now.", Toast.LENGTH_LONG).show(); currentModule = null; openModule("portfolio") }
+            }
+        }.start()
     }
 
     override fun onNewIntent(intent: Intent) {
