@@ -58,11 +58,15 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
         }, LinearLayout.LayoutParams(0,-2,1f))
         host.content.addView(info, LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,host.dp(12)) })
 
-        host.content.addView(Button(context).apply {
+        val refreshBtn = Button(context).apply {
             text = "⟳  REFRESH KNOWLEDGE"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; isAllCaps = false; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { setColor(Color.rgb(12,54,82)); cornerRadius = host.dp(11).toFloat(); setStroke(host.dp(1), Color.rgb(55,105,145)) }
-            setOnClickListener { onRefresh() }
-        }, LinearLayout.LayoutParams(-1,host.dp(44)).apply { setMargins(0,0,0,host.dp(12)) })
+        }
+        refreshBtn.setOnClickListener {
+            refreshBtn.text = "⟳  REFRESHING…"; refreshBtn.isEnabled = false; refreshBtn.alpha = 0.6f
+            onRefresh()
+        }
+        host.content.addView(refreshBtn, LinearLayout.LayoutParams(-1,host.dp(44)).apply { setMargins(0,0,0,host.dp(12)) })
 
         if (error.isNotBlank()) host.addCard("LAST SYNC ERROR", error)
         if (items.isEmpty()) {
