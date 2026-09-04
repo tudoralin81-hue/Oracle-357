@@ -805,12 +805,23 @@ class OracleMysticActivity : Activity() {
     private fun openModule(key: String) {
         if (key == "disclaimer") { showDisclaimerDialog(); return }
         if (key == "backup") { currentModule = "backup"; showBackupScreen(); return }
+        // A press on the refresh button re-enters this same function with the
+        // same key the screen is already showing — distinct from a genuine
+        // navigation into the module, where the screen must render immediately
+        // (with cached data) so it isn't blank while the background refresh runs.
+        val isRefreshOfOpenScreen = currentModule == key
         currentModule = key
         if (key == "alerts" && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357)
         }
-        runCatching { renderModule(key) }.onFailure { showModuleError(key, it) }
+        // On a refresh of an already-open screen, skip this immediate render:
+        // the screen already shows this exact data, so redrawing it here only
+        // to redraw it again a moment later (once the background refresh below
+        // lands) is a redundant full rebuild — fresh ScrollView, every card
+        // re-animating in, borders re-pulsing from zero. That double rebuild is
+        // what reads as the screen "jumping" / losing scroll position on refresh.
+        if (!isRefreshOfOpenScreen) runCatching { renderModule(key) }.onFailure { showModuleError(key, it) }
 
         // GROWTH is a live, independent module. The real launcher is
         // OracleMysticActivity, so Growth must be calculated here rather than
@@ -831,25 +842,35 @@ class OracleMysticActivity : Activity() {
             return
         }
 
-        if (key == "analysis") return
+        if (key == "analysis") {
+            // Analysis has no background refresh step, so a refresh press here
+            // needs its own explicit render (the general skip above only defers
+            // to a render that happens later — there is no "later" for Analysis).
+            if (isRefreshOfOpenScreen) runCatching { renderModule(key) }.onFailure { showModuleError(key, it) }
+            return
+        }
         Thread {
             val result = runCatching { OracleLocalProcessor.refresh(repository) }
             mainHandler.post {
                 if (currentModule != key || isFinishing) return@post
-                result.onSuccess { runCatching { renderModule(key) }.onFailure { showModuleError(key, it) } }
+                // silent = true only for a refresh of the already-open screen:
+                // the same screen updates its numbers in place, without replaying
+                // entrance animations or losing scroll position. A genuine
+                // navigation into the module still gets the normal entrance.
+                result.onSuccess { runCatching { renderModule(key, silent = isRefreshOfOpenScreen) }.onFailure { showModuleError(key, it) } }
                     .onFailure { Toast.makeText(this, "Local refresh failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
 
-    private fun renderModule(key: String) {
+    private fun renderModule(key: String, silent: Boolean = false) {
         root.removeAllViews()
         val moduleTitle = titles[key] ?: key.uppercase()
         val host = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) })
         root.addView(host.root, FrameLayout.LayoutParams(-1, -1))
         val data = repository.snapshot()
         when (key) {
-            "portfolio" -> OraclePortfolioModule(host).render(data.positions)
+            "portfolio" -> OraclePortfolioModule(host).render(data.positions, silent)
             "alerts" -> OracleAlertsModule(host).render(data.alerts)
             "news" -> OracleNewsModule(host).render(data.news)
             "journal" -> OracleJournalModule(host).render(data.journal, data.history, data.alerts)
