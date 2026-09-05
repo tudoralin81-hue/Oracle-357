@@ -80,7 +80,7 @@ class OracleMysticActivity : Activity() {
         scroll.addView(TextView(this).apply {
             text = if (lines.isEmpty()) "Nothing recorded yet.\n\nOpen Growth to trigger a run, or wait for the nightly background scan."
                    else lines.joinToString("\n")
-            textSize = 10.5f; typeface = Typeface.MONOSPACE
+            textSize = 10.5f; typeface = Typeface.create("monospace", Typeface.NORMAL)
             setTextColor(Color.rgb(200, 208, 222)); setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(dp(14), dp(14), dp(14), dp(14))
             setTextIsSelectable(true)
