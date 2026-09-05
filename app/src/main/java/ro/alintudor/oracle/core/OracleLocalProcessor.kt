@@ -33,8 +33,17 @@ object OracleLocalProcessor {
             val current = repository.cachedGrowth()
 
             // HARD FREEZE: once a valid snapshot exists for this T0, never rerank
-            // it again until the next trading-day anchor.
-            if (current.isNotEmpty() && current.all { it.referenceTimestamp == anchor }) {
+            // it again until the next trading-day anchor — recommendations must
+            // not shift under the user during a session.
+            //
+            // The freeze is deliberately NOT applied to a snapshot produced by a
+            // previous engine version. Otherwise an app update that changes the
+            // factors (12 -> 17 in V6.0) would keep showing scores the current
+            // engine no longer computes, until the next trading day — the app
+            // would silently disagree with itself. A superseded snapshot is
+            // regenerated once, immediately, and then frozen as usual.
+            val producedByCurrentEngine = current.all { it.weights.size == OracleGrowthEngine.factorCount() }
+            if (current.isNotEmpty() && current.all { it.referenceTimestamp == anchor } && producedByCurrentEngine) {
                 return@synchronized current
             }
 

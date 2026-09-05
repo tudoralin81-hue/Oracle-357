@@ -6,6 +6,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.view.View
 import android.view.Gravity
 import android.view.inputmethod.InputMethodManager
 import android.view.WindowManager
@@ -202,13 +203,25 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 Toast.makeText(host.root.context, if (!present) "$watchTicker added to Watchlist" else "$watchTicker removed from Watchlist", Toast.LENGTH_SHORT).show()
             }
         }
-        headline.addView(watchEye, LinearLayout.LayoutParams(host.dp(42), host.dp(42)).apply { setMargins(host.dp(4), 0, host.dp(8), 0) })
-        headline.addView(TextView(host.root.context).apply {
+        // Each icon carries a caption underneath — an eye and a two-arrow
+        // glyph are not self-explanatory on their own.
+        fun labelledIcon(icon: View, caption: String): LinearLayout =
+            LinearLayout(host.root.context).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+                addView(icon, LinearLayout.LayoutParams(host.dp(42), host.dp(42)))
+                addView(TextView(host.root.context).apply {
+                    text = caption; textSize = 8.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.04f
+                    gravity = Gravity.CENTER; setTextColor(Color.rgb(150, 160, 182)); setPadding(0, host.dp(3), 0, 0)
+                }, LinearLayout.LayoutParams(-2, -2))
+            }
+        val compareIcon = TextView(host.root.context).apply {
             text = "\u21C4"; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(host.accent)
             background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(21), host.accent, host.dp(1))
             isClickable = true; isFocusable = true; contentDescription = "Compare ${watchTicker} with another ticker"
             setOnClickListener { showCompareDialog(host, watchTicker) }
-        }, LinearLayout.LayoutParams(host.dp(42), host.dp(42)).apply { setMargins(0, 0, host.dp(8), 0) })
+        }
+        headline.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
+        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(8), 0) })
         headline.addView(TextView(host.root.context).apply {
             text = money(r.price)
             textSize = 17f

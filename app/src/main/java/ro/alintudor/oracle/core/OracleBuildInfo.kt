@@ -29,9 +29,9 @@ object OracleBuildInfo {
         "PORTFOLIO" to Version(1, 23),
         "ALERTS" to Version(1, 21),
         "NEWS" to Version(1, 18),
-        "GROWTH" to Version(1, 21),
+        "GROWTH" to Version(1, 22),
         "KNOWLEDGE" to Version(1, 20),
-        "ANALYSIS" to Version(1, 20),
+        "ANALYSIS" to Version(1, 21),
         "WATCHLIST" to Version(1, 20),
         "ACTIVITY JOURNAL" to Version(1, 18)
     )

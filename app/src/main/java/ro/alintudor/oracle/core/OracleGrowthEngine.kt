@@ -68,6 +68,11 @@ object OracleGrowthEngine {
     private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx",
         "relative_strength","volatility_regime","range_position","volume_trend","community")
 
+    /** Number of scoring factors this engine version produces. A cached
+     *  snapshot with a different count came from an older engine and must be
+     *  regenerated rather than frozen (see OracleLocalProcessor). */
+    fun factorCount():Int = keys.size
+
     /** Benchmark (SPY) closes, newest-first, shared by every evaluate() call in
      *  a run so relative strength costs one fetch instead of one per candidate. */
     @Volatile private var benchmarkCloses:List<Double> = emptyList()
