@@ -55,16 +55,18 @@ class OracleNewsModule(private val host: OracleNativeModule) {
 
     private fun renderFiltered() {
         host.fixedToolbar.removeAllViews()
-        host.content.removeAllViews()
         addSearchBar()
-        val q = query.trim().lowercase(Locale.US)
-        val clean = if (q.isBlank()) allNews else allNews.filter { searchable(it).contains(q) }
-        if (clean.isEmpty()) {
-            host.addCard("ECONOMIC NEWS", if (q.isBlank()) "No economic news available right now." else "No economic news for “$query”.")
-            return
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            val q = query.trim().lowercase(Locale.US)
+            val clean = if (q.isBlank()) allNews else allNews.filter { searchable(it).contains(q) }
+            if (clean.isEmpty()) {
+                host.addCard("ECONOMIC NEWS", if (q.isBlank()) "No economic news available right now." else "No economic news for “$query”.")
+                return@rebuildWithoutFlicker
+            }
+            host.addCard("ECONOMIC NEWS • MARKETS", "Markets, stocks, indices, earnings, Fed, rates, M&A and catalysts — organized by source.")
+            renderGroups(clean)
         }
-        host.addCard("ECONOMIC NEWS • MARKETS", "Markets, stocks, indices, earnings, Fed, rates, M&A and catalysts — organized by source.")
-        renderGroups(clean)
     }
 
     private fun renderGroups(clean: List<OracleNews>) {
@@ -98,12 +100,14 @@ class OracleNewsModule(private val host: OracleNativeModule) {
 
     private fun refreshResultsOnly() {
         query = search?.text?.toString().orEmpty()
-        host.content.removeAllViews()
-        val q=query.trim().lowercase(Locale.US)
-        val clean=if(q.isBlank())allNews else allNews.filter{searchable(it).contains(q)}
-        if(clean.isEmpty()){host.addCard("ECONOMIC NEWS","No economic news for “$query”.");return}
-        host.addCard("ECONOMIC NEWS • MARKETS","${clean.size} articles found")
-        renderGroups(clean)
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            val q=query.trim().lowercase(Locale.US)
+            val clean=if(q.isBlank())allNews else allNews.filter{searchable(it).contains(q)}
+            if(clean.isEmpty()){host.addCard("ECONOMIC NEWS","No economic news for “$query”.");return@rebuildWithoutFlicker}
+            host.addCard("ECONOMIC NEWS • MARKETS","${clean.size} articles found")
+            renderGroups(clean)
+        }
     }
 
     private fun searchable(n: OracleNews): String = listOf(n.ticker,n.title,n.publisher,n.source).joinToString(" ").lowercase(Locale.US)

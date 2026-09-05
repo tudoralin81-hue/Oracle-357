@@ -25,15 +25,17 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     }
 
     fun render(actions: List<OracleAction> = emptyList(), knowledge: List<OracleKnowledgeItem> = emptyList(), positions: List<OraclePosition> = emptyList(), history: List<OracleHistoryPoint> = emptyList(), watchlist: List<String> = OracleWatchlistStore(host.root.context).load()) {
-        host.content.removeAllViews()
-        val p = OracleAnalytics.normalize(positions)
-        val computed = OracleAnalytics.actions(p, history)
-        when (moduleTitle) {
-            "GROWTH" -> renderGrowth()
-            "ANALYSIS" -> renderAnalysis()
-            "WATCHLIST" -> renderWatchlist(watchlist)
-            "KNOWLEDGE" -> renderKnowledgeSynced()
-            else -> renderActions(if (computed.isNotEmpty()) computed else actions)
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            val p = OracleAnalytics.normalize(positions)
+            val computed = OracleAnalytics.actions(p, history)
+            when (moduleTitle) {
+                "GROWTH" -> renderGrowth()
+                "ANALYSIS" -> renderAnalysis()
+                "WATCHLIST" -> renderWatchlist(watchlist)
+                "KNOWLEDGE" -> renderKnowledgeSynced()
+                else -> renderActions(if (computed.isNotEmpty()) computed else actions)
+            }
         }
     }
 
@@ -778,11 +780,12 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     private fun companyName(context: android.content.Context, t: String): String = resolvedCompanyName(context, t)
 
     private fun renderWatchlist(items: List<String>) {
+        host.content.rebuildWithoutFlicker {
         host.content.removeAllViews()
         host.addSectionLabel("WATCHLIST • SAVED TICKERS")
         if (items.isEmpty()) {
             host.addCard("WATCHLIST EMPTY", "Add a ticker from Analysis. This list is separate from the Portfolio.")
-            return
+            return@rebuildWithoutFlicker
         }
 
         val store = OracleWatchlistStore(host.root.context)
@@ -897,8 +900,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     }
                 }.start()
             }
+        }
     }
-
 
     private fun renderActions(actions: List<OracleAction>) {
         host.addCard("ACTIONS", "Local signal engine — prioritized by score")

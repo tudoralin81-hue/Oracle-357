@@ -13,6 +13,28 @@ import android.widget.*
 import android.widget.FrameLayout
 import ro.alintudor.oracle.core.OracleMarketCalendar
 
+/**
+ * Wraps a full content rebuild (removeAllViews() + re-adding everything) so
+ * Android performs exactly one layout+draw pass at the end instead of
+ * potentially drawing a partial or empty frame partway through — this is
+ * the "hidden refresh" flicker seen on screens that silently re-render on
+ * every periodic data refresh (News, Growth, Analysis, Watchlist, Knowledge,
+ * Alerts, Journal, Portfolio): removeAllViews() empties the container, then
+ * each addView() for the new content is added one at a time, and if that
+ * takes long enough to span more than one frame, the system draws whatever
+ * partial (or fully empty, right after removeAllViews) state exists at that
+ * moment — visible as a dim/blank flash before the rebuilt screen appears.
+ * suppressLayout (API 29+) defers all layout of this ViewGroup and its
+ * descendants until it's un-suppressed, so nothing gets measured/drawn until
+ * the whole rebuild inside [block] has finished. No-op below API 29 — those
+ * devices keep the previous (unfixed) behavior, nothing regresses.
+ */
+inline fun LinearLayout.rebuildWithoutFlicker(block: () -> Unit) {
+    val canSuppress = android.os.Build.VERSION.SDK_INT >= 29
+    if (canSuppress) suppressLayout(true)
+    try { block() } finally { if (canSuppress) suppressLayout(false) }
+}
+
 /** Shared Oracle module shell. Header semantics are fixed: left=Back, right=Refresh. */
 class OracleNativeModule(
     private val context: Context,

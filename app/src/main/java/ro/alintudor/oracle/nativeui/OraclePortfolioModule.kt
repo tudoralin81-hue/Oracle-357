@@ -51,31 +51,33 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     private val techViewsByTicker = mutableMapOf<String, TechViews>()
 
     fun render(positions: List<OraclePosition>, silent: Boolean = false) {
-        host.content.removeAllViews()
-        techViewsByTicker.clear()
-        val data = repo.snapshot()
-        val items = OracleAnalytics.normalize(positions)
-        host.addCard("PORTFOLIO", "Positions, value, shares, Oracle forecast, real return and indicators")
-        if (items.isEmpty()) { host.addCard("NO POSITIONS", "There are no active positions in local memory."); addManagementRow(); return }
-        val value = items.sumOf { it.marketValue }
-        val invested = items.sumOf { it.shares * it.avgCost }
-        val pnl = items.sumOf { it.pnl }
-        addHero(value, pnl, if (invested == 0.0) 0.0 else pnl / invested * 100.0, items.size)
-        addMetrics(items); addPositionSummary(items); addSectorExposure(items); addManagementRow()
-        val actions = OracleAnalytics.actions(items, data.history).associateBy { it.ticker }
-        val tech = OracleTechnicalIndicators.all(data.history)
-        items.sortedByDescending { it.marketValue }.forEachIndexed { i, p -> card(i + 1, p, actions[p.ticker], tech[p.ticker], data.journal, silent) }
-        addBottomExports(items, data.journal)
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            techViewsByTicker.clear()
+            val data = repo.snapshot()
+            val items = OracleAnalytics.normalize(positions)
+            host.addCard("PORTFOLIO", "Positions, value, shares, Oracle forecast, real return and indicators")
+            if (items.isEmpty()) { host.addCard("NO POSITIONS", "There are no active positions in local memory."); addManagementRow(); return@rebuildWithoutFlicker }
+            val value = items.sumOf { it.marketValue }
+            val invested = items.sumOf { it.shares * it.avgCost }
+            val pnl = items.sumOf { it.pnl }
+            addHero(value, pnl, if (invested == 0.0) 0.0 else pnl / invested * 100.0, items.size)
+            addMetrics(items); addPositionSummary(items); addSectorExposure(items); addManagementRow()
+            val actions = OracleAnalytics.actions(items, data.history).associateBy { it.ticker }
+            val tech = OracleTechnicalIndicators.all(data.history)
+            items.sortedByDescending { it.marketValue }.forEachIndexed { i, p -> card(i + 1, p, actions[p.ticker], tech[p.ticker], data.journal, silent) }
+            addBottomExports(items, data.journal)
 
-        // Positions added manually (outside the Growth-scanned universe) may
-        // have no cached price history yet — or a degenerate snapshot (exact
-        // zero RSI/momentum, support == resistance) from too little/repeated
-        // history. Either way, fetch real daily data for exactly those
-        // tickers and re-render once it lands, instead of leaving them stuck.
-        val missing = items.map { it.ticker.uppercase(Locale.US) }.distinct().filterNot { isReliable(tech[it]) }
-        if (missing.isNotEmpty() && missing != lastFetchAttempted) {
-            lastFetchAttempted = missing
-            fetchMissingTechnicals(missing)
+            // Positions added manually (outside the Growth-scanned universe) may
+            // have no cached price history yet — or a degenerate snapshot (exact
+            // zero RSI/momentum, support == resistance) from too little/repeated
+            // history. Either way, fetch real daily data for exactly those
+            // tickers and re-render once it lands, instead of leaving them stuck.
+            val missing = items.map { it.ticker.uppercase(Locale.US) }.distinct().filterNot { isReliable(tech[it]) }
+            if (missing.isNotEmpty() && missing != lastFetchAttempted) {
+                lastFetchAttempted = missing
+                fetchMissingTechnicals(missing)
+            }
         }
     }
 

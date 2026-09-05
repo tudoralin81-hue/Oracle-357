@@ -30,23 +30,25 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
 
     fun render(alerts: List<OracleAlert>) {
         lastAlerts = alerts
-        host.content.removeAllViews()
-        val active = alerts.filter { it.active }
-        val high = active.count { it.level.equals("HIGH", true) }
-        val medium = active.count { it.level.equals("MEDIUM", true) }
-        host.addCard("ALERT CENTER", "Three sources, one list: Oracle's own BUY / SELL / REDUCE decisions on your positions, the critical conditions (urgent sell, fading growth, high volatility), and the alerts you define below. Critical and personal alerts push-notify and email.")
-        addSummary(active.size, high, medium, alerts.size - active.size)
-        addMyAlerts()
-        if (alerts.isEmpty()) { host.addCard("NO ALERTS", "Nothing has fired yet."); return }
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            val active = alerts.filter { it.active }
+            val high = active.count { it.level.equals("HIGH", true) }
+            val medium = active.count { it.level.equals("MEDIUM", true) }
+            host.addCard("ALERT CENTER", "Three sources, one list: Oracle's own BUY / SELL / REDUCE decisions on your positions, the critical conditions (urgent sell, fading growth, high volatility), and the alerts you define below. Critical and personal alerts push-notify and email.")
+            addSummary(active.size, high, medium, alerts.size - active.size)
+            addMyAlerts()
+            if (alerts.isEmpty()) { host.addCard("NO ALERTS", "Nothing has fired yet."); return@rebuildWithoutFlicker }
 
-        val critical = alerts.filter { it.kind != "SIGNAL" }
-        val plain = alerts.filter { it.kind == "SIGNAL" }
-        if (critical.isNotEmpty()) {
-            host.addSectionLabel("CRITICAL — PUSH + EMAIL", Color.rgb(255, 90, 90))
-            critical.sortedWith(compareByDescending<OracleAlert> { it.active }.thenByDescending { it.timestamp }).forEach { addAlert(it, critical = true) }
-            host.addSectionLabel("SIGNAL ALERTS", host.accent)
+            val critical = alerts.filter { it.kind != "SIGNAL" }
+            val plain = alerts.filter { it.kind == "SIGNAL" }
+            if (critical.isNotEmpty()) {
+                host.addSectionLabel("CRITICAL — PUSH + EMAIL", Color.rgb(255, 90, 90))
+                critical.sortedWith(compareByDescending<OracleAlert> { it.active }.thenByDescending { it.timestamp }).forEach { addAlert(it, critical = true) }
+                host.addSectionLabel("SIGNAL ALERTS", host.accent)
+            }
+            plain.sortedWith(compareByDescending<OracleAlert>{it.active}.thenByDescending{severityRank(it.level)}.thenByDescending{it.timestamp}).take(100).forEach { addAlert(it, critical = false) }
         }
-        plain.sortedWith(compareByDescending<OracleAlert>{it.active}.thenByDescending{severityRank(it.level)}.thenByDescending{it.timestamp}).take(100).forEach { addAlert(it, critical = false) }
     }
 
     private fun addMyAlerts() {

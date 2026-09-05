@@ -23,18 +23,20 @@ class OracleJournalModule(private val host: OracleNativeModule) {
     private val fileDate = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
     fun render(journal: List<OracleJournalEntry>, history: List<OracleHistoryPoint>, alerts: List<OracleAlert>) {
-        host.content.removeAllViews()
-        host.addCard("ACTIVITY JOURNAL", "Complete history of Oracle actions, alerts and movements")
-        addPerformance()
-        val actions = journal.map { OracleAction(it.ticker, it.action, it.score, it.reason, it.timestamp) }
-        val timeline = OracleLocalTimeline.build(history, actions, alerts)
-        addSummary(timeline.size, actions.size, alerts.count { it.active })
-        addDownloadButton(journal, timeline)
-        if (timeline.isEmpty()) {
-            host.addCard("NO ACTIVITY", "There are no local events yet.")
-            return
+        host.content.rebuildWithoutFlicker {
+            host.content.removeAllViews()
+            host.addCard("ACTIVITY JOURNAL", "Complete history of Oracle actions, alerts and movements")
+            addPerformance()
+            val actions = journal.map { OracleAction(it.ticker, it.action, it.score, it.reason, it.timestamp) }
+            val timeline = OracleLocalTimeline.build(history, actions, alerts)
+            addSummary(timeline.size, actions.size, alerts.count { it.active })
+            addDownloadButton(journal, timeline)
+            if (timeline.isEmpty()) {
+                host.addCard("NO ACTIVITY", "There are no local events yet.")
+                return@rebuildWithoutFlicker
+            }
+            timeline.take(150).forEachIndexed { i, item -> addItem(i + 1, item) }
         }
-        timeline.take(150).forEachIndexed { i, item -> addItem(i + 1, item) }
     }
 
     /** Does Oracle work? Realized returns of every past Growth signal, 5/20/60

@@ -572,9 +572,20 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             // into "STRONG" / "BUY" instead of being cut down to "STRO…" — the
             // label already has first claim on width (see above), so the badge
             // shrinking to 2 lines here can no longer squeeze it to 0dp either.
-            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 2
+            // Auto-size (8-12sp) rather than a fixed size: on a narrow phone even
+            // "STRONG" alone can be wider than the available box, which forces a
+            // hard mid-word break ("STR"/"ONG") since there's no space to wrap at
+            // within that single word — auto-size finds the largest size in that
+            // range where "STRONG" still fits whole on its own line. Short values
+            // ("BUY", "LOW", "3.6%") always fit at 12sp, so they render unchanged.
+            text = value; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 2
             gravity = Gravity.CENTER; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
             background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                setAutoSizeTextTypeUniformWithConfiguration(8, 12, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            } else {
+                textSize = 12f
+            }
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = host.dp(6) })
     }
 
