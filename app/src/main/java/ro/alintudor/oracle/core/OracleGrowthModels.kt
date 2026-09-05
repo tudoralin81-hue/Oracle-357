@@ -37,5 +37,9 @@ data class OracleGrowthRecommendation(
     // Days until the next earnings report, when known. SHORT/MEDIUM picks
     // skip names reporting within 7 days — an entry into earnings is a coin
     // flip, not a technical setup.
-    val earningsInDays: Int? = null
+    val earningsInDays: Int? = null,
+    // Hazard: the deliberate random ±3 nudge applied to this score
+    // (see OracleGrowthEngine.hazardFor). Stored so the card can show it and
+    // so a recorded signal stays explainable after the fact.
+    val hazard: Int = 0
 )

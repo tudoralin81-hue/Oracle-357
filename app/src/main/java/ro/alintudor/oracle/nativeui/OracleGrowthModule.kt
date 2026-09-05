@@ -262,6 +262,9 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // horizon (2×/4.5×/8×ATR), not a prediction of where price will go.
         forecast.addView(text("Expected range (ATR)", 10f, Typeface.DEFAULT, muted, 0, 0))
         forecast.addView(text(if (demo) OracleDemo.LOCK else signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
+        if (item.hazard != 0 && !demo) forecast.addView(text(
+            "Hazard ${if (item.hazard > 0) "+" else ""}${item.hazard} (random, same all day)",
+            9f, Typeface.DEFAULT, muted, 0, 2))
         item.earningsInDays?.takeIf { it <= 14 }?.let { d ->
             forecast.addView(text(if (d == 0) "Earnings today" else "Earnings in $d day${if (d == 1) "" else "s"}", 10f, Typeface.DEFAULT_BOLD, orange, 0, 2))
         }
@@ -322,17 +325,21 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun addCompactWeights(parent: LinearLayout, weights: List<Int>) {
         if (weights.isEmpty()) return
         parent.addView(text("Weights", 10f, Typeface.DEFAULT_BOLD, white, 0, 5))
-        val names = listOf("News", "BO", "Trend", "Mom", "Vol", "S/R", "Fund", "BB", "Ichimoku", "Mkt", "R/R", "ADX")
+        val names = listOf("News", "BO", "Trend", "Mom", "Vol", "S/R", "Fund", "BB", "Ichimoku", "Mkt", "R/R", "ADX",
+            "RelStr", "VolReg", "52wPos", "OBV", "Crowd")
         val maxWeight = weights.maxOrNull()?.takeIf { it > 0 } ?: 1
         val grid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, host.dp(2), 0, host.dp(1)) }
         val columns = 6
-        for (r in 0 until 2) {
+        val rows = (weights.size + columns - 1) / columns
+        for (r in 0 until rows) {
             val row = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             for (c in 0 until columns) {
                 val i = r * columns + c
                 val cell = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2)) }
-                cell.addView(text(names[i], 8f, Typeface.DEFAULT, muted, 0, 0))
-                addWeightBar(cell, weights.getOrNull(i) ?: 0, maxWeight)
+                if (i < weights.size) {
+                    cell.addView(text(names.getOrElse(i) { "?" }, 8f, Typeface.DEFAULT, muted, 0, 0))
+                    addWeightBar(cell, weights[i], maxWeight)
+                }
                 row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
             }
             grid.addView(row)

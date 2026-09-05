@@ -46,11 +46,47 @@ object OracleGrowthEngine {
 
     private data class C(val ticker:String,val price:Double,val score:Int,val rsi:Double?,val mom5:Double,val mom20:Double,val vr:Double,val macdHist:Double?,val ichi:Boolean,val sma200:Double?,val sma50:Double?,val adx:Double?,val atrPct:Double,val components:Map<String,Double>,val forecast:Map<String,Double>,val risk:String,val allocation:Double,val news:Int)
 
-    // V5.9.7 authoritative raw profiles. They are normalized at score time.
+    // V6.0 raw profiles, normalized at score time.
     // Order: News, Breakout, Trend, Momentum, Volume, S/R, Fundamentals,
-    // Bollinger, Ichimoku, Market/Sector, Risk/Reward, ADX.
-    private val weights=mapOf("SHORT" to intArrayOf(21,18,18,12,16,12,3,4,4,2,2,1),"MEDIUM" to intArrayOf(12,12,12,16,12,9,9,5,5,6,5,4),"LONG" to intArrayOf(6,6,6,19,7,9,18,4,4,9,7,2))
-    private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx")
+    // Bollinger, Ichimoku, Market/Sector, Risk/Reward, ADX,
+    // then the V6.0 additions: Relative Strength, Volatility Regime,
+    // 52-week Range Position, Volume Trend (OBV), Community Sentiment.
+    //
+    // The five new factors were chosen to add information the first twelve
+    // do NOT already carry: relative strength measures the stock against the
+    // index (market_sector only describes its sector); volatility regime
+    // detects compression before expansion (ATR only ever fed risk sizing);
+    // range position places price in its 52-week context (S/R is 20-day only);
+    // volume trend is 20-day accumulation via OBV (volume is a single-day
+    // ratio); community sentiment is retail chatter (news is press only).
+    // Long horizons lean on relative strength and range; short horizons lean
+    // on volume trend and compression.
+    private val weights=mapOf(
+        "SHORT" to intArrayOf(21,18,18,12,16,12,3,4,4,2,2,1, 8,6,5,7,6),
+        "MEDIUM" to intArrayOf(12,12,12,16,12,9,9,5,5,6,5,4, 10,5,6,6,4),
+        "LONG" to intArrayOf(6,6,6,19,7,9,18,4,4,9,7,2, 12,3,8,5,2))
+    private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx",
+        "relative_strength","volatility_regime","range_position","volume_trend","community")
+
+    /** Benchmark (SPY) closes, newest-first, shared by every evaluate() call in
+     *  a run so relative strength costs one fetch instead of one per candidate. */
+    @Volatile private var benchmarkCloses:List<Double> = emptyList()
+
+    /**
+     * Hazard: a deliberate ±3-point nudge on the final score, as requested.
+     * It is seeded by ticker + calendar day, so it behaves like a coin toss
+     * across names and days but stays IDENTICAL for the same ticker within
+     * the same day. That matters: a value redrawn on every refresh would make
+     * the same stock score differently minute to minute, and would poison the
+     * Performance module, which compares a recorded signal against what the
+     * engine would say later. Change the seed line to Random.nextInt if a
+     * true per-run redraw is ever wanted.
+     */
+    fun hazardFor(ticker:String, dayMillis:Long=System.currentTimeMillis()):Int{
+        val day=dayMillis/86_400_000L
+        val seed=(ticker.uppercase(Locale.US).hashCode().toLong()*31L+day)
+        return (kotlin.random.Random(seed).nextInt(7))-3
+    }
 
     /** SHORT technical base score (0..100) for any ticker from its daily candles —
      *  the same evaluate() Growth ranks with, so Portfolio can speak the same
@@ -120,6 +156,8 @@ object OracleGrowthEngine {
         // BATCH_SIZE (25-50) symbols run on a bounded thread pool; the visible
         // "DATA LOADED" counter reflects OHLCV actually received, updated as
         // each batch completes (never an artificial/simulated counter).
+        // One benchmark fetch per run powers relative strength for every candidate.
+        benchmarkCloses=runCatching { OracleMarketData.fetchDaily("SPY","1y").sortedByDescending{it.timestamp}.map{it.close}.filter{it>0.0} }.getOrDefault(emptyList())
         val loadedCounter=AtomicInteger(0)
         val candidateQueue=ConcurrentLinkedQueue<C>()
         val scanPool=Executors.newFixedThreadPool(SCAN_THREADS)
@@ -166,6 +204,9 @@ object OracleGrowthEngine {
         val enrichDeadline=totalDeadline
         val enrichPool=Executors.newFixedThreadPool(ENRICH_THREADS)
         val regimeFuture=enrichPool.submit<MarketRegime> { marketRegime() }
+        val communityFutures=technicalShortlist.associate { c ->
+            c.ticker to enrichPool.submit<Int?> { communityScore(c.ticker) }
+        }
         val earningsFutures=technicalShortlist.associate { c ->
             c.ticker to enrichPool.submit<Long?> { OracleRealData.nextEarningsDate(c.ticker) }
         }
@@ -185,6 +226,11 @@ object OracleGrowthEngine {
         newsFutures.forEach{(ticker,f)->
             val remaining=enrichDeadline-System.nanoTime()
             if(remaining>0) runCatching { f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.let{newsContexts[ticker]=it}
+        }
+        val communityScores=mutableMapOf<String,Int>()
+        communityFutures.forEach{(ticker,f)->
+            val remaining=enrichDeadline-System.nanoTime()
+            if(remaining>0) runCatching { f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.let{ communityScores[ticker]=it }
         }
         val regime=runCatching { regimeFuture.get(maxOf(0L,enrichDeadline-System.nanoTime()), TimeUnit.NANOSECONDS) }.getOrNull()
             ?: MarketRegime("NORMAL","Regime check timed out",1.0)
@@ -215,6 +261,7 @@ object OracleGrowthEngine {
             comp["market_sector"]=(sector?.let { sectorContexts[it] } ?: 50.0).coerceIn(0.0,100.0)
             val n=newsContexts[c.ticker]
             comp["news"]=(n?.score?.toDouble() ?: 50.0).coerceIn(0.0,100.0)
+            comp["community"]=(communityScores[c.ticker]?.toDouble() ?: 50.0).coerceIn(0.0,100.0)
             c.copy(score=horizonScore(comp,"SHORT",sector),components=comp,news=n?.headlineCount ?: 0)
         }
         val out=mutableListOf<OracleGrowthRecommendation>();val used=mutableSetOf<String>()
@@ -224,7 +271,9 @@ object OracleGrowthEngine {
             // SHORT and MEDIUM skip names reporting within 7 days.
             val pick=ranked.firstOrNull{ it.ticker !in used && !(h!="LONG" && (earningsInDays[it.ticker] ?: 99) <= 7) }?:continue
             used+=pick.ticker
-            val score=horizonScore(pick.components,h,resolveSector(context,pick.ticker,fundamentals[pick.ticker]?.sector))
+            val baseScore=horizonScore(pick.components,h,resolveSector(context,pick.ticker,fundamentals[pick.ticker]?.sector))
+            val hazard=hazardFor(pick.ticker)
+            val score=(baseScore+hazard).coerceIn(0,100)
             val meta=byTicker[pick.ticker]
             val cachedTitle=meta?.newsTitle?.takeIf { it.isNotBlank() && !it.contains("Google News",true) && !it.contains(" when:",true) }
             val f=fundamentals[pick.ticker]
@@ -236,7 +285,7 @@ object OracleGrowthEngine {
                 ?: OracleSP500Universe.nameFor(context,pick.ticker)
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
-            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V5.9.7_REALDATA_SECTOR_WEIGHTED",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker])
+            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)
         return out
@@ -270,7 +319,47 @@ object OracleGrowthEngine {
         val ichi=if(close.size>=52){val t9=(high.take(9).max()+low.take(9).min())/2;val k26=(high.take(26).max()+low.take(26).min())/2;val a=(t9+k26)/2;val b=(high.take(52).max()+low.take(52).min())/2;p>max(a,b)&&t9>k26}else false
         val trend=(50.0+(if(s20!=null&&p>s20)16 else -16)+(if(s50!=null&&p>s50)17 else -17)+(if(s200!=null&&p>s200)17 else -17)).coerceIn(0.0,100.0);val momentum=(50+m5*2+m20*.65).coerceIn(0.0,100.0);val volume=(50+(vr-1)*45).coerceIn(0.0,100.0);val boll=(50+(bbPos-.5)*80+(if(bbWidth>0&&bbWidth<8)10 else 0)).coerceIn(0.0,100.0);val ichScore=if(ichi)90.0 else 30.0;val adxc=(35+(adx?:0.0)*1.15).coerceIn(0.0,100.0);val rr=(70-atrPct*5+(if(breakout>=100)15 else 0)).coerceIn(0.0,100.0)
         val overextension=((rsi-65.0)/15.0).coerceIn(0.0,1.0);val volatility=(atrPct/8.0).coerceIn(0.0,1.0);val volumeShock=((vr-1.0)/2.0).coerceIn(0.0,1.0);val acceleration=(abs(m5)/20.0).coerceIn(0.0,1.0);val riskScore=(100.0*(overextension*.30+volatility*.35+volumeShock*.15+acceleration*.20)).coerceIn(0.0,100.0);val risk=when{riskScore>=65.0->"HIGH";riskScore>=35.0->"MEDIUM";else->"LOW"}
-        val comps=mapOf("news" to 50.0,"breakout" to breakout,"trend" to trend,"momentum" to momentum,"volume" to volume,"support_resistance" to sr,"fundamentals" to 50.0,"bollinger" to boll,"ichimoku" to ichScore,"market_sector" to 50.0,"risk_reward" to rr,"adx" to adxc)
+        // --- V6.0 factors -------------------------------------------------
+        // Relative strength: 60-session return vs the benchmark's. Beating the
+        // index is the point; rising with a rising tide is not the same thing.
+        val relStrength=run{
+            val bench=benchmarkCloses
+            if(close.size<=60||bench.size<=60) 50.0 else {
+                val mine=(p/close[60]-1.0)*100.0
+                val theirs=(bench[0]/bench[60]-1.0)*100.0
+                (50.0+(mine-theirs)*1.6).coerceIn(0.0,100.0)
+            }
+        }
+        // Volatility regime: 20-day dispersion against 100-day. Compression
+        // (ratio well under 1) is the classic pre-expansion setup; an already
+        // exploded range scores low because the move is largely spent.
+        val volRegime=run{
+            val s20v=std(20); val s100v=std(100)
+            if(s20v==null||s100v==null||s100v<=0.0) 50.0
+            else (100.0-((s20v/s100v)-0.55)*95.0).coerceIn(0.0,100.0)
+        }
+        // 52-week range position: how far below the 52-week high price sits.
+        // Right under the high is breakout territory; deep in the hole is not.
+        val rangePos=run{
+            val win=close.take(minOf(252,close.size))
+            val hi52=win.maxOrNull(); val lo52=win.minOrNull()
+            if(hi52==null||lo52==null||hi52<=lo52) 50.0
+            else {
+                val fromHigh=(hi52-p)/hi52*100.0
+                when{ fromHigh<=3.0->92.0; fromHigh<=10.0->80.0; fromHigh<=20.0->62.0; fromHigh<=35.0->45.0; fromHigh<=50.0->30.0; else->18.0 }
+            }
+        }
+        // Volume trend: 20-day OBV slope as a share of traded volume — is
+        // money accumulating or distributing, rather than one loud session.
+        val volTrend=run{
+            if(close.size<21||vol.size<21) 50.0 else {
+                var obv=0.0; var totalVol=0.0
+                for(i in 19 downTo 0){ val dir=if(close[i]>close[i+1]) 1.0 else if(close[i]<close[i+1]) -1.0 else 0.0; obv+=dir*vol[i]; totalVol+=vol[i] }
+                if(totalVol<=0.0) 50.0 else (50.0+(obv/totalVol)*110.0).coerceIn(0.0,100.0)
+            }
+        }
+        val comps=mapOf("news" to 50.0,"breakout" to breakout,"trend" to trend,"momentum" to momentum,"volume" to volume,"support_resistance" to sr,"fundamentals" to 50.0,"bollinger" to boll,"ichimoku" to ichScore,"market_sector" to 50.0,"risk_reward" to rr,"adx" to adxc,
+            "relative_strength" to relStrength,"volatility_regime" to volRegime,"range_position" to rangePos,"volume_trend" to volTrend,"community" to 50.0)
         val base=horizonScore(comps,"SHORT",null)
         val f=mapOf("short" to min(30.0,max(0.0,((p+2*atr)/p-1)*100)),"medium" to min(45.0,max(0.0,((p+4.5*atr)/p-1)*100)),"long" to min(70.0,max(0.0,((p+8*atr)/p-1)*100)))
         val alloc=when{risk=="HIGH"->max(1.0,base*.04);risk=="MEDIUM"->max(1.0,base*.06);else->max(1.0,base*.08)}.coerceAtMost(8.0).let{ kotlin.math.round(it*10.0)/10.0 }
@@ -291,5 +380,37 @@ object OracleGrowthEngine {
     private fun ema(v:List<Double>,n:Int):Double?{if(v.size<n)return null;var e=v.takeLast(n).average();val k=2.0/(n+1);for(i in v.size-n until v.size)e=v[i]*k+e*(1-k);return e}
     private fun atr(h:List<Double>,l:List<Double>,c:List<Double>,n:Int):Double?{if(c.size<n+1)return null;val tr=(0 until c.size-1).map{i->maxOf(h[i]-l[i],abs(h[i]-c[i+1]),abs(l[i]-c[i+1]))};return tr.take(n).average()}
     private fun adx(h:List<Double>,l:List<Double>,c:List<Double>,n:Int):Double?{if(c.size<n*2+2)return null;val tr=mutableListOf<Double>();val pd=mutableListOf<Double>();val md=mutableListOf<Double>();for(i in 0 until c.size-1){val up=h[i]-h[i+1];val dn=l[i+1]-l[i];tr+=maxOf(h[i]-l[i],abs(h[i]-c[i+1]),abs(l[i]-c[i+1]));pd+=if(up>dn&&up>0)up else 0.0;md+=if(dn>up&&dn>0)dn else 0.0};var atrv=tr.take(n).average();var p=pd.take(n).average();var m=md.take(n).average();val dx=mutableListOf<Double>();for(i in n until tr.size){atrv=(atrv*(n-1)+tr[i])/n;p=(p*(n-1)+pd[i])/n;m=(m*(n-1)+md[i])/n;val pi=if(atrv>0)100*p/atrv else 0.0;val mi=if(atrv>0)100*m/atrv else 0.0;dx+=if(pi+mi>0)100*abs(pi-mi)/(pi+mi)else 0.0};return if(dx.size<n)dx.average()else dx.takeLast(n).average()}
+    /**
+     * Community sentiment (0..100, 50 = neutral/unknown): retail chatter about
+     * the ticker, from Reddit's public search JSON, scored with the same phrase
+     * lexicon the news feed uses. Chatter is opinion, not fact, so it is
+     * deliberately pulled toward neutral when few posts mention the name, and
+     * returns null (→ neutral 50) whenever the source is unreachable.
+     */
+    private fun communityScore(t:String):Int? = try {
+        val q=URLEncoder.encode("\"$t\" stock OR shares","UTF-8")
+        val u=URL("https://www.reddit.com/search.json?q=$q&sort=new&t=week&limit=40")
+        val con=u.openConnection() as HttpURLConnection
+        con.connectTimeout=5000; con.readTimeout=7000
+        con.setRequestProperty("User-Agent","OracleApp/1.0 (community sentiment)")
+        val body=if(con.responseCode in 200..299) con.inputStream.bufferedReader().use{it.readText()} else ""
+        con.disconnect()
+        if(body.isBlank()) null else {
+            val children=org.json.JSONObject(body).optJSONObject("data")?.optJSONArray("children")
+            val titles=ArrayList<String>()
+            if(children!=null) for(i in 0 until children.length()){
+                val d=children.optJSONObject(i)?.optJSONObject("data") ?: continue
+                val title=d.optString("title","")
+                if(title.isNotBlank()) titles+=title
+            }
+            if(titles.isEmpty()) null else {
+                val raw=OracleSentiment.score(titles)
+                // Few mentions = weak evidence: shrink toward 50.
+                val confidence=(titles.size/12.0).coerceIn(0.3,1.0)
+                (50.0+(raw-50.0)*confidence).toInt().coerceIn(0,100)
+            }
+        }
+    } catch(_:Exception){ null }
+
     private fun newsScore(t:String):Int{return try{val q=URLEncoder.encode("\"$t\" stock when:7d","UTF-8");val u=URL("https://news.google.com/rss/search?q=$q&hl=en-US&gl=US&ceid=US:en");val con=u.openConnection() as HttpURLConnection;con.connectTimeout=5000;con.readTimeout=7000;val body=con.inputStream.bufferedReader().use{it.readText()};con.disconnect();val pos=listOf("beat","upgrade","buy","bullish","record","strong","surge","contract","partnership","deal","approval","launch","growth","profit");val neg=listOf("miss","downgrade","sell","bearish","lawsuit","investigation","warning","cut guidance","recall","layoff","fraud","delay","loss","decline","plunge","offering","dilution","bankruptcy");val titles=Regex("<title>(.*?)</title>",RegexOption.IGNORE_CASE).findAll(body).map{it.groupValues[1].replace("&amp;","&").lowercase()}.drop(1).filter{!it.contains("google news")&&!it.contains(" when:")}.take(8).toList();titles.sumOf{title->2*pos.count{title.contains(it)}-3*neg.count{title.contains(it)}}.coerceIn(-10,10)}catch(_:Exception){0}}
 }
