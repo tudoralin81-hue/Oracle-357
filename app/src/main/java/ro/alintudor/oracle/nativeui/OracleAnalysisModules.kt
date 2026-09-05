@@ -294,7 +294,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             }.start()
         }
 
-        val f = r.fundamentals
         val fairValue = OracleValuation.fairValue(f, f?.sector ?: r.sector)
         val health = OracleValuation.financialHealth(f)
 
