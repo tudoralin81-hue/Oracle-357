@@ -77,6 +77,14 @@ object OracleApiClient {
         readResponse(connection("/data", "GET", token))
     }
 
+    /** Stage 3: today's server-ranked SHORT/MEDIUM/LONG picks — the same
+     *  ranking OracleGrowthEngine.run() computes on-device, but over the
+     *  server's full universe scan rather than the on-device 700-ticker
+     *  budget. See OracleGrowthEngine.tryServerPicks() for how this is used. */
+    fun getGrowthPicks(token: String): Result<JSONObject> = runCatching {
+        readResponse(connection("/growth-picks", "GET", token))
+    }
+
     fun saveData(token: String, type: String, payload: String): Result<Unit> = runCatching {
         val connection = connection("/data/$type", "POST", token)
         connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }

@@ -272,7 +272,7 @@ object OracleGrowthEngine {
     }
 
     fun run(context: Context, seed:List<OracleGrowthRecommendation> = emptyList()):List<OracleGrowthRecommendation> = try {
-        runInternal(context, seed)
+        tryServerPicks(context) ?: runInternal(context, seed)
     } catch (_: Exception) {
         // Defensive: the universe/OHLCV/enrichment paths already catch their own
         // errors internally, but a genuinely unexpected failure must still leave
@@ -280,6 +280,73 @@ object OracleGrowthEngine {
         // rather than propagating past the single-flight snapshot lock.
         progressState = progressState.copy(phase = OracleGrowthPhase.NO_DATA)
         emptyList()
+    }
+
+    /**
+     * Stage 3: alintudor.ro now runs this exact ranking server-side, once per
+     * trading day, over its own full universe scan (no ~700-ticker on-device
+     * budget). Tried first — a fast single GET — before ever falling back to
+     * the slower on-device scan/rank path below. Returns null (falls back)
+     * whenever there is nothing usable yet to switch to: no session, a
+     * network failure, or fewer than 3 picks for today's anchor (the
+     * server's own scan/rank may simply not have finished yet — it is not
+     * an error, just "not ready", and the on-device path covers that day
+     * exactly as it always has).
+     *
+     * Fair Valuation/Financial Health are not computed server-side yet, so
+     * they're filled in here from a fresh fundamentals fetch — only 3
+     * tickers, negligible cost — using the exact same OracleValuation calls
+     * the on-device path uses, so the two paths render identically.
+     */
+    private fun tryServerPicks(context: Context): List<OracleGrowthRecommendation>? {
+        val token = OracleAuthStore(context).token()
+        if (token.isBlank()) return null
+        val response = OracleApiClient.getGrowthPicks(token).getOrNull() ?: return null
+        val items = response.optJSONArray("items") ?: return null
+        if (items.length() < 3) return null
+        val now = System.currentTimeMillis()
+        val recs = mutableListOf<OracleGrowthRecommendation>()
+        for (i in 0 until items.length()) {
+            val o = items.optJSONObject(i) ?: continue
+            val ticker = o.optString("ticker").uppercase(Locale.US).takeIf { it.isNotBlank() } ?: continue
+            val horizon = o.optString("horizon").uppercase(Locale.US).takeIf { weights.containsKey(it) } ?: continue
+            val price = o.optDouble("price", 0.0).takeIf { it > 0.0 }
+            val componentsJson = o.optJSONObject("components")
+            val sector = o.optString("sector").takeIf { it.isNotBlank() } ?: "—"
+            val fundamentals = runCatching { OracleRealData.fundamentals(ticker) }.getOrNull()
+            val fairValue = OracleValuation.fairValue(fundamentals, sector)
+            val health = OracleValuation.financialHealth(fundamentals)
+            val company = OracleSP500Universe.nameFor(context, ticker)
+                ?: OracleMarketUniverse.nameFor(context, ticker)
+                ?: lookupCompanyName(ticker)
+                ?: ticker
+            recs += OracleGrowthRecommendation(
+                horizon = horizon, ticker = ticker, company = company, sector = sector,
+                score = o.optInt("score"), signal = o.optString("signal"), risk = o.optString("risk"),
+                allocationMax = o.optDouble("allocation", 1.0), forecastPct = o.optDouble("forecastPct", 0.0),
+                momentum5D = o.optDouble("momentum5D", 0.0), momentum20D = o.optDouble("momentum20D", 0.0),
+                weights = weights[horizon]!!.toList(),
+                referencePrice = price, currentPrice = price,
+                adx = o.optDouble("adx", -1.0).takeIf { it >= 0.0 },
+                factorValues = keys.map { componentsJson?.optDouble(it, 50.0) ?: 50.0 },
+                generatedAt = now,
+                source = ENGINE_TAG,
+                marketRegime = o.optString("marketRegime", "NORMAL"),
+                regimeNote = o.optString("regimeNote", ""),
+                earningsInDays = if (o.isNull("earningsInDays")) null else o.optInt("earningsInDays").takeIf { it >= 0 },
+                hazard = o.optInt("lo", 0),
+                fairValueLabel = fairValue.label, fairValueScore = fairValue.score,
+                financialHealthLabel = health.label, financialHealthScore = health.score
+            )
+        }
+        if (recs.size < 3) return null
+        // The on-device path drives the loader's progress readout as it
+        // scans/enriches; the server path is one fast GET with nothing to
+        // show progress on. Mark it DONE directly so a leftover "RUNNING"
+        // state from a previous on-device run can't flash on screen.
+        progressState = OracleGrowthProgress(recs.size, recs.size, System.nanoTime(), OracleGrowthPhase.DONE)
+        OracleGrowthLog.log(context, "RUN", "Using server ranking (Stage 3): " + recs.joinToString(", ") { "${it.horizon}=${it.ticker} ${it.score}" })
+        return recs
     }
 
     private fun runInternal(context: Context, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
