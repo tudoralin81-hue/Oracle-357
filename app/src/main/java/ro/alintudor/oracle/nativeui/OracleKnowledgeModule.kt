@@ -29,7 +29,7 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
         "🏛", "🏛", "🦉", "🧠"
     )
 
-    fun render(items: List<OracleKnowledgeArticle>) {
+    fun render(items: List<OracleKnowledgeArticle>, silent: Boolean = false) {
         host.content.removeAllViews()
         val error = OracleKnowledgeSync.lastError(context)
 
@@ -60,14 +60,14 @@ class OracleKnowledgeModule(private val host: OracleNativeModule) {
                     val locked = OracleDemo.active(context) && items.indexOf(article) > 0
                     showArticlePopup(context, if (locked) article.copy(content = "", excerpt = "${OracleDemo.LOCK} In the demo only the first chapter opens in full. ${article.excerpt}") else article)
                 }
-                alpha = 0f; translationY = host.dp(24).toFloat()
+                if (!silent) { alpha = 0f; translationY = host.dp(24).toFloat() }
             }
             card.addView(TextView(context).apply { text = article.title; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
             if (article.publishedAt > 0L) card.addView(TextView(context).apply { text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(article.publishedAt)); textSize = 11f; setTextColor(host.accent); setPadding(0, host.dp(5), 0, 0) })
             card.addView(TextView(context).apply { text = article.excerpt; textSize = 13f; setTextColor(Color.rgb(175, 183, 201)); setPadding(0, host.dp(8), 0, 0) })
             card.addView(decorationRow())
             host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
-            card.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(DecelerateInterpolator()).start()
+            if (!silent) card.animate().alpha(1f).translationY(0f).setStartDelay((rank - 1) * 90L).setDuration(380L).setInterpolator(DecelerateInterpolator()).start()
         }
     }
 

@@ -1208,7 +1208,7 @@ class OracleMysticActivity : Activity() {
         when (key) {
             "portfolio" -> OraclePortfolioModule(host).render(data.positions, silent)
             "alerts" -> OracleAlertsModule(host).render(data.alerts)
-            "news" -> OracleNewsModule(host).render(data.news)
+            "news" -> OracleNewsModule(host).render(data.news, silent)
             "journal" -> OracleJournalModule(host).render(data.journal, data.history, data.alerts)
             "growth", "analysis", "watchlist", "knowledge" -> OracleSimpleModule(
                 host,

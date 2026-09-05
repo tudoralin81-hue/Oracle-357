@@ -33,7 +33,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 "GROWTH" -> renderGrowth(silent)
                 "ANALYSIS" -> renderAnalysis()
                 "WATCHLIST" -> renderWatchlist(watchlist, silent)
-                "KNOWLEDGE" -> renderKnowledgeSynced()
+                "KNOWLEDGE" -> renderKnowledgeSynced(silent)
                 else -> renderActions(if (computed.isNotEmpty()) computed else actions)
             }
         }
@@ -44,15 +44,17 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         OracleGrowthModule(host).render(r.cachedGrowth(), r.cachedNews(), silent)
     }
 
-    private fun renderKnowledgeSynced() {
+    private fun renderKnowledgeSynced(silent: Boolean = false) {
         val context = host.root.context
         val cached = OracleKnowledgeSync.load(context)
-        OracleKnowledgeModule(host).render(items = cached)
+        OracleKnowledgeModule(host).render(cached, silent)
         // Automatic: every time this screen renders (open, header refresh),
         // sync in the background and re-render once it lands. Throttled in
         // shouldAutoSync so the re-render can't retrigger it in a loop.
+        // Always silent=true here: by the time this fires, the user is
+        // already looking at whatever the screen showed a moment ago.
         if (cached.isEmpty() || OracleKnowledgeSync.shouldAutoSync(context)) {
-            OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced() }
+            OracleKnowledgeSync.refreshAsync(context) { _, _ -> if (host.root.isAttachedToWindow) renderKnowledgeSynced(silent = true) }
         }
     }
 

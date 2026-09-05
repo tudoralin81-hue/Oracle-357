@@ -26,15 +26,19 @@ class OracleNewsModule(private val host: OracleNativeModule) {
     private var query = ""
     private var search: EditText? = null
 
-    /** Every render advances the article rotation, while sourceOrder stays immutable. */
-    fun render(news: List<OracleNews>) {
+    /** Every render advances the article rotation, while sourceOrder stays
+     *  immutable — but only on a genuine fresh navigation or explicit refresh
+     *  tap. A silent background refresh must never visibly reshuffle a list
+     *  the user is already looking at, so it skips the rotation shift and
+     *  produces the same deterministic order for the same input every time. */
+    fun render(news: List<OracleNews>, silent: Boolean = false) {
         val incoming = dedupe(news).filter(::isEconomic).sortedByDescending { it.publishedAt }
-        allNews = rotateArticlesWithinSources(incoming)
+        allNews = rotateArticlesWithinSources(incoming, silent)
         renderFiltered()
     }
 
-    private fun rotateArticlesWithinSources(items: List<OracleNews>): List<OracleNews> {
-        val cycle = synchronized(OracleNewsModule::class.java) {
+    private fun rotateArticlesWithinSources(items: List<OracleNews>, silent: Boolean = false): List<OracleNews> {
+        val cycle = if (silent) rotationCycle else synchronized(OracleNewsModule::class.java) {
             rotationCycle = (rotationCycle + 1) and Int.MAX_VALUE
             rotationCycle
         }

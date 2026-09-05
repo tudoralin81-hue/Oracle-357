@@ -295,7 +295,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(row2)
 
         // ---- 3. EVIDENCE: the 18-parameter grid, display unchanged ----
-        OracleFactorGrid.add(host, card, "Weights", item.weights, item.weights.maxOrNull() ?: 1)
+        OracleFactorGrid.add(host, card, "Weights", item.weights, item.weights.maxOrNull() ?: 1, silent)
 
         // ---- 4. CONTEXT: explanatory, not decisional, so it sits after the evidence ----
         val lower = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, host.dp(4)) }

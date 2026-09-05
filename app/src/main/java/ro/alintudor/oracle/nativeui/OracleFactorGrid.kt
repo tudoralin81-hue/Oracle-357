@@ -34,7 +34,7 @@ object OracleFactorGrid {
     private fun label(host: OracleNativeModule, value: String, size: Float, face: Typeface, color: Int, bottom: Int): TextView =
         TextView(host.root.context).apply { text = value; textSize = size; typeface = face; setTextColor(color); setPadding(0, 0, 0, host.dp(bottom)) }
 
-    fun add(host: OracleNativeModule, parent: LinearLayout, title: String, values: List<Int>, maxValue: Int) {
+    fun add(host: OracleNativeModule, parent: LinearLayout, title: String, values: List<Int>, maxValue: Int, silent: Boolean = false) {
         if (values.isEmpty()) return
         parent.addView(label(host, title, 10f, Typeface.DEFAULT_BOLD, white, 5))
         val safeMax = maxValue.coerceAtLeast(1)
@@ -54,11 +54,11 @@ object OracleFactorGrid {
                 when {
                     i < values.size -> {
                         cell.addView(label(host, NAMES.getOrElse(i) { "?" }, 8f, Typeface.DEFAULT, muted, 0))
-                        bar(host, cell, values[i], safeMax)
+                        bar(host, cell, values[i], safeMax, silent)
                     }
                     i == values.size -> {
                         cell.addView(label(host, "LO", 8f, Typeface.DEFAULT, muted, 0))
-                        loCell(host, cell)
+                        loCell(host, cell, silent)
                     }
                 }
                 row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
@@ -76,7 +76,8 @@ object OracleFactorGrid {
      *  its visible frames, which read as "sits still, then a refresh
      *  happens, then it animates" — exactly what starting it inline used to
      *  do here. */
-    private fun sweepThenSettle(anchor: View, onOff: () -> Unit, onStep: (step: Int) -> Unit, onSettle: () -> Unit) {
+    private fun sweepThenSettle(anchor: View, silent: Boolean = false, onOff: () -> Unit, onStep: (step: Int) -> Unit, onSettle: () -> Unit) {
+        if (silent) { onSettle(); return }
         onOff()
         anchor.post {
             val handler = Handler(Looper.getMainLooper())
@@ -107,7 +108,7 @@ object OracleFactorGrid {
      *  same proportion (green = high, orange = middling, red = low). The
      *  real, final segments are computed up front — the sweep never guesses,
      *  it just delays revealing them behind three accelerating light-chases. */
-    private fun bar(host: OracleNativeModule, parent: LinearLayout, value: Int, maxValue: Int) {
+    private fun bar(host: OracleNativeModule, parent: LinearLayout, value: Int, maxValue: Int, silent: Boolean = false) {
         val pct = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
         val filledSegments = kotlin.math.round(pct * 5f).toInt().coerceIn(if (value > 0) 1 else 0, 5)
         val finalColor = when { pct >= 0.6f -> green; pct >= 0.3f -> orange; else -> red }
@@ -123,7 +124,7 @@ object OracleFactorGrid {
             }
         }
         sweepThenSettle(
-            anchor = bar,
+            anchor = bar, silent = silent,
             onOff = { segments.forEach { paint(it, false, loadingColor) } },
             onStep = { step -> segments.forEachIndexed { i, seg -> paint(seg, i < step, loadingColor) } },
             onSettle = { segments.forEachIndexed { i, seg -> paint(seg, i < filledSegments, finalColor) } }
@@ -135,7 +136,7 @@ object OracleFactorGrid {
      *  showing the random nudge is in play, never its value or sign. Same
      *  accelerating sweep as every other cell, in LO's own purple tones,
      *  settling on the fixed centre-lit band. */
-    private fun loCell(host: OracleNativeModule, parent: LinearLayout) {
+    private fun loCell(host: OracleNativeModule, parent: LinearLayout, silent: Boolean = false) {
         val loColor = Color.rgb(190, 150, 255)
         val bar = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(3), 0, 0) }
         val segments = (0 until 5).map {
@@ -144,7 +145,7 @@ object OracleFactorGrid {
         fun paintOff(seg: View) { seg.background = OracleNativeModule.rounded(Color.rgb(58, 48, 82), host.dp(1), loColor, host.dp(1)); seg.alpha = 0.35f }
         fun paintOn(seg: View) { seg.background = OracleNativeModule.rounded(loadingColor, host.dp(1), loadingColor, 0); seg.alpha = 0.9f }
         sweepThenSettle(
-            anchor = bar,
+            anchor = bar, silent = silent,
             onOff = { segments.forEach { paintOff(it) } },
             onStep = { step -> segments.forEachIndexed { i, seg -> if (i < step) paintOn(seg) else paintOff(seg) } },
             onSettle = {
