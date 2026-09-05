@@ -684,10 +684,11 @@ class OracleMysticActivity : Activity() {
         // just cycling faster since the boot loader only runs for 5s total.
         // Bigger and colored, as requested — the quotation marks are part of the
         // quote strings themselves (OracleLoaderQuotes).
+        var currentQuote = OracleLoaderQuotes.random()
         val quoteLabel = TextView(this).apply {
-            text = OracleLoaderQuotes.ALL.random()
+            text = OracleLoaderQuotes.spanned(currentQuote, gold, muted)
             textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(gold); setPadding(dp(12), 0, dp(12), 0)
+            setPadding(dp(12), 0, dp(12), 0)
             setLineSpacing(0f, 1.2f)
             maxLines = 4
         }
@@ -709,15 +710,10 @@ class OracleMysticActivity : Activity() {
             }
         }.start()
 
-        var lastQuote: String = quoteLabel.text.toString()
         val quoteRunnable = object : Runnable {
             override fun run() {
-                var next = OracleLoaderQuotes.ALL.random()
-                if (OracleLoaderQuotes.ALL.size > 1) {
-                    while (next == lastQuote) next = OracleLoaderQuotes.ALL.random()
-                }
-                lastQuote = next
-                quoteLabel.text = next
+                currentQuote = OracleLoaderQuotes.random(excluding = currentQuote)
+                quoteLabel.text = OracleLoaderQuotes.spanned(currentQuote, gold, muted)
                 mainHandler.postDelayed(this, 1_800L)
             }
         }

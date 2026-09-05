@@ -70,7 +70,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     // B540 — investor quotes rotated in the loader every 15s (Requirement #7).
     // Shared with the app boot loader via OracleLoaderQuotes so both use the
     // exact same pool. Local strings only; no network request is made to show them.
-    private val loaderQuotes = OracleLoaderQuotes.ALL
+    private val loaderQuotes = OracleLoaderQuotes.ALL  // kept for size(); rendering now goes through OracleLoaderQuotes.random()/spanned()
 
     /**
      * B540 loading state (Requirement #6/#7/#11).
@@ -111,18 +111,22 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(progressBar, LinearLayout.LayoutParams(-1, host.dp(9)).apply { setMargins(host.dp(10), host.dp(6), host.dp(10), host.dp(3)) })
         val etaLabel = text("Estimated time: calculating…", 10f, Typeface.DEFAULT_BOLD, green, 0, 5).apply { gravity = Gravity.CENTER }
         card.addView(etaLabel)
-        val quoteLabel = text(loaderQuotes.first(), 10f, Typeface.DEFAULT, white, 0, 9).apply { gravity = Gravity.CENTER; setLineSpacing(0f, 1.1f) }
+        var currentQuote = OracleLoaderQuotes.random()
+        val quoteLabel = TextView(host.root.context).apply {
+            text = OracleLoaderQuotes.spanned(currentQuote, white, muted)
+            textSize = 10f; gravity = Gravity.CENTER; setLineSpacing(0f, 1.1f)
+            setPadding(0, host.dp(9), 0, host.dp(9))
+        }
         card.addView(quoteLabel)
         card.addView(text("Analysis runs in the background. Values appear only once the current calculation finishes.", 9f, Typeface.DEFAULT, muted, 0, 9).apply { gravity = Gravity.CENTER })
         card.addView(text("Target maximum: 20 seconds", 9f, Typeface.DEFAULT_BOLD, muted, 0, 6).apply { gravity = Gravity.CENTER })
         host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(390)).apply { setMargins(0, 0, 0, host.dp(10)) })
 
         val handler = Handler(Looper.getMainLooper())
-        var quoteIndex = 0
         val quoteRunnable = object : Runnable {
             override fun run() {
-                quoteIndex = (quoteIndex + 1) % loaderQuotes.size
-                quoteLabel.text = loaderQuotes[quoteIndex]
+                currentQuote = OracleLoaderQuotes.random(excluding = currentQuote)
+                quoteLabel.text = OracleLoaderQuotes.spanned(currentQuote, white, muted)
                 handler.postDelayed(this, 15_000L)
             }
         }
@@ -253,7 +257,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
 
         val metrics = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(7), 0, host.dp(4)) }
         val demo = OracleDemo.active(host.root.context)
-        metrics.addView(metric("SCORE", if (demo) OracleDemo.LOCK else "${item.score}/100", cyan), LinearLayout.LayoutParams(0, -2, 1f))
+        metrics.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -2, 1.35f).apply { setMargins(0, 0, host.dp(6), 0) })
         metrics.addView(metric("SIGNAL", compactSignal(item.signal), signalColor(item.signal)), LinearLayout.LayoutParams(0, -2, 1.15f))
         metrics.addView(metric("RISK", item.risk, riskColor(item.risk)), LinearLayout.LayoutParams(0, -2, 1f))
         metrics.addView(metric("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange), LinearLayout.LayoutParams(0, -2, 1f))
@@ -616,6 +620,30 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         gravity = Gravity.CENTER
         addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 2))
         addView(text(value, 13f, Typeface.DEFAULT_BOLD, color, 0, 0))
+    }
+
+    /** The one number the whole card exists to show — deliberately bigger
+     *  and boxed apart from its SIGNAL/RISK/ALLOCATION siblings, with a
+     *  count-up animation so it draws the eye first on every card. */
+    private fun scoreMetric(score: Int, demo: Boolean): LinearLayout {
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(host.dp(4), host.dp(6), host.dp(4), host.dp(6))
+            background = OracleNativeModule.rounded(Color.rgb(6, 16, 22), host.dp(12), cyan, host.dp(1))
+        }
+        box.addView(text("SCORE", 8f, Typeface.DEFAULT, muted, 0, 2))
+        if (demo) {
+            box.addView(text(OracleDemo.LOCK, 20f, Typeface.DEFAULT_BOLD, cyan, 0, 0))
+            return box
+        }
+        val number = text("0", 24f, Typeface.DEFAULT_BOLD, cyan, 0, 0)
+        box.addView(number)
+        android.animation.ValueAnimator.ofInt(0, score).apply {
+            duration = 700L; interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+            addUpdateListener { anim -> if (number.isAttachedToWindow) number.text = "${anim.animatedValue}/100" }
+            start()
+        }
+        return box
     }
 
     private fun divider(): View = View(host.root.context).apply { setBackgroundColor(border); layoutParams = LinearLayout.LayoutParams(-1, host.dp(1)) }

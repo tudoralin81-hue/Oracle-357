@@ -34,23 +34,56 @@ import java.util.Locale
  *  to be showing (that mismatch is why the old inline overlay never lined up). */
 fun showCompareDialog(host: OracleNativeModule, primaryTicker: String) {
     val context = host.root.context
+    fun dp(v: Int) = host.dp(v)
     val input = EditText(context).apply {
         hint = "Ticker (e.g. SPY)"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
         setSingleLine(true); textSize = 16f; setTextColor(Color.WHITE); setHintTextColor(Color.rgb(120, 130, 152))
-        setPadding(host.dp(14), host.dp(12), host.dp(14), host.dp(12))
-        background = OracleNativeModule.rounded(Color.rgb(4, 8, 16), host.dp(10), host.accent, host.dp(1))
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        background = OracleNativeModule.rounded(Color.rgb(4, 8, 16), dp(10), host.accent, dp(1))
     }
-    val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(20), host.dp(10), host.dp(20), host.dp(6)) }
+    val error = TextView(context).apply {
+        textSize = 11.5f; setTextColor(Color.rgb(255, 130, 130)); setPadding(dp(2), dp(8), dp(2), 0); visibility = View.GONE
+    }
+    val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(10), dp(20), dp(6)) }
     box.addView(input, LinearLayout.LayoutParams(-1, -2))
-    AlertDialog.Builder(context)
+    box.addView(error)
+    val dialog = AlertDialog.Builder(context)
         .setTitle("Compare $primaryTicker with\u2026")
         .setView(box)
-        .setPositiveButton("Compare") { _, _ ->
-            val second = input.text.toString().trim().uppercase(Locale.US)
-            if (second.isNotBlank() && second != primaryTicker) showComparePopup(context, host.accent, primaryTicker, second)
-        }
+        .setPositiveButton("Compare", null)   // wired manually below so a bad ticker doesn't close the dialog
         .setNegativeButton("Cancel", null)
-        .show()
+        .create()
+    dialog.setOnShowListener {
+        val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+        button.setOnClickListener {
+            val second = input.text.toString().trim().uppercase(Locale.US)
+            if (second.isBlank() || second == primaryTicker.trim().uppercase(Locale.US)) {
+                error.text = if (second.isBlank()) "Enter a ticker." else "That's the same ticker \u2014 pick a different one."
+                error.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            error.visibility = View.GONE
+            button.isEnabled = false; button.text = "Checking\u2026"
+            // A single lightweight quote lookup, not the full 3-month candle
+            // fetch — fails in a fraction of the time, so a typo or a
+            // ticker that doesn't exist is caught here instead of after the
+            // popup has already opened and started loading.
+            Thread {
+                val found = runCatching { OracleRealData.lookupQuote(second) }.getOrNull() != null
+                Handler(Looper.getMainLooper()).post {
+                    button.isEnabled = true; button.text = "Compare"
+                    if (found) {
+                        dialog.dismiss()
+                        showComparePopup(context, host.accent, primaryTicker, second)
+                    } else {
+                        error.text = "\u201c$second\u201d doesn't look like a real ticker \u2014 check the symbol."
+                        error.visibility = View.VISIBLE
+                    }
+                }
+            }.start()
+        }
+    }
+    dialog.show()
 }
 
 private fun showComparePopup(context: Context, accent: Int, tickerA: String, tickerB: String) {
