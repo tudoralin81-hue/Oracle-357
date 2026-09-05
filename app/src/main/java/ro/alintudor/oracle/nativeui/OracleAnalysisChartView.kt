@@ -210,38 +210,6 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         fun y(v: Double): Float = bottom - ((v - minP) / span * (bottom - top - 22f)).toFloat()
         val closes = d.map { it.close }
 
-        if (selectedIndex in d.indices) {
-            val p = d[selectedIndex]
-            label(c, "O ${money(p.open)}  H ${money(p.high)}  L ${money(p.low)}  C ${money(p.close)}", 14f, 96f, if (p.close >= p.open) green else red, 30f)
-            label(c, "${dateTime(p.timestamp)}  •  VOL ${volumeText(p.volume)}", 14f, 128f, text, 30f)
-        } else {
-            label(c, "Tap a candle for OHLC + date/time + volume", 14f, 96f, text, 28f)
-        }
-    }
-
-    private fun drawGrid(c: Canvas, left: Float, top: Float, bottom: Float, rows: Int) {
-        paints.strokeWidth = 1f
-        paints.color = grid
-        for (i in 0..rows) {
-            val y = top + (bottom - top) * i / rows
-            c.drawLine(left, y, width.toFloat() - 42f, y, paints)
-        }
-        for (i in 0..8) {
-            val x = width * i / 8f
-            c.drawLine(x, top, x, bottom, paints)
-        }
-    }
-
-    private fun drawCandles(c: Canvas, d: List<OracleOhlcvPoint>, left: Float, top: Float, right: Float, bottom: Float) {
-        val minP = d.minOf { it.low }
-        val maxP = d.maxOf { it.high }
-        val span = max(0.0001, maxP - minP)
-        val step = (right - left) / max(1, d.size)
-        val bodyW = max(3f, step * .62f)
-        fun y(v: Double): Float = bottom - ((v - minP) / span * (bottom - top - 22f)).toFloat()
-        val closes = d.map { it.close }
-
-
         if (showBB) {
             val upper = mutableListOf<Float>(); val mid = mutableListOf<Float>(); val lower = mutableListOf<Float>()
             d.indices.forEach { i ->
