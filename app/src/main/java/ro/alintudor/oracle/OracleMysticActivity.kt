@@ -72,14 +72,14 @@ class OracleMysticActivity : Activity() {
         The developer of this app assumes no responsibility for any financial loss resulting from its use.
     """.trimIndent()
 
-    /** Scrollable, newest-last view of the engine log. */
+    /** Scrollable, newest-first view of the engine log. */
     private fun showGrowthLogDialog() {
         val lines = ro.alintudor.oracle.core.OracleGrowthLog.read(this, 400)
         val panel = Color.rgb(7, 14, 28)
         val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
         scroll.addView(TextView(this).apply {
             text = if (lines.isEmpty()) "Nothing recorded yet.\n\nOpen Growth to trigger a run, or wait for the nightly background scan."
-                   else lines.joinToString("\n")
+                   else lines.asReversed().joinToString("\n")
             textSize = 10.5f; typeface = Typeface.MONOSPACE
             setTextColor(Color.rgb(200, 208, 222)); setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -106,7 +106,7 @@ class OracleMysticActivity : Activity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
         scroll.addView(TextView(this).apply {
             text = if (lines.isEmpty()) "Nothing recorded yet.\n\nEvery call the app makes to the server will show up here."
-                   else lines.joinToString("\n")
+                   else lines.asReversed().joinToString("\n")
             textSize = 10.5f; typeface = Typeface.MONOSPACE
             setTextColor(Color.rgb(200, 208, 222)); setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -459,6 +459,11 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun showLogin(store: OracleAuthStore) {
+        // Every route back to this screen (exit-demo, LOG OUT, a session that
+        // expired) must be able to complete a fresh login afterward. This is
+        // the one choke point all of them share, so resetting the guard here
+        // covers all of them, not just the specific path being exercised today.
+        proceedingPastAuth = false
         root.removeAllViews()
         val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
         val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35); val red = Color.rgb(255, 90, 90)
@@ -832,6 +837,15 @@ class OracleMysticActivity : Activity() {
                 ro.alintudor.oracle.core.OracleDemo.exit(this)
                 store.clearSession()
                 authPassedThisProcess = false
+                // The real bug behind "stuck on LOGGING IN...": this flag only
+                // ever gets set back to false in proceedPastAuth()'s own
+                // failure branch. A successful login (including entering the
+                // demo, which also calls proceedPastAuth()) leaves it true for
+                // the rest of this Activity instance's life — so the very next
+                // login, right after exiting demo, always finds it already
+                // true and proceedPastAuth() returns immediately without ever
+                // showing the boot loader. Must reset here too.
+                proceedingPastAuth = false
                 currentModule = null
                 // Posted rather than called inline: this dialog's own window
                 // is still tearing down when this callback runs, and tearing
