@@ -601,5 +601,4 @@ object OracleGrowthEngine {
         }
     } catch(_:Exception){ null }
 
-    private fun newsScore(t:String):Int{return try{val q=URLEncoder.encode("\"$t\" stock when:7d","UTF-8");val u=URL("https://news.google.com/rss/search?q=$q&hl=en-US&gl=US&ceid=US:en");val con=u.openConnection() as HttpURLConnection;con.connectTimeout=5000;con.readTimeout=7000;val body=con.inputStream.bufferedReader().use{it.readText()};con.disconnect();val pos=listOf("beat","upgrade","buy","bullish","record","strong","surge","contract","partnership","deal","approval","launch","growth","profit");val neg=listOf("miss","downgrade","sell","bearish","lawsuit","investigation","warning","cut guidance","recall","layoff","fraud","delay","loss","decline","plunge","offering","dilution","bankruptcy");val titles=Regex("<title>(.*?)</title>",RegexOption.IGNORE_CASE).findAll(body).map{it.groupValues[1].replace("&amp;","&").lowercase()}.drop(1).filter{!it.contains("google news")&&!it.contains(" when:")}.take(8).toList();titles.sumOf{title->2*pos.count{title.contains(it)}-3*neg.count{title.contains(it)}}.coerceIn(-10,10)}catch(_:Exception){0}}
 }

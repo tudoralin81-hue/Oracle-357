@@ -251,33 +251,39 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         company.addView(text(item.company, 15f, Typeface.DEFAULT_BOLD, white, 0, 0))
         company.addView(text(item.sector, 11f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 4))
         identity.addView(company, LinearLayout.LayoutParams(0, -2, 1f))
+        // Company logo in the space that used to sit empty to the right of the name.
+        val logo = ImageView(host.root.context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "${item.ticker} logo"
+            background = OracleNativeModule.rounded(Color.rgb(245, 247, 250), host.dp(10)); setPadding(host.dp(5), host.dp(5), host.dp(5), host.dp(5))
+        }
+        identity.addView(logo, LinearLayout.LayoutParams(host.dp(48), host.dp(48)).apply { setMargins(host.dp(8), 0, 0, 0) })
+        OracleLogoLoader.load(host.root.context, item.ticker, logo)
         card.addView(identity)
         card.addView(divider())
 
         val demo = OracleDemo.active(host.root.context)
 
-        // ---- 1. VERDICT: one visual block, not four equal columns ----
-        // The hero score on the left; SIGNAL / RISK / ALLOCATION stacked
-        // vertically on the right as single-line badges, so "STRONG BUY"
-        // never wraps and the eye reads decision-first.
-        val verdict = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, host.dp(6)) }
-        verdict.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(8), 0) })
-        val badges = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
-        badges.addView(badgeRow("SIGNAL", item.signal, signalColor(item.signal)))
-        badges.addView(badgeRow("RISK", item.risk, riskColor(item.risk)))
-        badges.addView(badgeRow("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange))
-        verdict.addView(badges, LinearLayout.LayoutParams(0, -2, 1.6f))
-        card.addView(verdict)
-
-        // ---- 2. VALUE & HEALTH: "is it worth the price, is it solid" ----
-        // Directly under the verdict, because that is the question that
-        // naturally follows "what should I do".
-        if (item.fairValueScore != null || item.financialHealthScore != null) {
-            val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(2), 0, host.dp(8)) }
-            verdicts.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
-            verdicts.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
-            card.addView(verdicts)
+        // ---- 1+2. VERDICT GRID: four equal boxes, 2x2 ----
+        // SCORE | SIGNAL·RISK·ALLOCATION on the first row, FAIR VALUATION |
+        // FINANCIAL HEALTH on the second — every box the same size, the row
+        // filling the card's width with no dead space on the right.
+        val row1 = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(8), 0, 0) }
+        row1.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        val decisionBox = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(host.dp(10), host.dp(6), host.dp(10), host.dp(6))
+            background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(12), Color.rgb(40, 48, 68), host.dp(1))
         }
+        decisionBox.addView(badgeRow("SIGNAL", item.signal, signalColor(item.signal)))
+        decisionBox.addView(badgeRow("RISK", item.risk, riskColor(item.risk)))
+        decisionBox.addView(badgeRow("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange))
+        row1.addView(decisionBox, LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        card.addView(row1)
+
+        val row2 = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(8), 0, host.dp(8)) }
+        row2.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        row2.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        card.addView(row2)
 
         // ---- 3. EVIDENCE: the 18-parameter grid, display unchanged ----
         OracleFactorGrid.add(host, card, "Weights", item.weights, item.weights.maxOrNull() ?: 1)
@@ -544,7 +550,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         setPadding(0, host.dp(3), 0, host.dp(3))
         // Label and value sit side by side, no stretch between them — "SIGNAL [BUY]"
         // reads as one unit instead of a label on the left and its value a screen away.
-        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(host.dp(74), -2))
+        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
         addView(TextView(host.root.context).apply {
             text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1
             gravity = Gravity.END; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
@@ -559,7 +565,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun scoreMetric(score: Int, demo: Boolean): LinearLayout {
         val box = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding(host.dp(4), host.dp(6), host.dp(4), host.dp(6))
+            setPadding(host.dp(4), host.dp(10), host.dp(4), host.dp(10))
             background = OracleNativeModule.rounded(Color.rgb(6, 16, 22), host.dp(12), cyan, host.dp(1))
         }
         box.addView(text("SCORE", 8f, Typeface.DEFAULT, muted, 0, 2))

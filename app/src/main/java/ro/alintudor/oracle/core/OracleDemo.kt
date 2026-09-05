@@ -11,6 +11,8 @@ import android.content.Context
  */
 object OracleDemo {
     const val LOCK = "\uD83D\uDD12"
+    /** The only tickers the demo may analyze or compare — the same three it seeds into the sample portfolio. */
+    val TICKERS = setOf("AAPL", "NVDA", "JPM")
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("oracle_demo", Context.MODE_PRIVATE)
     fun active(c: Context): Boolean = prefs(c).getBoolean("active", false)
 

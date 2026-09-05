@@ -120,14 +120,13 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         // Demo: the engine only ever runs against the 3 sample tickers — typing
         // anything else would be free, unlimited use of the same proprietary
         // engine Growth locks behind an account. Real analysis is a paid feature.
-        val demoTickers = setOf("AAPL", "NVDA", "JPM")
         fun run() {
             val t = input.text.toString().trim().uppercase(Locale.US)
             if (t.isBlank()) {
                 input.error = "Enter a ticker"
                 return
             }
-            if (OracleDemo.active(host.root.context) && t !in demoTickers) {
+            if (OracleDemo.active(host.root.context) && t !in OracleDemo.TICKERS) {
                 Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo analysis is limited to AAPL, NVDA and JPM \u2014 create an account to analyze any ticker.", Toast.LENGTH_LONG).show()
                 return
             }
@@ -184,6 +183,12 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setTextColor(Color.rgb(45, 232, 92))
         }, LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(10), 0, 0, 0) })
         headline.addView(tickerPriceGroup, LinearLayout.LayoutParams(0, -2, 1f))
+        val logo = ImageView(host.root.context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "${r.ticker} logo"
+            background = OracleNativeModule.rounded(Color.rgb(245, 247, 250), host.dp(10)); setPadding(host.dp(5), host.dp(5), host.dp(5), host.dp(5))
+        }
+        headline.addView(logo, LinearLayout.LayoutParams(host.dp(44), host.dp(44)).apply { setMargins(0, 0, host.dp(10), 0) })
+        OracleLogoLoader.load(host.root.context, r.ticker, logo)
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
         var watchButtonRef: Button? = null
@@ -282,7 +287,17 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setPadding(host.dp(15), host.dp(10), host.dp(15), host.dp(10))
             background = GradientDrawable().apply { setColor(Color.rgb(7, 12, 23)); cornerRadius = host.dp(15).toFloat(); setStroke(host.dp(1), Color.rgb(34, 55, 82)) }
         }
-        OracleFactorGrid.add(host, gridCard, "Factor scores (0\u2013100)", r.growthComponents, 100)
+        if (OracleDemo.active(host.root.context)) {
+            // The factor values ARE the engine's output for this ticker — the
+            // same thing the Growth score locks. Demo shows the grid exists,
+            // not the numbers.
+            gridCard.addView(TextView(host.root.context).apply {
+                text = "${OracleDemo.LOCK}  Factor scores are for account holders. The 17 factors and LO are shown with real values once you sign in."
+                textSize = 12f; setTextColor(Color.rgb(205, 213, 228)); setLineSpacing(host.dp(3).toFloat(), 1f)
+            })
+        } else {
+            OracleFactorGrid.add(host, gridCard, "Factor scores (0\u2013100)", r.growthComponents, 100)
+        }
         host.content.addView(gridCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
 
         // ==== 4. CONTEXT — the chart ====
@@ -882,239 +897,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             }
     }
 
-    private fun renderKnowledge(items: List<OracleKnowledgeItem>) {
-        val card = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(host.dp(18), host.dp(16), host.dp(18), host.dp(16))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(7, 11, 22))
-                cornerRadius = host.dp(16).toFloat()
-                setStroke(host.dp(1), Color.rgb(255, 205, 55))
-            }
-            isClickable = true
-            isFocusable = true
-            contentDescription = "Open Knowledge: https://alintudor.ro/knowledge/"
-            setOnClickListener {
-                runCatching { host.root.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://alintudor.ro/knowledge/"))) }
-            }
-        }
-        val headerRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        headerRow.addView(KnowledgeGraphicView(host.root.context), LinearLayout.LayoutParams(host.dp(56), host.dp(56)).apply { setMargins(0, 0, host.dp(14), 0) })
-        val titleCol = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
-        titleCol.addView(TextView(host.root.context).apply { text = "KNOWLEDGE"; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = .04f; setTextColor(Color.WHITE) })
-        titleCol.addView(TextView(host.root.context).apply { text = "Oracle library — local content"; textSize = 13f; setTextColor(Color.rgb(190, 198, 215)); setPadding(0, host.dp(3), 0, 0) })
-        headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
-        card.addView(headerRow)
-        card.addView(TextView(host.root.context).apply {
-            text = "PRESS HERE FOR TRADING KNOWLEDGE"
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(255, 205, 55))
-            setPadding(0, host.dp(12), 0, 0)
-            android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.35f, 1f).apply {
-                duration = 1150L; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.RESTART; start()
-            }
-        })
-        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(16)) })
-
-        // One large, densely-filled card: classical Greek/Roman busts, geometric
-        // instruments and structures, and scattered mathematical notation — like
-        // a scholar's crowded notebook page. Height fills down toward the bottom
-        // of the screen rather than a small fixed box.
-        val bigCard = FrameLayout(host.root.context).apply {
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(10, 10, 10))
-                cornerRadius = host.dp(14).toFloat()
-                setStroke(host.dp(1), Color.rgb(90, 90, 90))
-            }
-        }
-        val screenH = host.root.context.resources.displayMetrics.heightPixels
-        val bigCardHeight = (screenH - host.dp(300)).coerceAtLeast(host.dp(420))
-        host.content.addView(bigCard, LinearLayout.LayoutParams(-1, bigCardHeight).apply { setMargins(0, 0, 0, host.dp(10)) })
-
-        // On wide/tablet layouts the card is far wider than the ~380dp this
-        // composition was designed for, leaving the right portion empty. The
-        // real width is measured later, after layout (see bigCard.post below),
-        // since reading it here — before the window has settled — is unreliable.
-        val density = host.root.context.resources.displayMetrics.density
-
-        val bust1 = ClassicalBustView(host.root.context, hasLaurel = true)
-        bigCard.addView(bust1, FrameLayout.LayoutParams(host.dp(120), host.dp(150)).apply {
-            leftMargin = host.dp(14); topMargin = host.dp(16)
-        })
-        bust1.rotation = -5f
-
-        val bust3 = ClassicalBustView(host.root.context, hasLaurel = true)
-        bigCard.addView(bust3, FrameLayout.LayoutParams(host.dp(100), host.dp(125)).apply {
-            gravity = Gravity.END; topMargin = host.dp(210); rightMargin = host.dp(28)
-        })
-        bust3.rotation = -8f
-        bust3.scaleX = -1f
-
-        val bust2 = ClassicalBustView(host.root.context, hasLaurel = false)
-        bigCard.addView(bust2, FrameLayout.LayoutParams(host.dp(105), host.dp(130)).apply {
-            gravity = Gravity.START or Gravity.BOTTOM
-            leftMargin = host.dp(24); bottomMargin = host.dp(20)
-        })
-        bust2.rotation = 6f
-
-        // Gravity-anchored (not fixed topMargin), so these two land near the
-        // real middle and bottom of the card no matter how tall it ends up —
-        // the card's height is computed from the actual screen at runtime.
-        val column = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COLUMN)
-        bigCard.addView(column, FrameLayout.LayoutParams(host.dp(65), host.dp(150)).apply {
-            leftMargin = host.dp(12); topMargin = host.dp(380)
-        })
-
-        val compass = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COMPASS)
-        bigCard.addView(compass, FrameLayout.LayoutParams(host.dp(85), host.dp(105)).apply {
-            leftMargin = host.dp(100); topMargin = host.dp(400)
-        })
-        compass.rotation = -6f
-
-        val scale = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_SCALE)
-        bigCard.addView(scale, FrameLayout.LayoutParams(host.dp(110), host.dp(125)).apply {
-            leftMargin = host.dp(205); topMargin = host.dp(390)
-        })
-        scale.rotation = 3f
-
-        val bust5 = ClassicalBustView(host.root.context, hasLaurel = true)
-        bigCard.addView(bust5, FrameLayout.LayoutParams(host.dp(110), host.dp(138)).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            rightMargin = host.dp(18); bottomMargin = host.dp(18)
-        })
-        bust5.rotation = -7f
-
-        data class Formula(val text: String, val leftDp: Int, val topDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
-        val formulas = listOf(
-            Formula("a² + b² = c²", 140, 16, 13f, -4f, 0.85f),
-            Formula("π", 205, 55, 26f, 8f, 0.70f),
-            Formula("Σ", 95, 165, 22f, -10f, 0.60f),
-            Formula("φ = 1.618…", 130, 205, 11f, 3f, 0.75f),
-            Formula("θ", 235, 145, 20f, -6f, 0.55f),
-            Formula("√2", 40, 130, 16f, 12f, 0.65f),
-            Formula("Δ", 175, 130, 18f, -3f, 0.60f),
-            Formula("∞", 250, 90, 20f, 5f, 0.50f),
-            Formula("C = 2πr", 30, 195, 12f, 7f, 0.60f),
-            Formula("V = πr²h", 150, 265, 12f, -6f, 0.65f),
-            Formula("Ω", 30, 260, 22f, 9f, 0.55f),
-            Formula("τ = 2π", 210, 300, 12f, 4f, 0.60f),
-            Formula("λ", 100, 320, 20f, -8f, 0.50f),
-            Formula("e^(iπ) + 1 = 0", 30, 355, 12f, 3f, 0.70f),
-            Formula("∑ 1/n²", 190, 355, 11f, -5f, 0.55f),
-            Formula("χ", 260, 250, 20f, 7f, 0.50f)
-        )
-        formulas.forEach { f ->
-            val tv = TextView(host.root.context).apply {
-                text = f.text
-                textSize = f.sizeSp
-                typeface = Typeface.SERIF
-                setTextColor(Color.argb((235 * f.a).toInt(), 200, 198, 192))
-                rotation = f.rot
-            }
-            bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply { leftMargin = host.dp(f.leftDp); topMargin = host.dp(f.topDp) })
-        }
-
-        // Bottom-anchored formulas: gravity keeps these pinned near the true
-        // bottom edge of the card regardless of its actual runtime height.
-        data class BottomFormula(val text: String, val leftDp: Int, val bottomDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
-        val bottomFormulas = listOf(
-            BottomFormula("β", 150, 110, 20f, -6f, 0.55f),
-            BottomFormula("dy/dx", 175, 60, 12f, 5f, 0.65f),
-            BottomFormula("∮ F·dl", 145, 155, 11f, -4f, 0.55f),
-            BottomFormula("μ", 235, 40, 20f, 8f, 0.50f),
-            BottomFormula("x = (-b ± √(b²-4ac)) / 2a", 20, 10, 10f, 2f, 0.65f)
-        )
-        bottomFormulas.forEach { f ->
-            val tv = TextView(host.root.context).apply {
-                text = f.text
-                textSize = f.sizeSp
-                typeface = Typeface.SERIF
-                setTextColor(Color.argb((235 * f.a).toInt(), 200, 198, 192))
-                rotation = f.rot
-            }
-            bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply {
-                gravity = Gravity.BOTTOM
-                leftMargin = host.dp(f.leftDp); bottomMargin = host.dp(f.bottomDp)
-            })
-        }
-
-        // Second cluster: only added when there's real extra width to fill,
-        // positioned as fractions of the actual spare space so it never
-        // overflows regardless of exactly how wide the screen is.
-        //
-        // Deferred to bigCard.post{} and re-measured from the view's actual
-        // laid-out width (not the pre-layout displayMetrics estimate) — that
-        // estimate could be read before the window had settled its real size,
-        // which is why this content sometimes appeared on the first render
-        // and silently vanished on the next one.
-        bigCard.post {
-            val realWidthPx = bigCard.width
-            if (realWidthPx <= 0) return@post
-            val realCardWidthDp = (realWidthPx / density).toInt()
-            if (realCardWidthDp <= 700) return@post
-            val spare = realCardWidthDp - 420
-            fun atSpare(fraction: Float) = host.dp(420 + (spare * fraction).toInt())
-
-            val wideBust = ClassicalBustView(host.root.context, hasLaurel = false)
-            bigCard.addView(wideBust, FrameLayout.LayoutParams(host.dp(105), host.dp(130)).apply {
-                leftMargin = atSpare(0.08f); topMargin = host.dp(40)
-            })
-            wideBust.rotation = 5f
-
-            val wideBust2 = ClassicalBustView(host.root.context, hasLaurel = true)
-            bigCard.addView(wideBust2, FrameLayout.LayoutParams(host.dp(100), host.dp(125)).apply {
-                leftMargin = atSpare(0.55f); topMargin = host.dp(190)
-            })
-            wideBust2.rotation = -6f
-            wideBust2.scaleX = -1f
-
-            val wideCompass = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COMPASS)
-            bigCard.addView(wideCompass, FrameLayout.LayoutParams(host.dp(85), host.dp(105)).apply {
-                leftMargin = atSpare(0.30f); topMargin = host.dp(280)
-            })
-            wideCompass.rotation = 8f
-
-            val wideScale = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_SCALE)
-            bigCard.addView(wideScale, FrameLayout.LayoutParams(host.dp(115), host.dp(130)).apply {
-                leftMargin = atSpare(0.02f); topMargin = host.dp(330)
-            })
-            wideScale.rotation = -3f
-
-            val wideColumn = KnowledgeMotifView(host.root.context, KnowledgeMotifView.KIND_COLUMN)
-            bigCard.addView(wideColumn, FrameLayout.LayoutParams(host.dp(65), host.dp(155)).apply {
-                leftMargin = atSpare(0.62f); topMargin = host.dp(340)
-            })
-
-            data class WideFormula(val text: String, val fraction: Float, val topDp: Int, val sizeSp: Float, val rot: Float, val a: Float)
-            val wideFormulas = listOf(
-                WideFormula("E = ∫F·ds", 0.05f, 130, 12f, -5f, 0.65f),
-                WideFormula("ρ", 0.22f, 50, 22f, 6f, 0.55f),
-                WideFormula("∇×F", 0.45f, 90, 14f, -4f, 0.60f),
-                WideFormula("κ = 1/R", 0.10f, 250, 12f, 5f, 0.60f),
-                WideFormula("ξ", 0.70f, 60, 22f, -7f, 0.50f),
-                WideFormula("∏ pᵢ", 0.35f, 350, 12f, 4f, 0.55f),
-                WideFormula("sin²θ + cos²θ = 1", 0.02f, 400, 11f, 3f, 0.65f),
-                WideFormula("ħ", 0.75f, 250, 22f, 9f, 0.50f)
-            )
-            wideFormulas.forEach { f ->
-                val tv = TextView(host.root.context).apply {
-                    text = f.text
-                    textSize = f.sizeSp
-                    typeface = Typeface.SERIF
-                    setTextColor(Color.argb((235 * f.a).toInt(), 200, 198, 192))
-                    rotation = f.rot
-                }
-                bigCard.addView(tv, FrameLayout.LayoutParams(-2, -2).apply { leftMargin = atSpare(f.fraction); topMargin = host.dp(f.topDp) })
-            }
-        }
-
-        bigCard.alpha = 0f
-        bigCard.animate().alpha(1f).setDuration(550L).start()
-
-        if (items.isEmpty()) return
-        items.sortedByDescending { it.publishedAt }.forEach { addItem(it.title, "${it.category}\n${it.content}") }
-    }
 
     private fun renderActions(actions: List<OracleAction>) {
         host.addCard("ACTIONS", "Local signal engine — prioritized by score")
@@ -1142,8 +924,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     private fun fmt(v: Double) = "%.1f".format(Locale.US, v)
     private fun money(v: Double) = "%.2f USD".format(Locale.US, v)
     private fun moneyOrDash(v: Double?) = v?.let { money(it) } ?: "—"
-    private fun signed(v: Double) = if (v >= 0) "+${fmt(v)}" else fmt(v)
-    private fun factorColor(v: Double) = when { v >= 75 -> Color.rgb(105, 245, 35); v >= 55 -> Color.rgb(255, 210, 55); else -> Color.rgb(255, 90, 90) }
     private class WatchlistEyeView(context: android.content.Context, private val sizePx: Int) : android.view.View(context) {
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
@@ -1200,64 +980,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
     }
 
-    /** Small animated open-book glyph with a pulsing "insight" spark, used on the Knowledge card. */
-    private class KnowledgeGraphicView(context: android.content.Context) : android.view.View(context) {
-        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            style = android.graphics.Paint.Style.STROKE
-            strokeCap = android.graphics.Paint.Cap.ROUND
-            strokeJoin = android.graphics.Paint.Join.ROUND
-        }
-        private val startNanos = System.nanoTime()
-
-        override fun onDraw(canvas: android.graphics.Canvas) {
-            super.onDraw(canvas)
-            val w = width.toFloat(); val h = height.toFloat()
-            if (w <= 0f || h <= 0f) return
-            val time = (System.nanoTime() - startNanos) / 1_000_000_000.0
-            val cx = w / 2f; val cy = h * 0.60f
-            val bookW = w * 0.42f; val bookH = h * 0.30f
-
-            paint.strokeWidth = (w * 0.045f).coerceAtLeast(2f)
-            paint.color = Color.rgb(255, 205, 55)
-            paint.alpha = 235
-            val left = android.graphics.Path().apply {
-                moveTo(cx, cy - bookH * 0.10f)
-                cubicTo(cx - bookW * 0.35f, cy - bookH * 0.55f, cx - bookW, cy - bookH * 0.30f, cx - bookW, cy + bookH * 0.35f)
-                cubicTo(cx - bookW * 0.35f, cy + bookH * 0.10f, cx - bookW * 0.1f, cy + bookH * 0.15f, cx, cy + bookH * 0.45f)
-            }
-            canvas.drawPath(left, paint)
-            val right = android.graphics.Path().apply {
-                moveTo(cx, cy - bookH * 0.10f)
-                cubicTo(cx + bookW * 0.35f, cy - bookH * 0.55f, cx + bookW, cy - bookH * 0.30f, cx + bookW, cy + bookH * 0.35f)
-                cubicTo(cx + bookW * 0.35f, cy + bookH * 0.10f, cx + bookW * 0.1f, cy + bookH * 0.15f, cx, cy + bookH * 0.45f)
-            }
-            canvas.drawPath(right, paint)
-
-            paint.strokeWidth = (w * 0.016f).coerceAtLeast(1f)
-            paint.alpha = 150
-            canvas.drawLine(cx - bookW * 0.55f, cy - bookH * 0.02f, cx - bookW * 0.15f, cy + bookH * 0.14f, paint)
-            canvas.drawLine(cx + bookW * 0.55f, cy - bookH * 0.02f, cx + bookW * 0.15f, cy + bookH * 0.14f, paint)
-
-            // Pulsing "insight" spark above the book.
-            val q = (0.5 + 0.5 * kotlin.math.sin(time * 1.6)).toFloat()
-            val sparkY = cy - bookH * 1.0f
-            val sparkR = w * (0.09f + 0.02f * q)
-            paint.strokeWidth = (w * 0.03f).coerceAtLeast(1.5f)
-            paint.color = Color.rgb(120, 220, 255)
-            paint.alpha = (110 + 130 * q).toInt()
-            for (i in 0 until 4) {
-                val a = Math.PI / 2.0 + i * Math.PI / 2.0
-                val dx = kotlin.math.cos(a).toFloat(); val dy = kotlin.math.sin(a).toFloat()
-                canvas.drawLine(cx + dx * sparkR * 0.55f, sparkY + dy * sparkR * 0.55f, cx + dx * sparkR, sparkY + dy * sparkR, paint)
-            }
-            paint.style = android.graphics.Paint.Style.FILL
-            paint.alpha = (150 + 100 * q).toInt()
-            canvas.drawCircle(cx, sparkY, w * 0.045f, paint)
-            paint.style = android.graphics.Paint.Style.STROKE
-
-            postInvalidateDelayed(60L)
-        }
-    }
 
     /** Faceless classical bust silhouette (Greek laurel-crowned or plain Roman
      *  style) — a rounded head, draped shoulders, optional laurel band. No

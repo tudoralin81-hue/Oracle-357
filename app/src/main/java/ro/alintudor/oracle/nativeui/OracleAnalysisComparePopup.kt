@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import ro.alintudor.oracle.core.OracleDemo
 import ro.alintudor.oracle.core.OracleFundamentals
 import ro.alintudor.oracle.core.OracleMarketData
 import ro.alintudor.oracle.core.OracleOhlcvPoint
@@ -57,6 +58,11 @@ fun showCompareDialog(host: OracleNativeModule, primaryTicker: String) {
         val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
         button.setOnClickListener {
             val second = input.text.toString().trim().uppercase(Locale.US)
+            if (OracleDemo.active(context) && second !in OracleDemo.TICKERS) {
+                error.text = "${OracleDemo.LOCK} Demo compares only AAPL, NVDA and JPM \u2014 create an account to compare any ticker."
+                error.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
             if (second.isBlank() || second == primaryTicker.trim().uppercase(Locale.US)) {
                 error.text = if (second.isBlank()) "Enter a ticker." else "That's the same ticker \u2014 pick a different one."
                 error.visibility = View.VISIBLE
@@ -248,7 +254,14 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
         techA?.let { if (a.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE,
         techB?.let { if (b.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE)
     row("ADX(14) trend strength", numText(techA?.adx, 0), numText(techB?.adx, 0), better(techA?.adx, techB?.adx).first, better(techA?.adx, techB?.adx).second)
-    content.addView(OracleScoreRow(context, techA?.techScore, techB?.techScore, tickerA, tickerB, accent), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); bottomMargin = dp(4) })
+    if (OracleDemo.active(context)) {
+        content.addView(TextView(context).apply {
+            text = "${OracleDemo.LOCK}  Oracle scores are for account holders."
+            textSize = 12f; setTextColor(Color.rgb(205, 213, 228)); setPadding(0, dp(12), 0, dp(4))
+        })
+    } else {
+        content.addView(OracleScoreRow(context, techA?.techScore, techB?.techScore, tickerA, tickerB, accent), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); bottomMargin = dp(4) })
+    }
 
     sectionLabel("RELATIONSHIP")
     val corr = correlation(a, b)
