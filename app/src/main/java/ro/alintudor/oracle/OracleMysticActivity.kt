@@ -1145,7 +1145,7 @@ class OracleMysticActivity : Activity() {
                         // with replayed entrance animations — a few seconds after every
                         // fresh navigation into Growth, even though the user was
                         // already sitting there looking at the cached first paint.
-                        runCatching { renderModule("growth", reuseHost = true) }
+                        runCatching { renderModule("growth", silent = true, reuseHost = true) }
                             .onFailure { showModuleError("growth", it) }
                     }.onFailure { error ->
                         showGrowthCalculationError(error)
