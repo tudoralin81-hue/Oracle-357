@@ -251,7 +251,6 @@ object OracleGrowthEngine {
     }
 
     private fun runInternal(context: Context, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
-        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}
         val t0=System.nanoTime()
 
         // Universe: S&P 500 union every tradable Nasdaq listing (cap >= $2B,
@@ -328,6 +327,10 @@ object OracleGrowthEngine {
     }
 
     private fun rankCandidates(context: Context, candidates:List<C>, t0:Long, totalDeadline:Long, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
+        // Previously computed in runInternal; it belongs here because this is
+        // the only place it is read (carries forward the previous snapshot's
+        // news headline / source / T0 for a ticker that is picked again).
+        val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}
 
         // Enrich the technical shortlist with real non-OHLC data before ranking.
         // The previous implementation silently used 50/100 for News, Fundamentals
