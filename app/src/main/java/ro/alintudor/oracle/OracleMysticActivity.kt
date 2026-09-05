@@ -1133,7 +1133,19 @@ class OracleMysticActivity : Activity() {
                 mainHandler.post {
                     if (currentModule != "growth" || isFinishing) return@post
                     result.onSuccess {
-                        runCatching { renderModule("growth", reuseHost = isRefreshOfOpenScreen) }
+                        // By this point currentModule == "growth" is already confirmed
+                        // above — the screen is showing Growth right now, whether the
+                        // user just navigated in or this is a later refresh. Either
+                        // way this specific render is an in-place UPDATE of what's
+                        // already on screen, never a fresh entrance, so reuseHost is
+                        // unconditionally true here — NOT tied to isRefreshOfOpenScreen,
+                        // which only reflects what was true back when this background
+                        // fetch started (false on first navigation), and using that
+                        // stale value is what caused a full flashy rebuild — complete
+                        // with replayed entrance animations — a few seconds after every
+                        // fresh navigation into Growth, even though the user was
+                        // already sitting there looking at the cached first paint.
+                        runCatching { renderModule("growth", reuseHost = true) }
                             .onFailure { showModuleError("growth", it) }
                     }.onFailure { error ->
                         showGrowthCalculationError(error)
@@ -1154,13 +1166,20 @@ class OracleMysticActivity : Activity() {
             val result = runCatching { OracleLocalProcessor.refresh(repository) }
             mainHandler.post {
                 if (currentModule != key || isFinishing) return@post
-                // On a refresh of the already-open screen: update in place (same
-                // ScrollView instance, no rebuild) and skip entrance animations —
-                // reusing the exact same View is what actually guarantees the
-                // scroll position can't move, rather than relying on restoring a
-                // saved offset into a freshly built one. A genuine navigation
-                // into the module still gets the normal fresh build + entrance.
-                result.onSuccess { runCatching { renderModule(key, silent = isRefreshOfOpenScreen, reuseHost = isRefreshOfOpenScreen) }.onFailure { showModuleError(key, it) } }
+                // Same fix as Growth above: currentModule == key on the line just
+                // above already proves this module is on screen right now, so this
+                // completion render is always an in-place update — silent=true,
+                // reuseHost=true unconditionally, not gated on isRefreshOfOpenScreen
+                // (which reflects the state from before this background fetch even
+                // started, back when a first-time navigation hadn't shown anything
+                // yet). That stale check was why every fresh navigation into News,
+                // Watchlist, Alerts, Journal, Portfolio, or Knowledge quietly did a
+                // full rebuild — complete with a fresh ScrollView and replayed
+                // entrance animations — a few seconds after the screen first
+                // appeared, the moment the background fetch happened to finish:
+                // exactly the "hidden refresh" flicker, on every one of those
+                // modules, and only those, since Analysis has no such step at all.
+                result.onSuccess { runCatching { renderModule(key, silent = true, reuseHost = true) }.onFailure { showModuleError(key, it) } }
                     .onFailure { Toast.makeText(this, "Local refresh failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
             }
         }.start()
