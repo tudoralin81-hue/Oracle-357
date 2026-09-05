@@ -215,9 +215,7 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
         techA?.let { if (a.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE,
         techB?.let { if (b.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE)
     row("ADX(14) trend strength", numText(techA?.adx, 0), numText(techB?.adx, 0), better(techA?.adx, techB?.adx).first, better(techA?.adx, techB?.adx).second)
-    val techScoreA = techA?.techScore?.toDouble(); val techScoreB = techB?.techScore?.toDouble()
-    row("Oracle score", techScoreA?.let { "${it.toInt()}/100" } ?: "\u2014", techScoreB?.let { "${it.toInt()}/100" } ?: "\u2014",
-        better(techScoreA, techScoreB).first, better(techScoreA, techScoreB).second)
+    content.addView(OracleScoreRow(context, techA?.techScore, techB?.techScore, tickerA, tickerB, accent), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); bottomMargin = dp(4) })
 
     sectionLabel("RELATIONSHIP")
     val corr = correlation(a, b)
@@ -285,16 +283,51 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
     })
 }
 
+/** Oracle score, pulled out of the plain comparison table into its own
+ *  pair of boxes: bigger type and a count-up animation so the number that
+ *  matters most in the whole popup is the one the eye lands on first. */
+private class OracleScoreRow(context: Context, scoreA: Int?, scoreB: Int?, labelA: String, labelB: String, accent: Int) : LinearLayout(context) {
+    init {
+        orientation = HORIZONTAL
+        fun dp(v: Int) = (v * context.resources.displayMetrics.density).toInt()
+        val winner = when { scoreA == null || scoreB == null -> null; scoreA > scoreB -> 0; scoreB > scoreA -> 1; else -> null }
+        fun box(score: Int?, label: String, color: Int, isWinner: Boolean): LinearLayout {
+            val b = LinearLayout(context).apply {
+                orientation = VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), dp(13), if (isWinner) color else Color.rgb(40, 48, 68), if (isWinner) dp(2) else dp(1))
+            }
+            b.addView(TextView(context).apply { text = "$label · ORACLE SCORE"; textSize = 9.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.04f; setTextColor(Color.rgb(150, 160, 182)) })
+            val number = TextView(context).apply { text = "0"; textSize = 34f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, dp(4), 0, 0) }
+            b.addView(number)
+            b.addView(TextView(context).apply { text = "/ 100"; textSize = 10f; setTextColor(Color.rgb(150, 160, 182)) })
+            if (score != null) {
+                android.animation.ValueAnimator.ofInt(0, score).apply {
+                    duration = 750L; interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+                    addUpdateListener { anim -> if (number.isAttachedToWindow) number.text = (anim.animatedValue as Int).toString() }
+                    start()
+                }
+            } else number.text = "\u2014"
+            return b
+        }
+        addView(box(scoreA, labelA, accent, winner == 0), LayoutParams(0, -2, 1f).apply { marginEnd = dp(5) })
+        addView(box(scoreB, labelB, Color.rgb(255, 205, 45), winner == 1), LayoutParams(0, -2, 1f).apply { marginStart = dp(5) })
+    }
+}
+
 private class RelativeChartView(
     context: Context, private val a: List<OracleOhlcvPoint>, private val b: List<OracleOhlcvPoint>,
     private val labelA: String, private val labelB: String, private val accent: Int
 ) : View(context) {
-    private val paintA = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent; strokeWidth = 4f; style = Paint.Style.STROKE }
-    private val paintB = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 205, 45); strokeWidth = 4f; style = Paint.Style.STROKE }
+    private val paintA = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent; strokeWidth = 4f; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val paintB = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 205, 45); strokeWidth = 4f; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 24f; typeface = Typeface.DEFAULT_BOLD }
+    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(38, 46, 64); strokeWidth = 1.5f }
+    private val gridText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(110, 120, 142); textSize = 16f }
+    private val introStartNanos = System.nanoTime()
 
     override fun onDraw(c: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat(); val pad = 12f; val top = 34f
+        val w = width.toFloat(); val h = height.toFloat(); val pad = 14f; val top = 34f; val bottom = h - 20f
         val startTs = maxOf(a.first().timestamp, b.first().timestamp)
         val ra = a.filter { it.timestamp >= startTs }; val rb = b.filter { it.timestamp >= startTs }
         if (ra.size < 2 || rb.size < 2) return
@@ -303,18 +336,50 @@ private class RelativeChartView(
         val seriesB = rb.map { (it.close / baseB - 1.0) * 100.0 }
         val lo = minOf(seriesA.min(), seriesB.min(), 0.0); val hi = maxOf(seriesA.max(), seriesB.max(), 0.0)
         val span = (hi - lo).takeIf { it > 0.0 } ?: 1.0
-        fun y(v: Double) = (top + (h - top - pad) * (1.0 - (v - lo) / span)).toFloat()
-        fun path(series: List<Double>): Path { val p = Path()
-            series.forEachIndexed { i, v -> val x = pad + (w - 2 * pad) * i / (series.size - 1); val yy = y(v); if (i == 0) p.moveTo(x, yy) else p.lineTo(x, yy) }
+        fun y(v: Double) = (top + (bottom - top) * (1.0 - (v - lo) / span)).toFloat()
+
+        // Horizontal reference grid — four evenly spaced levels between the
+        // series' own min and max, each labelled, so the chart reads as a
+        // real axis instead of two bare lines floating in space.
+        for (i in 0..3) {
+            val v = lo + span * i / 3.0
+            val yy = y(v)
+            gridPaint.alpha = if (kotlin.math.abs(v) < 0.001) 90 else 45
+            c.drawLine(pad, yy, w - pad, yy, gridPaint)
+            c.drawText("${if (v >= 0) "+" else ""}${String.format(Locale.US, "%.0f", v)}%", pad, yy - 5f, gridText)
+        }
+
+        // Reveal animation: both series draw in together, left to right, over
+        // ~900ms, then a pulsing beacon marks where each line ends — the
+        // "give it a bit of life" the plain static lines didn't have.
+        val elapsed = (System.nanoTime() - introStartNanos) / 1_000_000_000.0
+        val reveal = (elapsed / 0.9).coerceIn(0.0, 1.0)
+        val shown = (2 + (seriesA.size - 2) * reveal).toInt().coerceIn(2, seriesA.size)
+        fun path(series: List<Double>, count: Int): Path { val p = Path()
+            for (i in 0 until count) { val x = pad + (w - 2 * pad) * i / (series.size - 1); val yy = y(series[i]); if (i == 0) p.moveTo(x, yy) else p.lineTo(x, yy) }
             return p }
-        val zero = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(60, 70, 90); strokeWidth = 2f }
-        c.drawLine(pad, y(0.0), w - pad, y(0.0), zero)
-        c.drawPath(path(seriesA), paintA)
-        c.drawPath(path(seriesB), paintB)
+        c.drawPath(path(seriesA, shown), paintA)
+        c.drawPath(path(seriesB, shown), paintB)
+
+        if (reveal >= 1.0) {
+            val pulse = ((kotlin.math.sin(System.nanoTime() / 380_000_000.0).toFloat() + 1f) / 2f)
+            fun beacon(series: List<Double>, color: Int) {
+                val x = pad + (w - 2 * pad) * (series.size - 1) / (series.size - 1)
+                val yy = y(series.last())
+                val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = Color.argb((90 + 90 * pulse).toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color)) }
+                c.drawCircle(x, yy, 9f + 4f * pulse, glow)
+                val core = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = Color.WHITE }
+                c.drawCircle(x, yy, 3f, core)
+            }
+            beacon(seriesA, accent); beacon(seriesB, Color.rgb(255, 205, 45))
+        }
+
         text.color = accent
         c.drawText("$labelA ${String.format(Locale.US, "%+.1f", seriesA.last())}%", pad, 24f, text)
         text.color = Color.rgb(255, 205, 45)
         val bLabel = "$labelB ${String.format(Locale.US, "%+.1f", seriesB.last())}%"
         c.drawText(bLabel, w - pad - text.measureText(bLabel), 24f, text)
+
+        postInvalidateDelayed(40L)
     }
 }
