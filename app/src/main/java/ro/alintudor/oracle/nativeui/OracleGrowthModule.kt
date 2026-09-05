@@ -559,12 +559,20 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         setPadding(0, host.dp(3), 0, host.dp(3))
         // Label and value sit side by side, no stretch between them — "SIGNAL [BUY]"
         // reads as one unit instead of a label on the left and its value a screen away.
-        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
+        // The label gets its natural (small, fixed) width FIRST — it must never be
+        // the one squeezed to nothing. The badge gets whatever's left and shrinks
+        // into that space instead: with the weight on the label, the longest
+        // possible value ("STRONG BUY") could claim the row's entire width and
+        // leave the label at 0dp, which forces a TextView to wrap one letter per
+        // line — exactly the "S / I / G / N / A / L" stack this was producing on
+        // narrow phones.
+        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(-2, -2))
         addView(TextView(host.root.context).apply {
             text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.END; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
             background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = host.dp(6) })
     }
 
 
