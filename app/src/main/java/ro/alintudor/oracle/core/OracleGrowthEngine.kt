@@ -241,7 +241,7 @@ object OracleGrowthEngine {
     /** SHORT technical base score (0..100) for any ticker from its daily candles —
      *  the same evaluate() Growth ranks with, so Portfolio can speak the same
      *  language. Null when there is not enough history (< 60 sessions). */
-    fun technicalScore(candles:List<OracleOhlcvPoint>):Int? = if(candles.size<60) null else runCatching { evaluate("_", candles)?.score }.getOrNull()
+    fun technicalScore(candles:List<OracleOhlcvPoint>):Int? = if(candles.size<60) null else runCatching { evaluate("_", candles)?.components?.let { genericTechnicalScore(it) } }.getOrNull()
 
     data class MarketRegime(val level:String, val note:String, val allocationFactor:Double)
 
@@ -630,6 +630,22 @@ object OracleGrowthEngine {
         val total=w.sum().toDouble()
         val raw=(keys.indices.sumOf{(c[keys[it]]?:50.0)*w[it].toDouble()}/total).toInt().coerceIn(0,100)
         return when{raw in 97..100->raw-3;raw in 92..96->raw-1;else->raw}
+    }
+
+    // A fixed, standalone weighting for the shared "quick technical score"
+    // (technicalScore(), below) that Portfolio, the Compare popup, and
+    // score-based Alerts all depend on — deliberately NOT the same array as
+    // weights["SHORT"] above, and NOT run through OracleGrowthEmergency's
+    // override. Growth's own ranking is free to change (or be overridden
+    // via the emergency file) without ever moving those three other
+    // features' numbers, and this array itself is not the sensitive one —
+    // it's a generic utility score, not Growth's tuned ranking recipe.
+    private val genericTechnicalWeights = intArrayOf(21,18,18,12,16,12,3,4,4,2,2,1, 8,6,5,7,6)
+    private fun genericTechnicalScore(c: Map<String, Double>): Int {
+        val w = genericTechnicalWeights
+        val total = w.sum().toDouble()
+        val raw = (keys.indices.sumOf { (c[keys[it]] ?: 50.0) * w[it].toDouble() } / total).toInt().coerceIn(0, 100)
+        return when { raw in 97..100 -> raw - 3; raw in 92..96 -> raw - 1; else -> raw }
     }
 
     private fun tie(c:C,h:String):Double=0.0
