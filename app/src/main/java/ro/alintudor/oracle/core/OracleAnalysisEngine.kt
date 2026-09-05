@@ -18,7 +18,9 @@ object OracleAnalysisEngine {
     data class Result(
         val ticker:String,val price:Double,val shortScore:Int,val mediumScore:Int,val longScore:Int,
         val signal:String,val risk:String,val allocation:Double,val sector:String?,val company:String?,val rsi:Double,val momentum5D:Double,
-        val momentum20D:Double,val volumeRatio:Double,val sma50:Double?,val sma200:Double?,val adx:Double?,val atrPct:Double,val atrValue:Double,val macd:Double?,val macdSignal:Double?,val week52High:Double?,val week52Low:Double?,val fundamentals:OracleFundamentals?,val factors:List<Double>,val rawValues:List<String>
+        val momentum20D:Double,val volumeRatio:Double,val sma50:Double?,val sma200:Double?,val adx:Double?,val atrPct:Double,val atrValue:Double,val macd:Double?,val macdSignal:Double?,val week52High:Double?,val week52Low:Double?,val fundamentals:OracleFundamentals?,val factors:List<Double>,val rawValues:List<String>,
+        /** All 17 Growth factors for this ticker, 0..100, ordered as OracleGrowthEngine.factorKeys — computed by the Growth engine itself. */
+        val growthComponents:List<Int>
     )
 
     fun analyze(raw:String):Result? {
@@ -43,7 +45,14 @@ object OracleAnalysisEngine {
         val ss=score(shortWeights);val ms=score(mediumWeights);val ls=score(longWeights);val overextension=((rsi-65.0)/15.0).coerceIn(0.0,1.0);val volatility=(atrPct/8.0).coerceIn(0.0,1.0);val volumeShock=((vr-1.0)/2.0).coerceIn(0.0,1.0);val acceleration=(abs(m5)/20.0).coerceIn(0.0,1.0);val riskScore=(100.0*(overextension*.30+volatility*.35+volumeShock*.15+acceleration*.20)).coerceIn(0.0,100.0);val risk=when{riskScore>=65->"HIGH";riskScore>=35->"MEDIUM";else->"LOW"};val conviction=((ss+ms+ls)/3.0).coerceIn(0.0,100.0);val rawAllocation=1+(conviction/100)*7;val riskFactor=when(risk){"HIGH"->.55;"MEDIUM"->.78;else->1.0};val allocation=(rawAllocation*riskFactor).coerceIn(1.0,8.0).roundToInt().toDouble();val signal=when{ss>=85->"STRONG BUY";ss>=75->"BUY";ss>=65->"HOLD";ss>=55->"WATCH";else->"AVOID"}
         val rrRatio=if(atr>0)max(0.0,(hi-p)/atr)else 0.0
         val rawValues=listOf("${news.headlineCount} headlines • +${news.positiveHits} positive • -${news.negativeHits} negative • score ${news.score}/100",if(p>prior20)"BREAKOUT: YES • R20 ${money(prior20)} • VR %.2fx".format(Locale.US,vr)else"BREAKOUT: NO • R20 ${money(prior20)} • VR %.2fx".format(Locale.US,vr),"SMA20 ${money(s20)} • SMA50 ${money(s50)} • SMA200 ${money(s200)} • Price ${money(p)}","5D %.2f%% • 20D %.2f%%".format(Locale.US,m5,m20),"Volume %.2fx vs 20D average".format(Locale.US,vr),"Support ${money(lo)} • Resistance ${money(hi)}",fundamentals?.rawText?:"Fundamental data unavailable", "Lower ${money(mid?.minus(2*(sd?:0.0)))} • Mid ${money(mid)} • Upper ${money(mid?.plus(2*(sd?:0.0)))} • Position %.1f%%".format(Locale.US,bbPos*100),"Tenkan/Kijun ${if(ichi)"bullish"else"unconfirmed/bearish"}",marketContext.rawText,"R/R %.2fx • Target ${money(hi)} • ATR ${money(atr)}".format(Locale.US,rrRatio),"ADX(14) ${money(adx)}")
-        return Result(ticker,p,ss,ms,ls,signal,risk,allocation,resolvedSector,null,rsi,m5,m20,vr,s50,s200,adx,atrPct,atr,macdPair.first,macdPair.second,week52High,week52Low,fundamentals,factors,rawValues)
+        // Same factor code as Growth (Section: unified evidence grid). The four
+        // enriched factors are overlaid with the values this screen already
+        // fetched, so nothing is fetched twice.
+        val gc=OracleGrowthEngine.factorComponents(ticker,d)?.toMutableMap() ?: mutableMapOf()
+        gc["news"]=news.score.toDouble(); gc["fundamentals"]=fundamentalScore; gc["market_sector"]=marketScore
+        gc["community"]=(runCatching { OracleGrowthEngine.communityScoreFor(ticker) }.getOrNull() ?: 50).toDouble()
+        val growthComponents=OracleGrowthEngine.factorKeys.map{ (gc[it] ?: 50.0).roundToInt().coerceIn(0,100) }
+        return Result(ticker,p,ss,ms,ls,signal,risk,allocation,resolvedSector,null,rsi,m5,m20,vr,s50,s200,adx,atrPct,atr,macdPair.first,macdPair.second,week52High,week52Low,fundamentals,factors,rawValues,growthComponents)
     }
     private fun macd(valuesDesc:List<Double>):Pair<Double?,Double?> {
         if(valuesDesc.size<35) return null to null

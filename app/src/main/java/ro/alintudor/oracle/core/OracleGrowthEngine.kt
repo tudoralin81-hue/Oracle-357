@@ -187,6 +187,24 @@ object OracleGrowthEngine {
      *  snapshot with a different count came from an older engine and must be
      *  regenerated rather than frozen (see OracleLocalProcessor). */
     fun factorCount():Int = keys.size
+    val factorKeys:List<String> get() = keys
+
+    /**
+     * The full 17-factor component map for one ticker, computed by the very
+     * same evaluate() Growth ranks with — so the Analysis screen shows the
+     * identical numbers Growth would use, not a parallel re-implementation.
+     * news / fundamentals / market_sector / community come back neutral (50)
+     * here because they need enrichment the caller may already have done.
+     * Loads the SPY benchmark on demand (relative_strength needs it) if no
+     * Growth run has populated it yet in this process.
+     */
+    fun factorComponents(ticker:String, candles:List<OracleOhlcvPoint>):Map<String,Double>? {
+        if(candles.size<60) return null
+        if(benchmarkCloses.isEmpty()) benchmarkCloses=runCatching { OracleMarketData.fetchDaily("SPY","1y").sortedByDescending{it.timestamp}.map{it.close}.filter{it>0.0} }.getOrDefault(emptyList())
+        return runCatching { evaluate(ticker,candles)?.components }.getOrNull()
+    }
+
+    fun communityScoreFor(ticker:String):Int? = communityScore(ticker)
 
     /**
      * Bump this whenever ANYTHING about what a recommendation carries changes

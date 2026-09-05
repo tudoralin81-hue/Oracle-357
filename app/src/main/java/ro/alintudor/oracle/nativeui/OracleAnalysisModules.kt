@@ -265,76 +265,100 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             }.start()
         }
 
-        // ANALYSIS_PARAMETERS_V8
-        // All market-relevant values are presented in one two-column matrix:
-        // Oracle factors + supplementary technical indicators + fundamentals.
-        host.addSectionLabel("RELEVANT MARKET PARAMETERS")
-        val relevantGrid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
         val f = r.fundamentals
-        val relevantParameters = mutableListOf<Pair<String, String>>()
-
-        // Oracle factors: rawValues[0] is internal News; visible factors start at rawValues[1].
-        OracleAnalysisEngine.factorNames.forEachIndexed { i, name ->
-            if (!name.equals("Fundamentals", ignoreCase = true)) {
-                relevantParameters.add(name to (r.rawValues.getOrNull(i + 1) ?: "Value unavailable"))
-            }
-        }
-
-        // Supplementary technical indicators.
-        relevantParameters.add("RSI (14)" to fmt(r.rsi))
-        relevantParameters.add("MACD (12/26)" to metricPair(r.macd, r.macdSignal))
-        relevantParameters.add("52W HIGH / LOW" to "${moneyOrDash(r.week52High)} / ${moneyOrDash(r.week52Low)}")
-        relevantParameters.add("ATR" to "${money(r.atrValue)}  •  ${fmt(r.atrPct)}%")
-
-        // Fundamentals — kept in the same matrix, not in a separate section.
-        relevantParameters.add("Sector" to (f?.sector ?: r.sector ?: "—"))
-        relevantParameters.add("Industry" to (f?.industry ?: "—"))
-        relevantParameters.add("P/E" to num2(f?.trailingPe))
-        relevantParameters.add("Fwd P/E" to num2(f?.forwardPe))
-        relevantParameters.add("P/B" to num2(f?.priceToBook))
-        relevantParameters.add("Revenue growth (YoY)" to pctFund(f?.revenueGrowth))
-        relevantParameters.add("Earnings growth" to pctFund(f?.earningsGrowth))
-        relevantParameters.add("Net margin" to pctFund(f?.profitMargin))
-        relevantParameters.add("Operating margin" to pctFund(f?.operatingMargin))
-        relevantParameters.add("ROE" to pctFund(f?.returnOnEquity))
-        relevantParameters.add("D/E" to num2(f?.debtToEquity))
-        relevantParameters.add("Current ratio" to num2(f?.currentRatio))
-        relevantParameters.add("Quick ratio" to num2(f?.quickRatio))
-        relevantParameters.add("Beta" to num2(f?.beta))
-        relevantParameters.add("Market cap" to capText(f?.marketCap))
-
-        // Composite verdicts (formula-based, all inputs shown alongside).
         val fairValue = OracleValuation.fairValue(f, f?.sector ?: r.sector)
         val health = OracleValuation.financialHealth(f)
-        relevantParameters.add("Fair Valuation" to fairValueText(fairValue))
-        relevantParameters.add("Financial Health" to financialHealthText(health))
 
-        addMetricGrid(relevantGrid, relevantParameters)
-        host.content.addView(relevantGrid, LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(0, 0, 0, host.dp(10))
-        })
-
-        host.addSectionLabel("ORACLE ANALYSIS")
-        val card = LinearLayout(host.root.context).apply {
+        // ==== 2. VERDICT — decision first, same anatomy as a Growth card ====
+        // Three hero scores (one per horizon) with the SIGNAL / RISK /
+        // ALLOCATION badges beneath. These numbers were always computed by
+        // the engine; before this they were never shown, only 15 lines of prose.
+        host.addSectionLabel("ORACLE VERDICT")
+        val verdictCard = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(15), host.dp(13), host.dp(15), host.dp(13))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(7, 12, 23))
-                cornerRadius = host.dp(15).toFloat()
-                setStroke(host.dp(1), Color.rgb(34, 55, 82))
+            background = GradientDrawable().apply { setColor(Color.rgb(7, 12, 23)); cornerRadius = host.dp(15).toFloat(); setStroke(host.dp(1), Color.rgb(34, 55, 82)) }
+        }
+        val scores = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
+        scores.addView(heroScore("SHORT", "1\u201310 days", r.shortScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        scores.addView(heroScore("MEDIUM", "2\u201312 weeks", r.mediumScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, host.dp(4), 0) })
+        scores.addView(heroScore("LONG", "3\u201312 months", r.longScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        verdictCard.addView(scores)
+        val badges = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(10), 0, 0) }
+        badges.addView(badge("SIGNAL", r.signal, signalColor(r.signal)), LinearLayout.LayoutParams(0, -2, 1.2f).apply { setMargins(0, 0, host.dp(4), 0) })
+        badges.addView(badge("RISK", r.risk, riskColor(r.risk)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, host.dp(4), 0) })
+        badges.addView(badge("ALLOCATION", "${fmt(r.allocation)}%", Color.rgb(255, 160, 25)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        verdictCard.addView(badges)
+        host.content.addView(verdictCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+
+        // ==== 3. VALUE & HEALTH — identical boxes to Growth ====
+        val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, host.dp(10)) }
+        verdicts.addView(verdictBox("FAIR VALUATION", fairValue.label, fairValue.score, fairValueColor(fairValue.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        verdicts.addView(verdictBox("FINANCIAL HEALTH", health.label, health.score, healthColor(health.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        host.content.addView(verdicts)
+
+        // ==== 4. EVIDENCE — the same 18-cell grid Growth draws, with this ticker's factor VALUES ====
+        host.addSectionLabel("FACTOR SCORES \u2022 SAME ENGINE AS GROWTH")
+        val gridCard = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(host.dp(15), host.dp(10), host.dp(15), host.dp(10))
+            background = GradientDrawable().apply { setColor(Color.rgb(7, 12, 23)); cornerRadius = host.dp(15).toFloat(); setStroke(host.dp(1), Color.rgb(34, 55, 82)) }
+        }
+        OracleFactorGrid.add(host, gridCard, "Factor scores (0\u2013100)", r.growthComponents, 100)
+        host.content.addView(gridCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+
+        // ==== 5. CONTEXT — the chart ====
+        addTechnicalChart(r.ticker)
+
+        // ==== 6. DETAILS — raw numbers, grouped and collapsed by default ====
+        // Whoever wants a specific figure can open its group; nobody has to
+        // scroll past ~28 cards to reach the chart.
+        host.addSectionLabel("DETAILS")
+        val technical = mutableListOf<Pair<String, String>>()
+        OracleAnalysisEngine.factorNames.forEachIndexed { i, name ->
+            if (!name.equals("Fundamentals", ignoreCase = true) && !name.equals("Market / Sector", ignoreCase = true)) {
+                technical.add(name to (r.rawValues.getOrNull(i + 1) ?: "Value unavailable"))
             }
         }
-        analysisLines(r).forEach { line ->
-            card.addView(TextView(host.root.context).apply {
-                text = "— $line"
-                textSize = 13f
-                setTextColor(Color.rgb(205, 213, 228))
-                setPadding(0, host.dp(4), 0, host.dp(4))
-            })
-        }
-        host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(12)) })
+        technical.add("RSI (14)" to fmt(r.rsi))
+        technical.add("MACD (12/26)" to metricPair(r.macd, r.macdSignal))
+        technical.add("52W HIGH / LOW" to "${moneyOrDash(r.week52High)} / ${moneyOrDash(r.week52Low)}")
+        technical.add("ATR" to "${money(r.atrValue)}  \u2022  ${fmt(r.atrPct)}%")
+        collapsible("TECHNICAL", technical.size) { box -> addMetricGrid(box, technical) }
 
-        addTechnicalChart(r.ticker)
+        // Sector is already in the identity header — not repeated here.
+        val fundamentalsList = mutableListOf<Pair<String, String>>()
+        fundamentalsList.add("Industry" to (f?.industry ?: "\u2014"))
+        fundamentalsList.add("P/E" to num2(f?.trailingPe))
+        fundamentalsList.add("Fwd P/E" to num2(f?.forwardPe))
+        fundamentalsList.add("P/B" to num2(f?.priceToBook))
+        fundamentalsList.add("Revenue growth (YoY)" to pctFund(f?.revenueGrowth))
+        fundamentalsList.add("Earnings growth" to pctFund(f?.earningsGrowth))
+        fundamentalsList.add("Net margin" to pctFund(f?.profitMargin))
+        fundamentalsList.add("Operating margin" to pctFund(f?.operatingMargin))
+        fundamentalsList.add("ROE" to pctFund(f?.returnOnEquity))
+        fundamentalsList.add("D/E" to num2(f?.debtToEquity))
+        fundamentalsList.add("Current ratio" to num2(f?.currentRatio))
+        fundamentalsList.add("Quick ratio" to num2(f?.quickRatio))
+        fundamentalsList.add("Market cap" to capText(f?.marketCap))
+        fundamentalsList.add("Fair Valuation" to fairValueText(fairValue))
+        fundamentalsList.add("Financial Health" to financialHealthText(health))
+        collapsible("FUNDAMENTALS", fundamentalsList.size) { box -> addMetricGrid(box, fundamentalsList) }
+
+        val market = mutableListOf<Pair<String, String>>()
+        OracleAnalysisEngine.factorNames.forEachIndexed { i, name ->
+            if (name.equals("Market / Sector", ignoreCase = true)) market.add(name to (r.rawValues.getOrNull(i + 1) ?: "Value unavailable"))
+        }
+        market.add("Beta" to num2(f?.beta))
+        collapsible("MARKET", market.size) { box -> addMetricGrid(box, market) }
+
+        collapsible("ORACLE READING", analysisLines(r).size) { box ->
+            analysisLines(r).forEach { line ->
+                box.addView(TextView(host.root.context).apply {
+                    text = "\u2014 $line"; textSize = 13f; setTextColor(Color.rgb(205, 213, 228)); setPadding(host.dp(4), host.dp(4), host.dp(4), host.dp(4))
+                })
+            }
+        }
 
         val inWatchNow = watchStore.load().any { it.equals(watchTicker, true) }
         val watchButton = Button(host.root.context).apply {
@@ -557,6 +581,79 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
     }
     private fun metricPair(value: Double?, signal: Double?): String = "${num2(value)}  •  SIG ${num2(signal)}"
+    // ---- Unified-anatomy helpers (styled to match the Growth card) ----
+    private val vGreen = Color.rgb(105, 245, 35); private val vOrange = Color.rgb(255, 160, 25); private val vRed = Color.rgb(255, 80, 90)
+    private val vMuted = Color.rgb(165, 174, 195); private val vCyan = Color.rgb(75, 225, 255)
+
+    private fun signalColor(s: String) = when { s.contains("STRONG BUY") -> Color.rgb(120, 255, 45); s.contains("BUY") -> vGreen; s.contains("HOLD") -> Color.rgb(50, 220, 190); s.contains("WATCH") -> Color.rgb(255, 205, 45); else -> vRed }
+    private fun riskColor(s: String) = when (s.uppercase(Locale.US)) { "LOW" -> vGreen; "MEDIUM" -> vOrange; else -> vRed }
+    private fun fairValueColor(label: String) = when { label.contains("UNDERVALUED") -> vGreen; label.contains("OVERVALUED") -> vRed; label.contains("FAIRLY") -> vOrange; else -> vMuted }
+    private fun healthColor(label: String) = when { label.contains("STRONG") -> vGreen; label.contains("STABLE") -> vOrange; label.contains("DISTRESSED") -> vRed; label.contains("WEAK") -> Color.rgb(255, 150, 60); else -> vMuted }
+
+    /** Hero score box with a count-up, one per horizon — the Analysis twin of Growth's scoreMetric. */
+    private fun heroScore(horizon: String, span: String, score: Int): LinearLayout {
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(host.dp(4), host.dp(8), host.dp(4), host.dp(8))
+            background = OracleNativeModule.rounded(Color.rgb(6, 16, 22), host.dp(12), vCyan, host.dp(1))
+        }
+        box.addView(TextView(host.root.context).apply { text = horizon; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(vMuted); gravity = Gravity.CENTER })
+        val number = TextView(host.root.context).apply { text = "0"; textSize = 22f; typeface = Typeface.DEFAULT_BOLD; setTextColor(vCyan); gravity = Gravity.CENTER }
+        box.addView(number)
+        box.addView(TextView(host.root.context).apply { text = span; textSize = 8f; setTextColor(vMuted); gravity = Gravity.CENTER })
+        android.animation.ValueAnimator.ofInt(0, score).apply {
+            duration = 700L; interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+            addUpdateListener { anim -> if (number.isAttachedToWindow) number.text = "${anim.animatedValue}/100" }
+            start()
+        }
+        return box
+    }
+
+    private fun badge(label: String, value: String, color: Int): LinearLayout = LinearLayout(host.root.context).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        addView(TextView(host.root.context).apply { text = label; textSize = 8f; setTextColor(vMuted); gravity = Gravity.CENTER })
+        addView(TextView(host.root.context).apply {
+            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1; gravity = Gravity.CENTER
+            setPadding(host.dp(8), host.dp(3), host.dp(8), host.dp(3))
+            background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = host.dp(3) })
+    }
+
+    private fun verdictBox(title: String, label: String, score: Int?, color: Int): LinearLayout {
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(host.dp(11), host.dp(9), host.dp(11), host.dp(9))
+            background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), color, host.dp(1))
+        }
+        box.addView(TextView(host.root.context).apply { text = title; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(vMuted) })
+        box.addView(TextView(host.root.context).apply { text = if (label.isBlank()) "\u2014" else label; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, host.dp(3), 0, 0) })
+        if (score != null) box.addView(TextView(host.root.context).apply { text = "$score/100"; textSize = 10f; setTextColor(Color.rgb(170, 178, 196)); setPadding(0, host.dp(1), 0, 0) })
+        return box
+    }
+
+    /** Collapsed-by-default section: a tappable header with a count and a chevron; content is built once, lazily, on first open. */
+    private fun collapsible(title: String, count: Int, build: (LinearLayout) -> Unit) {
+        val header = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(host.dp(14), host.dp(12), host.dp(14), host.dp(12))
+            background = OracleNativeModule.rounded(Color.rgb(7, 12, 23), host.dp(12), Color.rgb(34, 55, 82), host.dp(1))
+            isClickable = true; isFocusable = true
+        }
+        header.addView(TextView(host.root.context).apply { text = title; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.08f; setTextColor(host.accent) }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(TextView(host.root.context).apply { text = "$count"; textSize = 10f; setTextColor(vMuted); setPadding(0, 0, host.dp(10), 0) })
+        val chevron = TextView(host.root.context).apply { text = "\u2304"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(vMuted) }
+        header.addView(chevron)
+        val body = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, host.dp(6), 0, 0) }
+        var built = false
+        header.setOnClickListener {
+            if (!built) { build(body); built = true }
+            val open = body.visibility != View.VISIBLE
+            body.visibility = if (open) View.VISIBLE else View.GONE
+            chevron.text = if (open) "\u2303" else "\u2304"
+        }
+        host.content.addView(header, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(6)) })
+        host.content.addView(body, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(6)) })
+    }
+
     private fun fairValueText(fv: OracleValuation.FairValue): String {
         if (fv.score == null) return "${fv.label} — need P/E and growth data"
         val peg = fv.peg?.let { "PEG ${"%.2f".format(Locale.US, it)}" } ?: "PEG n/a"

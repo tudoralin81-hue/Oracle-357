@@ -118,8 +118,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             setPadding(0, host.dp(9), 0, host.dp(9))
         }
         card.addView(quoteLabel)
-        card.addView(text("Analysis runs in the background. Values appear only once the current calculation finishes.", 9f, Typeface.DEFAULT, muted, 0, 9).apply { gravity = Gravity.CENTER })
-        card.addView(text("Target maximum: 20 seconds", 9f, Typeface.DEFAULT_BOLD, muted, 0, 6).apply { gravity = Gravity.CENTER })
+        card.addView(text("Values appear once the calculation finishes.", 9f, Typeface.DEFAULT, muted, 0, 9).apply { gravity = Gravity.CENTER })
         host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(390)).apply { setMargins(0, 0, 0, host.dp(10)) })
 
         val handler = Handler(Looper.getMainLooper())
@@ -255,20 +254,41 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(identity)
         card.addView(divider())
 
-        val metrics = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(7), 0, host.dp(4)) }
         val demo = OracleDemo.active(host.root.context)
-        metrics.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -2, 1.35f).apply { setMargins(0, 0, host.dp(6), 0) })
-        metrics.addView(metric("SIGNAL", compactSignal(item.signal), signalColor(item.signal)), LinearLayout.LayoutParams(0, -2, 1.15f))
-        metrics.addView(metric("RISK", item.risk, riskColor(item.risk)), LinearLayout.LayoutParams(0, -2, 1f))
-        metrics.addView(metric("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange), LinearLayout.LayoutParams(0, -2, 1f))
-        card.addView(metrics)
 
-        val lower = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, host.dp(4)) }
+        // ---- 1. VERDICT: one visual block, not four equal columns ----
+        // The hero score on the left; SIGNAL / RISK / ALLOCATION stacked
+        // vertically on the right as single-line badges, so "STRONG BUY"
+        // never wraps and the eye reads decision-first.
+        val verdict = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, host.dp(6)) }
+        verdict.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(8), 0) })
+        val badges = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
+        badges.addView(badgeRow("SIGNAL", item.signal, signalColor(item.signal)))
+        badges.addView(badgeRow("RISK", item.risk, riskColor(item.risk)))
+        badges.addView(badgeRow("ALLOCATION", if (demo) OracleDemo.LOCK else "${format(item.allocationMax)}%", orange))
+        verdict.addView(badges, LinearLayout.LayoutParams(0, -2, 1.6f))
+        card.addView(verdict)
+
+        // ---- 2. VALUE & HEALTH: "is it worth the price, is it solid" ----
+        // Directly under the verdict, because that is the question that
+        // naturally follows "what should I do".
+        if (item.fairValueScore != null || item.financialHealthScore != null) {
+            val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(2), 0, host.dp(8)) }
+            verdicts.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+            verdicts.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+            card.addView(verdicts)
+        }
+
+        // ---- 3. EVIDENCE: the 18-parameter grid, display unchanged ----
+        OracleFactorGrid.add(host, card, "Weights", item.weights, item.weights.maxOrNull() ?: 1)
+
+        // ---- 4. CONTEXT: explanatory, not decisional, so it sits after the evidence ----
+        val lower = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, host.dp(4)) }
         val forecast = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
         // Honest label: this number is the ATR-based expected range for the
         // horizon (2×/4.5×/8×ATR), not a prediction of where price will go.
         forecast.addView(text("Expected range (ATR)", 10f, Typeface.DEFAULT, muted, 0, 0))
-        forecast.addView(text(if (demo) OracleDemo.LOCK else signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
+        forecast.addView(text(if (demo) OracleDemo.LOCK else signedPct(item.forecastPct), 20f, Typeface.DEFAULT_BOLD, green, 0, 2))
         item.earningsInDays?.takeIf { it <= 14 }?.let { d ->
             forecast.addView(text(if (d == 0) "Earnings today" else "Earnings in $d day${if (d == 1) "" else "s"}", 10f, Typeface.DEFAULT_BOLD, orange, 0, 2))
         }
@@ -280,17 +300,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         lower.addView(momentum, LinearLayout.LayoutParams(0, -2, 1.1f))
         lower.addView(SparklineView(host.root.context, accent), LinearLayout.LayoutParams(host.dp(112), host.dp(52)))
         card.addView(lower)
-
-        // Fair Valuation and Financial Health: composite verdicts from the
-        // same fundamentals already fetched for the Growth score's own
-        // "Fundamentals" factor — the reasoning behind each is in Analysis.
-        if (item.fairValueScore != null || item.financialHealthScore != null) {
-            val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(2), 0, host.dp(8)) }
-            verdicts.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
-            verdicts.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
-            card.addView(verdicts)
-        }
-        addCompactWeights(card, item.weights)
 
         val linked = news.firstOrNull { it.ticker.equals(item.ticker, true) }
         val newsTitle = if (item.newsTitle.isNotBlank()) item.newsTitle else linked?.title.orEmpty()
@@ -347,100 +356,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         box.addView(text(if (label.isBlank()) "\u2014" else label, 12f, Typeface.DEFAULT_BOLD, color, 0, 3))
         if (score != null) box.addView(text("$score/100", 10f, Typeface.DEFAULT, Color.rgb(170, 178, 196), 0, 1))
         return box
-    }
-
-    private fun addCompactWeights(parent: LinearLayout, weights: List<Int>) {
-        if (weights.isEmpty()) return
-        parent.addView(text("Weights", 10f, Typeface.DEFAULT_BOLD, white, 0, 5))
-        val names = listOf("News", "BO", "Trend", "Mom", "Vol", "S/R", "Fund", "BB", "Ichimoku", "Mkt", "R/R", "ADX",
-            "RelStr", "VolReg", "52wPos", "OBV", "Crowd")
-        val maxWeight = weights.maxOrNull()?.takeIf { it > 0 } ?: 1
-        val grid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, host.dp(2), 0, host.dp(1)) }
-        val columns = 6
-        // LO (Lucky Oracle) sits as one more cell after the weighted factors.
-        // It is NOT a weight — it is the random nudge the engine added to the
-        // final score — so it gets its own constant rendering that shows LO is
-        // in play without disclosing the draw (see addHazardBar).
-        val cellCount = weights.size + 1
-        val rows = (cellCount + columns - 1) / columns
-        for (r in 0 until rows) {
-            val row = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            for (c in 0 until columns) {
-                val i = r * columns + c
-                val cell = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2)) }
-                when {
-                    i < weights.size -> {
-                        cell.addView(text(names.getOrElse(i) { "?" }, 8f, Typeface.DEFAULT, muted, 0, 0))
-                        addWeightBar(cell, weights[i], maxWeight)
-                    }
-                    i == weights.size -> {
-                        cell.addView(text("LO", 8f, Typeface.DEFAULT, muted, 0, 0))
-                        addHazardBar(cell)
-                    }
-                }
-                row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
-            }
-            grid.addView(row)
-        }
-        parent.addView(grid)
-    }
-
-    /**
-     * LO — "Lucky Oracle": the deliberate random nudge applied to the final
-     * score, always drawn from the same -3..+3 band.
-     *
-     * The cell shows that LO is in play, NOT the draw itself. Rendering the
-     * actual value (as a number or as a count of lit segments) would invite
-     * reading it as information, and it is by definition the one input that
-     * carries none — a different roll every ticker, every day. The band is
-     * fixed and known, so the number adds nothing a reader can act on. It
-     * stays recorded in the engine log for diagnostics.
-     */
-    private fun addHazardBar(parent: LinearLayout) {
-        val loColor = Color.rgb(190, 150, 255)
-        val bar = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, host.dp(3), 0, 0)
-        }
-        // Identical on every card: a symmetric band with a marked centre.
-        for (seg in 0 until 5) {
-            val centre = seg == 2
-            bar.addView(android.view.View(host.root.context).apply {
-                background = OracleNativeModule.rounded(if (centre) loColor else Color.rgb(58, 48, 82), host.dp(1), loColor, if (centre) 0 else host.dp(1))
-                alpha = if (centre) 0.95f else 0.55f
-            }, LinearLayout.LayoutParams(host.dp(7), host.dp(6)).apply { setMargins(host.dp(1), 0, host.dp(1), 0) })
-        }
-        parent.addView(bar)
-    }
-
-    /** A 5-segment horizontal bar (20% per segment) standing in for the raw
-     *  weight number — filled proportionally to this factor's importance
-     *  relative to the strongest factor for the horizon, colored by that
-     *  same proportion (green = high, orange = medium, red = low). */
-    private fun addWeightBar(parent: LinearLayout, value: Int, maxValue: Int) {
-        val pct = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
-        val filledSegments = kotlin.math.round(pct * 5f).toInt().coerceIn(if (value > 0) 1 else 0, 5)
-        val color = when {
-            pct >= 0.6f -> green
-            pct >= 0.3f -> orange
-            else -> red
-        }
-        val bar = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, host.dp(3), 0, 0)
-        }
-        for (seg in 0 until 5) {
-            val filled = seg < filledSegments
-            val segView = android.view.View(host.root.context).apply {
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (filled) color else Color.TRANSPARENT)
-                    cornerRadius = host.dp(1).toFloat()
-                    if (!filled) setStroke(host.dp(1), Color.rgb(60, 68, 84))
-                }
-            }
-            bar.addView(segView, LinearLayout.LayoutParams(host.dp(7), host.dp(9)).apply { if (seg < 4) marginEnd = host.dp(2) })
-        }
-        parent.addView(bar)
     }
 
     private fun addNews(items: List<OracleGrowthRecommendation>, fallbackNews: List<OracleNews>) {
@@ -576,7 +491,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun horizonOrder(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> 0; "MEDIUM" -> 1; else -> 2 }
     private fun horizonLabel(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "●  SHORT TERM"; "MEDIUM" -> "●  MEDIUM TERM"; else -> "●  LONG TERM" }
     private fun horizonRange(horizon: String) = when (horizon.uppercase(Locale.US)) { "SHORT" -> "1–10 trading days"; "MEDIUM" -> "2–12 weeks"; else -> "3–12 months" }
-    private fun compactSignal(signal: String) = signal.replace("STRONG ", "STRONG\n").trim()
     private fun signalColor(signal: String): Int {
         val s = signal.uppercase(Locale.US)
         return when {
@@ -621,6 +535,21 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 2))
         addView(text(value, 13f, Typeface.DEFAULT_BOLD, color, 0, 0))
     }
+
+    /** One single-line labelled badge: small muted label on the left, the
+     *  value in its own color on the right. Used for the SIGNAL / RISK /
+     *  ALLOCATION stack next to the hero score. */
+    private fun badgeRow(label: String, value: String, color: Int): LinearLayout = LinearLayout(host.root.context).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, host.dp(3), 0, host.dp(3))
+        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
+        addView(TextView(host.root.context).apply {
+            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1
+            gravity = Gravity.END; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
+            background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
+        })
+    }
+
 
     /** The one number the whole card exists to show — deliberately bigger
      *  and boxed apart from its SIGNAL/RISK/ALLOCATION siblings, with a
