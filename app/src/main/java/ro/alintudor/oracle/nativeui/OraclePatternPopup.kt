@@ -128,6 +128,11 @@ private fun renderPatternResults(
             text = direction; textSize = 9.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(color)
             setPadding(dp(8), dp(3), dp(8), dp(3))
             background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), dp(8), color, dp(1))
+        }.also { badge ->
+            android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
+                duration = 1400L; repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { anim -> if (badge.isAttachedToWindow) badge.alpha = anim.animatedValue as Float else anim.cancel() }
+            }.start()
         })
         card.addView(top)
         card.addView(TextView(context).apply {
@@ -223,10 +228,21 @@ private class PatternMiniChartView(
     private val linePaint = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 3f; color = Color.rgb(95, 105, 135) }
     private val markerLinePaint = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 2.5f; pathEffect = DashPathEffect(floatArrayOf(7f, 6f), 0f) }
     private val markerDotPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL }
+    private var drawProgress = 0f
+    private var animationStarted = false
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (candles.size < 2) return
+        if (!animationStarted) {
+            animationStarted = true
+            post {
+                android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = 900L; interpolator = android.view.animation.DecelerateInterpolator()
+                    addUpdateListener { anim -> if (isAttachedToWindow) { drawProgress = anim.animatedValue as Float; invalidate() } else anim.cancel() }
+                }.start()
+            }
+        }
         val w = width.toFloat(); val h = height.toFloat()
         val padY = h * 0.12f
         val prices = candles.map { it.close } + markers.map { it.second }
@@ -244,9 +260,16 @@ private class PatternMiniChartView(
             markerLinePaint.color = color
             val mp = Path()
             markers.forEachIndexed { i, (idx, price) -> if (i == 0) mp.moveTo(x(idx), y(price)) else mp.lineTo(x(idx), y(price)) }
-            canvas.drawPath(mp, markerLinePaint)
+            // The dashed marker line draws itself in progressively — a static
+            // "confirmation" line reads as decoration; a line that traces the
+            // shape reads as the app actually pointing it out.
+            val measure = android.graphics.PathMeasure(mp, false)
+            val revealed = Path()
+            measure.getSegment(0f, measure.length * drawProgress, revealed, true)
+            canvas.drawPath(revealed, markerLinePaint)
         }
         markerDotPaint.color = color
-        markers.forEach { (idx, price) -> canvas.drawCircle(x(idx), y(price), h * 0.045f, markerDotPaint) }
+        val lastVisible = ((markers.size - 1) * drawProgress).toInt().coerceIn(0, markers.size - 1)
+        markers.forEachIndexed { i, (idx, price) -> if (i <= lastVisible) canvas.drawCircle(x(idx), y(price), h * 0.045f, markerDotPaint) }
     }
 }
