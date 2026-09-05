@@ -204,6 +204,15 @@ class OracleMysticActivity : Activity() {
             // If today's full-universe scan hasn't run yet (fresh install, or
             // the phone was off overnight), start it now in the background.
             ro.alintudor.oracle.core.OracleGrowthScanReceiver.scanNowIfMissing(this)
+            // Re-check widget authorization right now, independent of whether
+            // Growth actually recomputes anything below. The HARD FREEZE
+            // (OracleLocalProcessor) reuses an already-valid snapshot for
+            // today without ever calling updateAll() itself — so going
+            // Demo -> real login (or any other re-auth) in the same process,
+            // with a same-day snapshot already frozen from before, would
+            // otherwise leave the widget stuck showing whatever the PRIOR
+            // session's authorization state was (e.g. still blank from Demo).
+            ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this)
             ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: showing boot loader")
             showBootLoader()
         }.onFailure { proceedingPastAuth = false; ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: FAILED: ${it.javaClass.simpleName}: ${it.message}"); showFatalError("Oracle failed to start", it) }
