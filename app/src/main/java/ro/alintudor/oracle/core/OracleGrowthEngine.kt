@@ -149,8 +149,9 @@ object OracleGrowthEngine {
         val universe=runCatching{ OracleMarketUniverse.companies(context).map{it.ticker}.distinct() }
             .getOrDefault(emptyList())
             .ifEmpty{ runCatching{ OracleSP500Universe.tickers(context) }.getOrDefault(emptyList()) }
-        if(universe.isEmpty()) return 0
+        if(universe.isEmpty()){ OracleGrowthLog.log(context,"SCAN","Background scan aborted: universe empty"); return 0 }
         val existing=readScanCache(context,anchor).associateBy{it.ticker}.toMutableMap()
+        OracleGrowthLog.log(context,"SCAN","Background full-universe scan started: ${universe.size} tickers, ${existing.size} already cached for this trading day, 8-minute budget")
         val deadline=System.nanoTime()+FULL_SCAN_BUDGET_NANOS
         fullScanState=FullScanState(existing.size,universe.size,anchor,true,0L)
         val pool=Executors.newFixedThreadPool(FULL_SCAN_THREADS)
@@ -177,6 +178,7 @@ object OracleGrowthEngine {
             pool.shutdownNow()
             writeScanCache(context,anchor,existing.values.toList())
             fullScanState=FullScanState(existing.size,universe.size,anchor,false,System.currentTimeMillis())
+            OracleGrowthLog.log(context,"SCAN","Background scan finished: ${existing.size} of ${universe.size} tickers cached${if(existing.size<universe.size) " (will resume on the next wake-up)" else " \u2014 full coverage"}")
         }
         return existing.size
     }
@@ -252,6 +254,7 @@ object OracleGrowthEngine {
 
     private fun runInternal(context: Context, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
         val t0=System.nanoTime()
+        OracleGrowthLog.log(context,"RUN","Growth run started (engine V6.0, ${keys.size} factors, seed=${seed.size} previous recommendations)")
 
         // Universe: S&P 500 union every tradable Nasdaq listing (cap >= $2B,
         // volume >= 500k), ordered by market cap — resolved from memory/disk,
@@ -264,6 +267,8 @@ object OracleGrowthEngine {
             .getOrDefault(emptyList())
             .ifEmpty { runCatching { OracleSP500Universe.tickers(context) }.getOrDefault(emptyList()) }
             .distinct()
+        val universeTotal=runCatching { OracleMarketUniverse.totalSize(context) }.getOrDefault(0)
+        OracleGrowthLog.log(context,"UNIVERSE","Universe resolved: ${universeTotal} companies available (S&P 500 + tradable Nasdaq), scanning ${universe.size} most liquid on device")
         progressState=OracleGrowthProgress(0, universe.size.coerceAtLeast(1), t0, OracleGrowthPhase.RUNNING)
         if(universe.isEmpty()){
             progressState=progressState.copy(phase=OracleGrowthPhase.NO_DATA)
@@ -287,9 +292,11 @@ object OracleGrowthEngine {
         val anchorNow=OracleMarketCalendar.growthAnchor(System.currentTimeMillis())
         val cachedCandidates=readScanCache(context,anchorNow)
         if(cachedCandidates.size>=200){
+            OracleGrowthLog.log(context,"CACHE","Using background full-universe scan: ${cachedCandidates.size} candidates cached for anchor ${java.text.SimpleDateFormat("dd.MM HH:mm",Locale.US).format(java.util.Date(anchorNow))} \u2014 no live scan needed")
             progressState=OracleGrowthProgress(cachedCandidates.size, cachedCandidates.size, t0, OracleGrowthPhase.RUNNING)
             return rankCandidates(context,cachedCandidates,t0,totalDeadline,seed)
         }
+        OracleGrowthLog.log(context,"CACHE","No usable background scan for this trading day (found ${cachedCandidates.size}) \u2014 falling back to bounded live scan")
 
         val loadedCounter=AtomicInteger(0)
         val candidateQueue=ConcurrentLinkedQueue<C>()
@@ -315,10 +322,12 @@ object OracleGrowthEngine {
             scanPool.shutdownNow()
         }
         progressState=progressState.copy(loaded=loadedCounter.get().coerceAtMost(universe.size))
+        OracleGrowthLog.log(context,"SCAN","Live scan finished: OHLCV received for ${loadedCounter.get()} of ${universe.size} requested, ${candidateQueue.size} passed the 60-session minimum, ${"%.1f".format((System.nanoTime()-t0)/1_000_000_000.0)}s elapsed")
 
         if(candidateQueue.isEmpty()){
             // Requirement #6/#11: a run that genuinely receives zero OHLCV must
             // report an explicit NO_DATA state, not stay in RUNNING forever.
+            OracleGrowthLog.log(context,"ERROR","Run aborted: zero OHLCV received (no network, or every request failed)")
             progressState=progressState.copy(phase=OracleGrowthPhase.NO_DATA)
             return emptyList()
         }
@@ -327,6 +336,7 @@ object OracleGrowthEngine {
     }
 
     private fun rankCandidates(context: Context, candidates:List<C>, t0:Long, totalDeadline:Long, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
+        OracleGrowthLog.log(context,"RANK","Ranking ${candidates.size} candidates across SHORT / MEDIUM / LONG")
         // Previously computed in runInternal; it belongs here because this is
         // the only place it is read (carries forward the previous snapshot's
         // news headline / source / T0 for a ticker that is picked again).
@@ -382,6 +392,7 @@ object OracleGrowthEngine {
             if(remaining>0) runCatching { f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.let{ ms-> val days=((ms-nowMs)/86_400_000L).toInt(); if(days>=-1) earningsInDays[ticker]=maxOf(0,days) }
         }
         enrichPool.shutdownNow()
+        OracleGrowthLog.log(context,"ENRICH","Shortlist of ${technicalShortlist.size} enriched: news ${newsContexts.size}, fundamentals ${fundamentals.size}, community ${communityScores.size}, earnings dates ${earningsInDays.size}; market regime ${regime.level}")
 
         val sectorsNeeded=technicalShortlist.mapNotNull{resolveSector(context,it.ticker,fundamentals[it.ticker]?.sector)}.distinct()
         val sectorContexts=mutableMapOf<String,Double>()
@@ -427,6 +438,7 @@ object OracleGrowthEngine {
                 ?: OracleMarketUniverse.nameFor(context,pick.ticker)
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
+            OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, hazard ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
             out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)

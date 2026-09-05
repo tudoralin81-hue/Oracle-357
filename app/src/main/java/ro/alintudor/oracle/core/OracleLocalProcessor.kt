@@ -44,19 +44,24 @@ object OracleLocalProcessor {
             // regenerated once, immediately, and then frozen as usual.
             val producedByCurrentEngine = current.all { it.weights.size == OracleGrowthEngine.factorCount() }
             if (current.isNotEmpty() && current.all { it.referenceTimestamp == anchor } && producedByCurrentEngine) {
+                OracleGrowthLog.log(repository.context, "FREEZE", "Reusing frozen snapshot for this trading day (${current.size} recommendations) — no rerank")
                 return@synchronized current
             }
+            if (current.isNotEmpty() && !producedByCurrentEngine)
+                OracleGrowthLog.log(repository.context, "FREEZE", "Cached snapshot came from an older engine version — regenerating once")
 
             // B540: pass the repository's Context through — Growth-only orchestration
             // needed so the engine can resolve/cache the S&P 500 universe (Requirement #2).
             val generated = OracleGrowthEngine.run(repository.context, current)
             if (generated.isEmpty()) {
+                OracleGrowthLog.log(repository.context, "FREEZE", "Engine returned nothing — keeping the previous valid snapshot")
                 // Do not replace a valid snapshot with partial/empty data.
                 return@synchronized current.filter { it.referenceTimestamp == anchor }
             }
 
             val growth = normalizeGrowthSnapshot(generated, anchor)
             repository.saveGrowth(growth)
+            OracleGrowthLog.log(repository.context, "FREEZE", "New snapshot saved and frozen for this trading day: ${growth.joinToString(", ") { "${it.horizon}=${it.ticker} ${it.score}" }}")
             runCatching { ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(repository.context) }
             growth
         }

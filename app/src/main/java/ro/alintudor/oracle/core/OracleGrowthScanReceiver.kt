@@ -29,7 +29,10 @@ class OracleGrowthScanReceiver : BroadcastReceiver() {
             try {
                 // The morning slot is a safety net, not a second scan: if the
                 // night run already covered this trading day, it does nothing.
-                if (!isRetry || !OracleGrowthEngine.hasFreshFullScan(app)) {
+                if (isRetry && OracleGrowthEngine.hasFreshFullScan(app)) {
+                    OracleGrowthLog.log(app, "SCAN", "Morning retry: today's scan already complete, nothing to do")
+                } else {
+                    OracleGrowthLog.log(app, "SCAN", if (isRetry) "Morning retry firing: last night's scan did not complete" else "Nightly scheduled scan firing")
                     runCatching { OracleGrowthEngine.scanFullUniverse(app) }
                 }
             } finally {

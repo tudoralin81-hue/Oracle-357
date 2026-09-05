@@ -72,6 +72,30 @@ class OracleMysticActivity : Activity() {
         The developer of this app assumes no responsibility for any financial loss resulting from its use.
     """.trimIndent()
 
+    /** Scrollable, newest-last view of the engine log. */
+    private fun showGrowthLogDialog() {
+        val lines = ro.alintudor.oracle.core.OracleGrowthLog.read(this, 400)
+        val panel = Color.rgb(7, 14, 28)
+        val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
+        scroll.addView(TextView(this).apply {
+            text = if (lines.isEmpty()) "Nothing recorded yet.\n\nOpen Growth to trigger a run, or wait for the nightly background scan."
+                   else lines.joinToString("\n")
+            textSize = 10.5f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.rgb(200, 208, 222)); setLineSpacing(dp(2).toFloat(), 1f)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setTextIsSelectable(true)
+        })
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Growth engine log (last ${lines.size})")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .setNeutralButton("Download") { _, _ ->
+                val path = ro.alintudor.oracle.core.OracleGrowthLog.export(this)
+                Toast.makeText(this, if (path != null) "Growth log saved to Downloads." else "The log is empty.", Toast.LENGTH_LONG).show()
+            }
+            .show()
+    }
+
     private fun offerBiometricEnrollIfNeeded(store: OracleAuthStore, onDone: () -> Unit) {
         if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable()) { onDone(); return }
         store.setBiometricOffered(true)
@@ -822,6 +846,43 @@ class OracleMysticActivity : Activity() {
             }
         }, LinearLayout.LayoutParams(-1, -2))
         card.addView(batteryStatus)
+
+        // --- Growth engine log ------------------------------------------------
+        card.addView(TextView(this).apply {
+            text = "GROWTH ENGINE LOG"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        val logCount = ro.alintudor.oracle.core.OracleGrowthLog.lineCount(this)
+        card.addView(TextView(this).apply {
+            text = if (logCount == 0) "No entries yet. The engine writes here on every run, scan and ranking."
+                   else "$logCount entries recorded — every run, universe resolution, scan, enrichment and pick."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        val logRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun toolButton(label: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+            text = label; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(color)
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(11).toFloat(); setStroke(dp(1), color) }
+            setPadding(0, dp(12), 0, dp(12)); isClickable = true; isFocusable = true
+            setOnClickListener { onClick() }
+        }
+        logRow.addView(toolButton("VIEW", Color.rgb(55, 215, 255)) { showGrowthLogDialog() },
+            LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })
+        logRow.addView(toolButton("DOWNLOAD", green) {
+            val path = ro.alintudor.oracle.core.OracleGrowthLog.export(this)
+            Toast.makeText(this, if (path != null) "Growth log saved to Downloads." else "The log is empty — nothing to export yet.", Toast.LENGTH_LONG).show()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, dp(5), 0) })
+        logRow.addView(toolButton("CLEAR", Color.rgb(255, 140, 140)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Clear the Growth log?")
+                .setMessage("The recorded history of engine runs is deleted. New entries start from the next run.")
+                .setPositiveButton("Clear") { _, _ ->
+                    ro.alintudor.oracle.core.OracleGrowthLog.clear(this)
+                    Toast.makeText(this, "Growth log cleared.", Toast.LENGTH_SHORT).show()
+                    showBackupScreen()
+                }
+                .setNegativeButton("Cancel", null).show()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
+        card.addView(logRow, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
