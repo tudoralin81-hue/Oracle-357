@@ -262,9 +262,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // horizon (2×/4.5×/8×ATR), not a prediction of where price will go.
         forecast.addView(text("Expected range (ATR)", 10f, Typeface.DEFAULT, muted, 0, 0))
         forecast.addView(text(if (demo) OracleDemo.LOCK else signedPct(item.forecastPct), 22f, Typeface.DEFAULT_BOLD, green, 0, 2))
-        if (item.hazard != 0 && !demo) forecast.addView(text(
-            "Hazard ${if (item.hazard > 0) "+" else ""}${item.hazard} (random, same all day)",
-            9f, Typeface.DEFAULT, muted, 0, 2))
         item.earningsInDays?.takeIf { it <= 14 }?.let { d ->
             forecast.addView(text(if (d == 0) "Earnings today" else "Earnings in $d day${if (d == 1) "" else "s"}", 10f, Typeface.DEFAULT_BOLD, orange, 0, 2))
         }
@@ -330,21 +327,60 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         val maxWeight = weights.maxOrNull()?.takeIf { it > 0 } ?: 1
         val grid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, host.dp(2), 0, host.dp(1)) }
         val columns = 6
-        val rows = (weights.size + columns - 1) / columns
+        // LO (Lucky Oracle) sits as one more cell after the weighted factors.
+        // It is NOT a weight — it is the random nudge the engine added to the
+        // final score — so it gets its own constant rendering that shows LO is
+        // in play without disclosing the draw (see addHazardBar).
+        val cellCount = weights.size + 1
+        val rows = (cellCount + columns - 1) / columns
         for (r in 0 until rows) {
             val row = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             for (c in 0 until columns) {
                 val i = r * columns + c
                 val cell = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2)) }
-                if (i < weights.size) {
-                    cell.addView(text(names.getOrElse(i) { "?" }, 8f, Typeface.DEFAULT, muted, 0, 0))
-                    addWeightBar(cell, weights[i], maxWeight)
+                when {
+                    i < weights.size -> {
+                        cell.addView(text(names.getOrElse(i) { "?" }, 8f, Typeface.DEFAULT, muted, 0, 0))
+                        addWeightBar(cell, weights[i], maxWeight)
+                    }
+                    i == weights.size -> {
+                        cell.addView(text("LO", 8f, Typeface.DEFAULT, muted, 0, 0))
+                        addHazardBar(cell)
+                    }
                 }
                 row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
             }
             grid.addView(row)
         }
         parent.addView(grid)
+    }
+
+    /**
+     * LO — "Lucky Oracle": the deliberate random nudge applied to the final
+     * score, always drawn from the same -3..+3 band.
+     *
+     * The cell shows that LO is in play, NOT the draw itself. Rendering the
+     * actual value (as a number or as a count of lit segments) would invite
+     * reading it as information, and it is by definition the one input that
+     * carries none — a different roll every ticker, every day. The band is
+     * fixed and known, so the number adds nothing a reader can act on. It
+     * stays recorded in the engine log for diagnostics.
+     */
+    private fun addHazardBar(parent: LinearLayout) {
+        val loColor = Color.rgb(190, 150, 255)
+        val bar = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, host.dp(3), 0, 0)
+        }
+        // Identical on every card: a symmetric band with a marked centre.
+        for (seg in 0 until 5) {
+            val centre = seg == 2
+            bar.addView(android.view.View(host.root.context).apply {
+                background = OracleNativeModule.rounded(if (centre) loColor else Color.rgb(58, 48, 82), host.dp(1), loColor, if (centre) 0 else host.dp(1))
+                alpha = if (centre) 0.95f else 0.55f
+            }, LinearLayout.LayoutParams(host.dp(7), host.dp(6)).apply { setMargins(host.dp(1), 0, host.dp(1), 0) })
+        }
+        parent.addView(bar)
     }
 
     /** A 5-segment horizontal bar (20% per segment) standing in for the raw

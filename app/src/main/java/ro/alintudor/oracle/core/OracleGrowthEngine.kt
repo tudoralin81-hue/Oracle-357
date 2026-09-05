@@ -438,7 +438,7 @@ object OracleGrowthEngine {
                 ?: OracleMarketUniverse.nameFor(context,pick.ticker)
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
-            OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, hazard ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
+            OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, LO ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
             out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)
