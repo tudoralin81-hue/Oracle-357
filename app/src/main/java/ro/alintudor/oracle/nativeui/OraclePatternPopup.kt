@@ -129,10 +129,12 @@ private fun renderPatternResults(
             setPadding(dp(8), dp(3), dp(8), dp(3))
             background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), dp(8), color, dp(1))
         }.also { badge ->
-            android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
-                duration = 1400L; repeatCount = android.animation.ValueAnimator.INFINITE
-                addUpdateListener { anim -> if (badge.isAttachedToWindow) badge.alpha = anim.animatedValue as Float else anim.cancel() }
-            }.start()
+            badge.post {
+                android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
+                    duration = 1400L; repeatCount = android.animation.ValueAnimator.INFINITE
+                    addUpdateListener { anim -> if (badge.isAttachedToWindow) badge.alpha = anim.animatedValue as Float else anim.cancel() }
+                }.start()
+            }
         })
         card.addView(top)
         card.addView(TextView(context).apply {
@@ -238,7 +240,8 @@ private class PatternMiniChartView(
             animationStarted = true
             post {
                 android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                    duration = 900L; interpolator = android.view.animation.DecelerateInterpolator()
+                    duration = 4000L; interpolator = android.view.animation.LinearInterpolator()
+                    repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.RESTART
                     addUpdateListener { anim -> if (isAttachedToWindow) { drawProgress = anim.animatedValue as Float; invalidate() } else anim.cancel() }
                 }.start()
             }

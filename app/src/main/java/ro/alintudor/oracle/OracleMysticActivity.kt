@@ -943,10 +943,134 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2))
         card.addView(batteryStatus)
 
+        // --- Admin Only entry point — only exists in the UI for the owner's
+        // own account; absent (not just hidden) for anyone else logged in. ---
+        if (ro.alintudor.oracle.core.OracleAdminAccess.isOwnerAccount(this)) {
+            card.addView(TextView(this).apply {
+                text = "ADMIN ONLY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+            })
+            card.addView(TextView(this).apply {
+                text = "Growth engine log, history, server communication, and the local emergency fallback file."
+                textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+            })
+            card.addView(TextView(this).apply {
+                text = "ADMIN ONLY \u2192"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(Color.rgb(255, 170, 40))
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 170, 40)) }
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true; isFocusable = true
+                setOnClickListener { promptAdminAccess() }
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+
+        card.addView(TextView(this).apply {
+            text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
+        })
+        // The demo branch here is unreachable — showBackupScreen() itself
+        // redirects to confirmExitDemo() before this point whenever the demo
+        // is active, so a real logged-in session is the only case left.
+        card.addView(TextView(this).apply {
+            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(Color.rgb(255, 110, 110))
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
+            setPadding(0, dp(14), 0, dp(14))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                    .setTitle("Log out?")
+                    .setMessage("You'll need your username and password (or fingerprint, if enabled) to log back in.")
+                    .setPositiveButton("Log out") { _, _ ->
+                        val store = OracleAuthStore(this@OracleMysticActivity)
+                        store.clearSession()
+                        ro.alintudor.oracle.core.OracleAdminAccess.lock()
+                        authPassedThisProcess = false
+                        currentModule = null
+                        showLogin(store)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        card.addView(TextView(this).apply {
+            text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener { showHub() }
+        })
+
+        scroll.addView(card)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    /** Gate for the Admin Only screen: PIN entry if one's already set, or a
+     *  one-time "create a PIN" flow the first time. Only ever reachable from
+     *  a button that itself only renders for the owner's account — this is
+     *  the second, independent layer on top of that account check. */
+    private fun promptAdminAccess() {
+        if (ro.alintudor.oracle.core.OracleAdminAccess.isUnlockedThisProcess()) { showAdminScreen(); return }
+        val pinField = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        if (!ro.alintudor.oracle.core.OracleAdminAccess.hasPin(this)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Set an Admin PIN")
+                .setMessage("This PIN protects the Admin Only screen on this device. Choose one you'll remember — it isn't recoverable if forgotten, only resettable by reinstalling.")
+                .setView(pinField)
+                .setPositiveButton("Set PIN") { _, _ ->
+                    val pin = pinField.text.toString().trim()
+                    if (pin.length < 4) { Toast.makeText(this, "Use at least 4 digits.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                    ro.alintudor.oracle.core.OracleAdminAccess.setPin(this, pin)
+                    ro.alintudor.oracle.core.OracleAdminAccess.markUnlocked()
+                    showAdminScreen()
+                }
+                .setNegativeButton("Cancel", null).show()
+        } else {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Admin PIN")
+                .setView(pinField)
+                .setPositiveButton("Unlock") { _, _ ->
+                    if (ro.alintudor.oracle.core.OracleAdminAccess.verifyPin(this, pinField.text.toString().trim())) {
+                        ro.alintudor.oracle.core.OracleAdminAccess.markUnlocked()
+                        showAdminScreen()
+                    } else Toast.makeText(this, "Wrong PIN.", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null).show()
+        }
+    }
+
+    /** Everything that used to sit in plain TOOLS but only ever mattered to
+     *  the owner: the engine's own diagnostic log, the recommendation
+     *  history, the metadata-only server-call log, and the local emergency
+     *  fallback file + force-local testing toggle. See core/OracleAdminAccess.kt
+     *  for the two-layer gate that gets here (owner account + this-device PIN). */
+    private fun showAdminScreen() {
+        root.removeAllViews()
+        val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28)
+        val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(28), dp(40), dp(28), dp(40)) }
+
+        card.addView(TextView(this).apply { text = "ADMIN ONLY"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.rgb(255, 170, 40)) })
+        card.addView(TextView(this).apply {
+            text = "Not shown to any other account, and locked behind this device's PIN even on yours."
+            textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
+        })
+
+        fun toolButton(label: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+            text = label; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(color)
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(11).toFloat(); setStroke(dp(1), color) }
+            setPadding(0, dp(12), 0, dp(12)); isClickable = true; isFocusable = true
+            setOnClickListener { onClick() }
+        }
+
         // --- Growth engine log ------------------------------------------------
         card.addView(TextView(this).apply {
             text = "GROWTH ENGINE LOG"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+            setTextColor(gold); setPadding(0, dp(20), 0, dp(6))
         })
         val logCount = ro.alintudor.oracle.core.OracleGrowthLog.lineCount(this)
         card.addView(TextView(this).apply {
@@ -955,12 +1079,6 @@ class OracleMysticActivity : Activity() {
             textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
         })
         val logRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun toolButton(label: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
-            text = label; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(color)
-            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(11).toFloat(); setStroke(dp(1), color) }
-            setPadding(0, dp(12), 0, dp(12)); isClickable = true; isFocusable = true
-            setOnClickListener { onClick() }
-        }
         logRow.addView(toolButton("VIEW", Color.rgb(55, 215, 255)) { showGrowthLogDialog() },
             LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })
         logRow.addView(toolButton("DOWNLOAD", green) {
@@ -974,18 +1092,13 @@ class OracleMysticActivity : Activity() {
                 .setPositiveButton("Clear") { _, _ ->
                     ro.alintudor.oracle.core.OracleGrowthLog.clear(this)
                     Toast.makeText(this, "Growth log cleared.", Toast.LENGTH_SHORT).show()
-                    showBackupScreen()
+                    showAdminScreen()
                 }
                 .setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
         card.addView(logRow, LinearLayout.LayoutParams(-1, -2))
 
         // --- Growth history (the "LATEST RECOMMENDATIONS" journal) ------------
-        // Separate from the log above: this is the recommendation TRACK
-        // RECORD itself, not the diagnostic trail of engine runs — it grows
-        // by one entry per new pick, so heavy same-day testing (many
-        // refreshes while the anchor doesn't change) can leave a cluttered
-        // history behind that's worth being able to reset on its own.
         card.addView(TextView(this).apply {
             text = "GROWTH HISTORY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
@@ -1004,7 +1117,7 @@ class OracleMysticActivity : Activity() {
                 .setPositiveButton("Clear") { _, _ ->
                     journalStore.clear()
                     Toast.makeText(this, "Growth history cleared.", Toast.LENGTH_SHORT).show()
-                    showBackupScreen()
+                    showAdminScreen()
                 }
                 .setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(-1, -2))
@@ -1026,7 +1139,7 @@ class OracleMysticActivity : Activity() {
         netLogRow.addView(toolButton("CLEAR", Color.rgb(255, 140, 140)) {
             ro.alintudor.oracle.core.OracleNetworkLog.clear()
             Toast.makeText(this, "Server communication log cleared.", Toast.LENGTH_SHORT).show()
-            showBackupScreen()
+            showAdminScreen()
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
         card.addView(netLogRow, LinearLayout.LayoutParams(-1, -2))
 
@@ -1058,7 +1171,7 @@ class OracleMysticActivity : Activity() {
                 .setPositiveButton("Clear") { _, _ ->
                     ro.alintudor.oracle.core.OracleGrowthEmergency.clear(this)
                     Toast.makeText(this, "Emergency file cleared.", Toast.LENGTH_SHORT).show()
-                    showBackupScreen()
+                    showAdminScreen()
                 }
                 .setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
@@ -1074,49 +1187,20 @@ class OracleMysticActivity : Activity() {
             val turningOn = !forcingLocal
             ro.alintudor.oracle.core.OracleGrowthEmergency.setForceLocal(this, turningOn)
             Toast.makeText(this, if (turningOn) "Forced local — today's Growth snapshot cleared, next open recomputes on-device." else "Back to normal — Growth will try the server again.", Toast.LENGTH_LONG).show()
-            showBackupScreen()
+            showAdminScreen()
         }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
-            text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
-        })
-        // The demo branch here is unreachable — showBackupScreen() itself
-        // redirects to confirmExitDemo() before this point whenever the demo
-        // is active, so a real logged-in session is the only case left.
-        card.addView(TextView(this).apply {
-            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(Color.rgb(255, 110, 110))
-            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
-            setPadding(0, dp(14), 0, dp(14))
+            text = "\u2190 Back to Tools"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(28), 0, 0)
             isClickable = true; isFocusable = true
-            setOnClickListener {
-                android.app.AlertDialog.Builder(this@OracleMysticActivity)
-                    .setTitle("Log out?")
-                    .setMessage("You'll need your username and password (or fingerprint, if enabled) to log back in.")
-                    .setPositiveButton("Log out") { _, _ ->
-                        val store = OracleAuthStore(this@OracleMysticActivity)
-                        store.clearSession()
-                        authPassedThisProcess = false
-                        currentModule = null
-                        showLogin(store)
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            }
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        card.addView(TextView(this).apply {
-            text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
-            isClickable = true; isFocusable = true
-            setOnClickListener { showHub() }
+            setOnClickListener { showBackupScreen() }
         })
 
         scroll.addView(card)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
     }
 
-    @Deprecated("Deprecated in Java")
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
@@ -1136,7 +1220,7 @@ class OracleMysticActivity : Activity() {
                 val summary = ro.alintudor.oracle.core.OracleGrowthEmergency.importFrom(this, text)
                 runOnUiThread {
                     if (summary == null) Toast.makeText(this, "That file didn't match the expected format — nothing changed.", Toast.LENGTH_LONG).show()
-                    else { Toast.makeText(this, summary, Toast.LENGTH_LONG).show(); currentModule = null; showBackupScreen() }
+                    else { Toast.makeText(this, summary, Toast.LENGTH_LONG).show(); currentModule = null; showAdminScreen() }
                 }
             }.start()
         }
