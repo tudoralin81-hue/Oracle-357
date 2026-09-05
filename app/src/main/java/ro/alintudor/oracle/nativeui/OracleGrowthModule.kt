@@ -540,9 +540,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
      *  value in its own color on the right. Used for the SIGNAL / RISK /
      *  ALLOCATION stack next to the hero score. */
     private fun badgeRow(label: String, value: String, color: Int): LinearLayout = LinearLayout(host.root.context).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.START
         setPadding(0, host.dp(3), 0, host.dp(3))
-        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
+        // Label and value sit side by side, no stretch between them — "SIGNAL [BUY]"
+        // reads as one unit instead of a label on the left and its value a screen away.
+        addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(host.dp(74), -2))
         addView(TextView(host.root.context).apply {
             text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1
             gravity = Gravity.END; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))

@@ -269,35 +269,13 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         val fairValue = OracleValuation.fairValue(f, f?.sector ?: r.sector)
         val health = OracleValuation.financialHealth(f)
 
-        // ==== 2. VERDICT — decision first, same anatomy as a Growth card ====
-        // Three hero scores (one per horizon) with the SIGNAL / RISK /
-        // ALLOCATION badges beneath. These numbers were always computed by
-        // the engine; before this they were never shown, only 15 lines of prose.
-        host.addSectionLabel("ORACLE VERDICT")
-        val verdictCard = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(host.dp(15), host.dp(13), host.dp(15), host.dp(13))
-            background = GradientDrawable().apply { setColor(Color.rgb(7, 12, 23)); cornerRadius = host.dp(15).toFloat(); setStroke(host.dp(1), Color.rgb(34, 55, 82)) }
-        }
-        val scores = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL }
-        scores.addView(heroScore("SHORT", "1\u201310 days", r.shortScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
-        scores.addView(heroScore("MEDIUM", "2\u201312 weeks", r.mediumScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, host.dp(4), 0) })
-        scores.addView(heroScore("LONG", "3\u201312 months", r.longScore), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
-        verdictCard.addView(scores)
-        val badges = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(10), 0, 0) }
-        badges.addView(badge("SIGNAL", r.signal, signalColor(r.signal)), LinearLayout.LayoutParams(0, -2, 1.2f).apply { setMargins(0, 0, host.dp(4), 0) })
-        badges.addView(badge("RISK", r.risk, riskColor(r.risk)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, host.dp(4), 0) })
-        badges.addView(badge("ALLOCATION", "${fmt(r.allocation)}%", Color.rgb(255, 160, 25)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
-        verdictCard.addView(badges)
-        host.content.addView(verdictCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
-
-        // ==== 3. VALUE & HEALTH — identical boxes to Growth ====
+        // ==== 2. VALUE & HEALTH — identical boxes to Growth ====
         val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, host.dp(10)) }
         verdicts.addView(verdictBox("FAIR VALUATION", fairValue.label, fairValue.score, fairValueColor(fairValue.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
         verdicts.addView(verdictBox("FINANCIAL HEALTH", health.label, health.score, healthColor(health.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
         host.content.addView(verdicts)
 
-        // ==== 4. EVIDENCE — the same 18-cell grid Growth draws, with this ticker's factor VALUES ====
+        // ==== 3. EVIDENCE — the same 18-cell grid Growth draws, with this ticker's factor VALUES ====
         host.addSectionLabel("FACTOR SCORES \u2022 SAME ENGINE AS GROWTH")
         val gridCard = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL
@@ -307,10 +285,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         OracleFactorGrid.add(host, gridCard, "Factor scores (0\u2013100)", r.growthComponents, 100)
         host.content.addView(gridCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
 
-        // ==== 5. CONTEXT — the chart ====
+        // ==== 4. CONTEXT — the chart ====
         addTechnicalChart(r.ticker)
 
-        // ==== 6. DETAILS — raw numbers, grouped and collapsed by default ====
+        // ==== 5. DETAILS — raw numbers, grouped and collapsed by default ====
         // Whoever wants a specific figure can open its group; nobody has to
         // scroll past ~28 cards to reach the chart.
         host.addSectionLabel("DETAILS")
@@ -583,41 +561,12 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     private fun metricPair(value: Double?, signal: Double?): String = "${num2(value)}  •  SIG ${num2(signal)}"
     // ---- Unified-anatomy helpers (styled to match the Growth card) ----
     private val vGreen = Color.rgb(105, 245, 35); private val vOrange = Color.rgb(255, 160, 25); private val vRed = Color.rgb(255, 80, 90)
-    private val vMuted = Color.rgb(165, 174, 195); private val vCyan = Color.rgb(75, 225, 255)
+    private val vMuted = Color.rgb(165, 174, 195)
 
-    private fun signalColor(s: String) = when { s.contains("STRONG BUY") -> Color.rgb(120, 255, 45); s.contains("BUY") -> vGreen; s.contains("HOLD") -> Color.rgb(50, 220, 190); s.contains("WATCH") -> Color.rgb(255, 205, 45); else -> vRed }
-    private fun riskColor(s: String) = when (s.uppercase(Locale.US)) { "LOW" -> vGreen; "MEDIUM" -> vOrange; else -> vRed }
     private fun fairValueColor(label: String) = when { label.contains("UNDERVALUED") -> vGreen; label.contains("OVERVALUED") -> vRed; label.contains("FAIRLY") -> vOrange; else -> vMuted }
     private fun healthColor(label: String) = when { label.contains("STRONG") -> vGreen; label.contains("STABLE") -> vOrange; label.contains("DISTRESSED") -> vRed; label.contains("WEAK") -> Color.rgb(255, 150, 60); else -> vMuted }
 
-    /** Hero score box with a count-up, one per horizon — the Analysis twin of Growth's scoreMetric. */
-    private fun heroScore(horizon: String, span: String, score: Int): LinearLayout {
-        val box = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding(host.dp(4), host.dp(8), host.dp(4), host.dp(8))
-            background = OracleNativeModule.rounded(Color.rgb(6, 16, 22), host.dp(12), vCyan, host.dp(1))
-        }
-        box.addView(TextView(host.root.context).apply { text = horizon; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.06f; setTextColor(vMuted); gravity = Gravity.CENTER })
-        val number = TextView(host.root.context).apply { text = "0"; textSize = 22f; typeface = Typeface.DEFAULT_BOLD; setTextColor(vCyan); gravity = Gravity.CENTER }
-        box.addView(number)
-        box.addView(TextView(host.root.context).apply { text = span; textSize = 8f; setTextColor(vMuted); gravity = Gravity.CENTER })
-        android.animation.ValueAnimator.ofInt(0, score).apply {
-            duration = 700L; interpolator = android.view.animation.DecelerateInterpolator(1.6f)
-            addUpdateListener { anim -> if (number.isAttachedToWindow) number.text = "${anim.animatedValue}/100" }
-            start()
-        }
-        return box
-    }
 
-    private fun badge(label: String, value: String, color: Int): LinearLayout = LinearLayout(host.root.context).apply {
-        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-        addView(TextView(host.root.context).apply { text = label; textSize = 8f; setTextColor(vMuted); gravity = Gravity.CENTER })
-        addView(TextView(host.root.context).apply {
-            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1; gravity = Gravity.CENTER
-            setPadding(host.dp(8), host.dp(3), host.dp(8), host.dp(3))
-            background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
-        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = host.dp(3) })
-    }
 
     private fun verdictBox(title: String, label: String, score: Int?, color: Int): LinearLayout {
         val box = LinearLayout(host.root.context).apply {
