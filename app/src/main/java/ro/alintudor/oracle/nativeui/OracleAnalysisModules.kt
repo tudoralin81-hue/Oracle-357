@@ -168,12 +168,22 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             background = topBg
         }
         val headline = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        headline.addView(TextView(host.root.context).apply {
+        // Ticker and price sit together on the left — reading "MU · 1016.59"
+        // as one unit is faster than hunting for the price at the far edge.
+        val tickerPriceGroup = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        tickerPriceGroup.addView(TextView(host.root.context).apply {
             text = r.ticker
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        })
+        tickerPriceGroup.addView(TextView(host.root.context).apply {
+            text = money(r.price)
+            textSize = 17f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(45, 232, 92))
+        }, LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(10), host.dp(6), 0, 0) })
+        headline.addView(tickerPriceGroup, LinearLayout.LayoutParams(0, -2, 1f))
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
         var watchButtonRef: Button? = null
@@ -219,17 +229,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setOnClickListener { showCompareDialog(host, watchTicker) }
         }
         headline.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(8), 0) })
-        headline.addView(TextView(host.root.context).apply {
-            text = money(r.price)
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(45, 232, 92))
-            gravity = Gravity.END
-        })
+        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, 0, 0) })
         top.addView(headline)
         top.addView(TextView(host.root.context).apply {
-            text = companyName(r.ticker)
+            text = companyName(host.root.context, r.ticker)
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(205, 213, 228))
@@ -646,7 +649,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             "— Blue line: recent technical support.",
             "— Gold line: recent technical resistance.",
             "— Arrow: the projected trend scenario based on the current structure.",
-            "— Green/red dots: bullish/bearish MA Cross signals.",
+            "— Green/red crosses: bullish/bearish MA Cross signals.",
             "— BB / MA-EMA / MA Cross / Ichimoku / RSI / ADX: the toggleable indicators above."
         ).forEach { t ->
             legend.addView(TextView(host.root.context).apply {
@@ -681,10 +684,20 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         )
     }
 
-    private fun companyName(t: String) = when (t) {
-        "AAOI" -> "Applied Optoelectronics, Inc."
-        "APLD" -> "Applied Digital Corporation"
-        "NVDA" -> "NVIDIA Corporation"; "AAPL" -> "Apple Inc."; "MSFT" -> "Microsoft Corporation"; "AMZN" -> "Amazon.com, Inc."; "GOOGL" -> "Alphabet Inc."; "META" -> "Meta Platforms, Inc."; "TSLA" -> "Tesla, Inc."; "AMD" -> "Advanced Micro Devices, Inc."; "AVGO" -> "Broadcom Inc."; "NFLX" -> "Netflix, Inc."; else -> t
+    // Live universes (S&P 500 curated names, then the broader Nasdaq feed)
+    // are tried first, so any real ticker gets its actual full name — the
+    // hardcoded map below is only a fast-path/offline fallback for a
+    // handful of very common names, not the primary source.
+    private fun companyName(context: android.content.Context, t: String): String {
+        val ticker = t.trim().uppercase(Locale.US)
+        OracleSP500Universe.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
+        OracleMarketUniverse.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
+        return when (ticker) {
+            "AAOI" -> "Applied Optoelectronics, Inc."
+            "APLD" -> "Applied Digital Corporation"
+            "NVDA" -> "NVIDIA Corporation"; "AAPL" -> "Apple Inc."; "MSFT" -> "Microsoft Corporation"; "AMZN" -> "Amazon.com, Inc."; "GOOGL" -> "Alphabet Inc."; "META" -> "Meta Platforms, Inc."; "TSLA" -> "Tesla, Inc."; "AMD" -> "Advanced Micro Devices, Inc."; "AVGO" -> "Broadcom Inc."; "NFLX" -> "Netflix, Inc."
+            else -> ticker
+        }
     }
 
     private fun renderWatchlist(items: List<String>) {

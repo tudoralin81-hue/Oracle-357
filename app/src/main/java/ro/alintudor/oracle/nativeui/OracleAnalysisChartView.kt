@@ -14,6 +14,7 @@ import ro.alintudor.oracle.core.OracleOhlcvPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.sin
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -278,7 +279,11 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         val first = d[start].close
         val last = d.last().close
         val slope = (last - first) / max(1, n - 1)
-        val channelWidth = max(span * .045, abs(slope) * n * .65)
+        // Capped at 30% of the visible price span: an uncapped channel could
+        // (and did, on volatile names) blow up to several times the chart's
+        // own height, producing a diagonal that visually had nothing to do
+        // with the actual price action.
+        val channelWidth = max(span * .045, abs(slope) * n * .65).coerceAtMost(span * .30)
         val y1 = y(first); val y2 = y(last)
         paints.style = Paint.Style.STROKE
         paints.strokeCap = Paint.Cap.ROUND
@@ -297,8 +302,14 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         paints.color = gold
         c.drawLine(left + 4f, y(recentHigh), right - 5f, y(recentHigh), paints)
 
-        if (slope > 0) drawArrow(c, right - 150f, y(last + channelWidth * .15), right - 28f, y(last + channelWidth * .75), green)
-        else drawArrow(c, right - 150f, y(last - channelWidth * .15), right - 28f, y(last - channelWidth * .75), red)
+        // The arrow now starts at the last candle's own price level (rather
+        // than a fixed offset unrelated to it) and reaches toward the chart's
+        // right/top edge, so it reads as "where this trend points next"
+        // instead of a floating decoration.
+        val pulse = 0.55f + 0.45f * sin(System.nanoTime() / 420_000_000.0).toFloat().coerceIn(-1f, 1f).let { (it + 1f) / 2f }
+        if (slope > 0) drawArrow(c, right - 118f, y(last + channelWidth * .10), right - 20f, y(last + channelWidth * .85).coerceAtLeast(top + 26f), green, pulse)
+        else drawArrow(c, right - 118f, y(last - channelWidth * .10), right - 20f, y(last - channelWidth * .85).coerceAtMost(bottom - 10f), red, pulse)
+        postInvalidateDelayed(60L)   // keeps the pulse animating while this chart is on screen
 
         if (showMACross) {
             val fast = moving(d.map { it.close }, 10); val slow = moving(d.map { it.close }, 20)
@@ -315,10 +326,10 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
 
     private fun drawCross(c: Canvas, x: Float, y: Float, color: Int) {
         paints.style = Paint.Style.STROKE
-        paints.strokeWidth = 4.5f
+        paints.strokeWidth = 7.0f   // was 4.5 — thickened to match the 80% larger size below
         paints.strokeCap = Paint.Cap.ROUND
         paints.color = color
-        val s = 11f
+        val s = 19.8f   // was 11f — 80% larger, per request
         c.drawLine(x - s, y - s, x + s, y + s, paints)
         c.drawLine(x + s, y - s, x - s, y + s, paints)
         paints.style = Paint.Style.FILL
@@ -327,22 +338,48 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
     private fun y1Value(first: Double, width: Double, up: Boolean) = if (up) first + width else first - width
     private fun y2Value(last: Double, width: Double, up: Boolean) = if (up) last + width else last - width
 
-    private fun drawArrow(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int) {
+    /**
+     * The projected-trend arrow: a soft, wide translucent glow underneath a
+     * crisp core line, a solid filled triangular head (reads as "arrow" far
+     * more clearly than the old open V), and a slow breathing pulse driven by
+     * the [pulse] value (0..1, supplied by the caller from an elapsed-time
+     * sine wave) so it draws the eye without being frantic about it.
+     */
+    private fun drawArrow(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int, pulse: Float) {
+        val dx = x2 - x1; val dy = y2 - y1; val len = max(1f, sqrt(dx * dx + dy * dy)); val ux = dx / len; val uy = dy / len
+        val px = -uy; val py = ux
+        val glowAlpha = (70 + 90 * pulse).toInt().coerceIn(0, 255)
+        val coreAlpha = (200 + 55 * pulse).toInt().coerceIn(0, 255)
+        val scale = 1f + 0.10f * pulse
+
         paints.style = Paint.Style.STROKE
-        paints.strokeWidth = 6.0f
         paints.strokeCap = Paint.Cap.ROUND
         paints.strokeJoin = Paint.Join.ROUND
-        paints.color = color
+
+        // Wide soft glow behind the line — gives the "stands out" feel without a real blur filter.
+        paints.strokeWidth = 13.0f
+        paints.color = Color.argb(glowAlpha / 3, Color.red(color), Color.green(color), Color.blue(color))
         c.drawLine(x1, y1, x2, y2, paints)
-        val dx = x2 - x1; val dy = y2 - y1; val len = max(1f, sqrt(dx * dx + dy * dy)); val ux = dx / len; val uy = dy / len
-        val px = -uy; val py = ux; val head = 32f
+        paints.strokeWidth = 9.0f
+        paints.color = Color.argb(glowAlpha, Color.red(color), Color.green(color), Color.blue(color))
+        c.drawLine(x1, y1, x2, y2, paints)
+
+        // Crisp core line.
+        paints.strokeWidth = 5.0f
+        paints.color = Color.argb(coreAlpha, Color.red(color), Color.green(color), Color.blue(color))
+        c.drawLine(x1, y1, x2, y2, paints)
+
+        // Solid filled arrowhead, gently breathing in size with the pulse.
+        val head = 26f * scale; val wing = 15f * scale
+        paints.style = Paint.Style.FILL
+        paints.color = Color.argb(coreAlpha, Color.red(color), Color.green(color), Color.blue(color))
         val path = Path()
-        path.moveTo(x2, y2)
-        path.lineTo(x2 - ux * head + px * 16f, y2 - uy * head + py * 16f)
-        path.moveTo(x2, y2)
-        path.lineTo(x2 - ux * head - px * 16f, y2 - uy * head - py * 16f)
+        path.moveTo(x2 + ux * head * 0.35f, y2 + uy * head * 0.35f)
+        path.lineTo(x2 - ux * head + px * wing, y2 - uy * head + py * wing)
+        path.lineTo(x2 - ux * head - px * wing, y2 - uy * head - py * wing)
+        path.close()
         c.drawPath(path, paints)
-        paints.strokeCap = Paint.Cap.BUTT
+
         paints.style = Paint.Style.FILL
     }
 
