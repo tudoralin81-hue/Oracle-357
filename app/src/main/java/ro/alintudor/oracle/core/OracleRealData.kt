@@ -16,6 +16,16 @@ data class OracleFundamentals(
 data class OracleNewsContext(val score:Int,val headlineCount:Int,val positiveHits:Int,val negativeHits:Int,val topHeadline:String?)
 data class OracleMarketContext(val market5D:Double?,val market20D:Double?,val sector5D:Double?,val sector20D:Double?,val sectorEtf:String?,val rawText:String)
 
+// --- Company Data popup (Profile / Financials / Earnings / Dividends) ---
+data class OracleQuarterEarning(val label:String, val actual:Double?, val estimate:Double?)
+data class OracleQuarterFinancial(val label:String, val revenue:Double?, val netIncome:Double?)
+data class OracleCompanyProfile(
+    val description:String?, val sector:String?, val industry:String?, val employees:Int?,
+    val address:String?, val website:String?, val officers:List<Pair<String,String>>,
+    val dividendYieldPct:Double?, val payoutRatioPct:Double?, val dividendRate:Double?, val exDividendDate:Long?,
+    val quarterlyEarnings:List<OracleQuarterEarning>, val quarterlyFinancials:List<OracleQuarterFinancial>
+)
+
 object OracleRealData {
     // ANALYSIS_REALDATA_AUTH_V1
     // FUNDAMENTALS_V3 — consistent-period ratios + real-data fallbacks
@@ -45,6 +55,73 @@ object OracleRealData {
         }
         best
     }.getOrNull()
+
+    /**
+     * One combined fetch (assetProfile + summaryDetail + earnings) backing the
+     * Company Data popup available next to tickers throughout the app:
+     * business description, sector/industry/employees/address/website/top
+     * officers, dividend summary, and quarterly EPS (actual vs. estimate) and
+     * revenue/net income — the same shape TradingView-style apps show.
+     * Returns null (never throws) if nothing usable comes back; the popup
+     * shows "data unavailable" rather than a blank/broken screen.
+     */
+    fun companyProfile(ticker:String):OracleCompanyProfile? = try {
+        val symbol = ticker.trim().uppercase(Locale.US)
+        val root = yahooQuoteSummary(symbol, "assetProfile,summaryDetail,earnings")
+        val r = root.optJSONObject("quoteSummary")?.optJSONArray("result")?.optJSONObject(0)
+        if (r == null) null else {
+            val profile = r.optJSONObject("assetProfile")
+            val summary = r.optJSONObject("summaryDetail")
+            val earnings = r.optJSONObject("earnings")
+
+            fun num(o: JSONObject?, key: String): Double? = o?.optDouble(key, Double.NaN)?.takeIf { it.isFinite() }
+
+            val officers = ArrayList<Pair<String, String>>()
+            profile?.optJSONArray("companyOfficers")?.let { arr ->
+                for (i in 0 until minOf(4, arr.length())) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val name = o.optString("name").takeIf { it.isNotBlank() } ?: continue
+                    officers += name to o.optString("title", "")
+                }
+            }
+            val quarterlyEarnings = ArrayList<OracleQuarterEarning>()
+            earnings?.optJSONObject("earningsChart")?.optJSONArray("quarterly")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val q = arr.optJSONObject(i) ?: continue
+                    quarterlyEarnings += OracleQuarterEarning(q.optString("date", "?"), num(q, "actual"), num(q, "estimate"))
+                }
+            }
+            val quarterlyFinancials = ArrayList<OracleQuarterFinancial>()
+            earnings?.optJSONObject("financialsChart")?.optJSONArray("quarterly")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val q = arr.optJSONObject(i) ?: continue
+                    quarterlyFinancials += OracleQuarterFinancial(q.optString("date", "?"), num(q, "revenue"), num(q, "earnings"))
+                }
+            }
+            val address = listOfNotNull(
+                profile?.optString("address1")?.takeIf { it.isNotBlank() },
+                profile?.optString("city")?.takeIf { it.isNotBlank() },
+                profile?.optString("country")?.takeIf { it.isNotBlank() },
+            ).joinToString(", ").takeIf { it.isNotBlank() }
+
+            val result = OracleCompanyProfile(
+                description = profile?.optString("longBusinessSummary")?.takeIf { it.isNotBlank() },
+                sector = profile?.optString("sector")?.takeIf { it.isNotBlank() },
+                industry = profile?.optString("industry")?.takeIf { it.isNotBlank() },
+                employees = profile?.optInt("fullTimeEmployees", 0)?.takeIf { it > 0 },
+                address = address,
+                website = profile?.optString("website")?.takeIf { it.isNotBlank() },
+                officers = officers,
+                dividendYieldPct = num(summary, "dividendYield")?.let { it * 100.0 },
+                payoutRatioPct = num(summary, "payoutRatio")?.let { it * 100.0 },
+                dividendRate = num(summary, "dividendRate"),
+                exDividendDate = summary?.optLong("exDividendDate", 0L)?.takeIf { it > 0L }?.times(1000L),
+                quarterlyEarnings = quarterlyEarnings,
+                quarterlyFinancials = quarterlyFinancials,
+            )
+            if (result.description == null && result.officers.isEmpty() && quarterlyEarnings.isEmpty() && quarterlyFinancials.isEmpty() && result.dividendYieldPct == null) null else result
+        }
+    } catch (_: Exception) { null }
 
     fun fundamentals(ticker:String):OracleFundamentals? {
         val symbol=ticker.uppercase(Locale.US)

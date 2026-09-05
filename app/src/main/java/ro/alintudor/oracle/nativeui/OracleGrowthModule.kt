@@ -240,7 +240,10 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
 
         val identity = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(10), 0, host.dp(8)) }
         val ticker = text(item.ticker, 30f, Typeface.DEFAULT_BOLD, white, 0, 0)
-        identity.addView(ticker, LinearLayout.LayoutParams(host.dp(120), -2))
+        val tickerGroup = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        tickerGroup.addView(ticker)
+        tickerGroup.addView(companyInfoButton(host, item.ticker), LinearLayout.LayoutParams(host.dp(26), host.dp(26)).apply { setMargins(host.dp(6), 0, 0, 0) })
+        identity.addView(tickerGroup, LinearLayout.LayoutParams(host.dp(120), -2))
         val company = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
         company.addView(text(item.company, 15f, Typeface.DEFAULT_BOLD, white, 0, 0))
         company.addView(text(item.sector, 11f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 4))

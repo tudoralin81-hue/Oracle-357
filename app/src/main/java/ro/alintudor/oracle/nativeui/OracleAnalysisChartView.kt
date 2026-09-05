@@ -291,8 +291,8 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         paints.strokeWidth = 4.0f
         paints.color = if (slope >= 0) green else red
         c.drawLine(left + start * step, y1, right - 5f, y2, paints)
-        paints.strokeWidth = 3.0f
-        paints.color = Color.argb(150, if (slope >= 0) 65 else 255, if (slope >= 0) 220 else 75, if (slope >= 0) 110 else 75)
+        paints.strokeWidth = 2.5f
+        paints.color = Color.argb(85, if (slope >= 0) 65 else 255, if (slope >= 0) 220 else 75, if (slope >= 0) 110 else 75)
         c.drawLine(left + start * step, y(y1Value(first, channelWidth, slope >= 0)), right - 5f, y(y2Value(last, channelWidth, slope >= 0)), paints)
 
         val recentLow = d.takeLast(min(35, d.size)).minOf { it.low }
@@ -348,29 +348,37 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
     private fun drawArrow(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int, pulse: Float) {
         val dx = x2 - x1; val dy = y2 - y1; val len = max(1f, sqrt(dx * dx + dy * dy)); val ux = dx / len; val uy = dy / len
         val px = -uy; val py = ux
-        val glowAlpha = (70 + 90 * pulse).toInt().coerceIn(0, 255)
-        val coreAlpha = (200 + 55 * pulse).toInt().coerceIn(0, 255)
-        val scale = 1f + 0.10f * pulse
+        // Base intensity is already bold (not just at the pulse peak) so the
+        // arrow reads as the highlighted element even in a single still frame,
+        // not only while animating.
+        val glowAlpha = (150 + 90 * pulse).toInt().coerceIn(0, 255)
+        val coreAlpha = 255
+        val scale = 1f + 0.14f * pulse
 
         paints.style = Paint.Style.STROKE
         paints.strokeCap = Paint.Cap.ROUND
         paints.strokeJoin = Paint.Join.ROUND
 
         // Wide soft glow behind the line — gives the "stands out" feel without a real blur filter.
-        paints.strokeWidth = 13.0f
-        paints.color = Color.argb(glowAlpha / 3, Color.red(color), Color.green(color), Color.blue(color))
+        paints.strokeWidth = 20.0f
+        paints.color = Color.argb(glowAlpha / 4, Color.red(color), Color.green(color), Color.blue(color))
         c.drawLine(x1, y1, x2, y2, paints)
-        paints.strokeWidth = 9.0f
+        paints.strokeWidth = 13.0f
         paints.color = Color.argb(glowAlpha, Color.red(color), Color.green(color), Color.blue(color))
         c.drawLine(x1, y1, x2, y2, paints)
 
-        // Crisp core line.
-        paints.strokeWidth = 5.0f
+        // Crisp bright-white-edged core line — a plain colored line reads as
+        // "just another chart line"; the white core makes it unmistakably a
+        // callout rather than data.
+        paints.strokeWidth = 7.0f
         paints.color = Color.argb(coreAlpha, Color.red(color), Color.green(color), Color.blue(color))
         c.drawLine(x1, y1, x2, y2, paints)
+        paints.strokeWidth = 2.5f
+        paints.color = Color.argb(230, 255, 255, 255)
+        c.drawLine(x1, y1, x2, y2, paints)
 
-        // Solid filled arrowhead, gently breathing in size with the pulse.
-        val head = 26f * scale; val wing = 15f * scale
+        // Solid filled arrowhead, noticeably larger than the old design, gently breathing with the pulse.
+        val head = 34f * scale; val wing = 19f * scale
         paints.style = Paint.Style.FILL
         paints.color = Color.argb(coreAlpha, Color.red(color), Color.green(color), Color.blue(color))
         val path = Path()
@@ -379,6 +387,14 @@ class OracleAnalysisChartView(context: Context, private val ticker: String) : Vi
         path.lineTo(x2 - ux * head - px * wing, y2 - uy * head - py * wing)
         path.close()
         c.drawPath(path, paints)
+
+        // A pulsing beacon ring at the base of the arrow — a plain line can
+        // hide among the chart's other lines; a glowing dot cannot.
+        val ringR = 7f + 5f * pulse
+        paints.color = Color.argb((160 + 90 * pulse).toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+        c.drawCircle(x1, y1, ringR, paints)
+        paints.color = Color.argb(255, 255, 255, 255)
+        c.drawCircle(x1, y1, 3.5f, paints)
 
         paints.style = Paint.Style.FILL
     }

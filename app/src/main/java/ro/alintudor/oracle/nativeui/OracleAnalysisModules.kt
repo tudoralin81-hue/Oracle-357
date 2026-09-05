@@ -179,10 +179,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         })
         tickerPriceGroup.addView(TextView(host.root.context).apply {
             text = money(r.price)
-            textSize = 17f
+            textSize = 26f   // matches the ticker's own size now that they sit together
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(45, 232, 92))
-        }, LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(10), host.dp(6), 0, 0) })
+        }, LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(10), 0, 0, 0) })
         headline.addView(tickerPriceGroup, LinearLayout.LayoutParams(0, -2, 1f))
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
@@ -229,7 +229,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             setOnClickListener { showCompareDialog(host, watchTicker) }
         }
         headline.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, 0, 0) })
+        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
+        headline.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2))
         top.addView(headline)
         top.addView(TextView(host.root.context).apply {
             text = companyName(host.root.context, r.ticker)
@@ -752,6 +753,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     }
                 }
                 row.addView(tickerButton, LinearLayout.LayoutParams(0, host.dp(84), 1f))
+                row.addView(companyInfoButton(host, ticker), LinearLayout.LayoutParams(host.dp(28), host.dp(28)).apply { setMargins(0, 0, host.dp(8), 0); gravity = Gravity.CENTER_VERTICAL })
 
                 // Live Growth-style score for the ticker (same engine as Growth),
                 // refreshed in the background when older than an hour.
