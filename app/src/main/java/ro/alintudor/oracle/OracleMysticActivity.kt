@@ -494,6 +494,10 @@ class OracleMysticActivity : Activity() {
             text = "\uD83D\uDD13  TRY THE DEMO \u2014 no account needed"; textSize = 12.5f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold); setPadding(0, dp(18), 0, 0)
             isClickable = true; isFocusable = true
             setOnClickListener {
+                // A real session (e.g. from biometric) must never run
+                // alongside the demo — otherwise the demo's own data
+                // operations would sync against the real account.
+                store.clearSession()
                 ro.alintudor.oracle.core.OracleDemo.enter(this@OracleMysticActivity)
                 authPassedThisProcess = true
                 proceedPastAuth()

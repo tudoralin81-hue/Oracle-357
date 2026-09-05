@@ -25,23 +25,33 @@ object OracleSyncManager {
     fun pullAll(context: Context, token: String, onDone: (Boolean) -> Unit) {
         val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
         Thread {
-            val result = OracleApiClient.getAllData(token)
-            val success = result.isSuccess
-            if (success) {
-                val data = result.getOrThrow()
-                val prefs = context.getSharedPreferences("oracle_data", Context.MODE_PRIVATE)
-                val editor = prefs.edit()
-                for (type in DATA_TYPES) {
-                    if (data.has(type)) editor.putString(type, data.getJSONArray(type).toString())
-                }
-                editor.apply()
-                if (data.has("widget")) {
-                    ro.alintudor.oracle.widget.OracleWidgetSettingsStore.restoreFromServerPayload(context, data.optJSONObject("widget"))
-                }
-            }
             // onDone touches UI (it ultimately calls proceedPastAuth, which
-            // rebuilds the screen) — must run on the main thread, never here.
-            mainHandler.post { onDone(success) }
+            // rebuilds the screen) and must run exactly once, no matter what
+            // happens above — an unexpected/malformed field in the server's
+            // response must never leave the login screen stuck on
+            // "LOGGING IN..." forever. Every step below is individually
+            // guarded so one bad field can't take the whole pull down with it.
+            var success = false
+            try {
+                val result = OracleApiClient.getAllData(token)
+                success = result.isSuccess
+                if (success) {
+                    val data = result.getOrThrow()
+                    val prefs = context.getSharedPreferences("oracle_data", Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                    for (type in DATA_TYPES) {
+                        if (data.has(type)) runCatching { editor.putString(type, data.getJSONArray(type).toString()) }
+                    }
+                    editor.apply()
+                    if (data.has("widget")) {
+                        runCatching { ro.alintudor.oracle.widget.OracleWidgetSettingsStore.restoreFromServerPayload(context, data.optJSONObject("widget")) }
+                    }
+                }
+            } catch (_: Exception) {
+                success = false
+            } finally {
+                mainHandler.post { onDone(success) }
+            }
         }.start()
     }
 }
