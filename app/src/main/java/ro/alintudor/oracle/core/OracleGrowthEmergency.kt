@@ -75,7 +75,12 @@ object OracleGrowthEmergency {
      *  at least once this process (OracleGrowthEngine.runInternal calls it
      *  at the top of every run, which keeps this cheap and Context-free at
      *  the actual per-horizon call sites deep in the ranking code). */
-    fun activeWeights(horizon: String, builtIn: IntArray): IntArray = cached?.horizonWeights?.get(horizon) ?: builtIn
+    /** @param builtIn the caller's own fallback array, or null once that
+     *  horizon's built-in weights have been deliberately removed from the
+     *  compiled app (see the formula-protection work) — in which case this
+     *  returns null only when no emergency file is loaded either, meaning
+     *  the caller genuinely has nothing to rank with right now. */
+    fun activeWeights(horizon: String, builtIn: IntArray?): IntArray? = cached?.horizonWeights?.get(horizon) ?: builtIn
 
     private fun applyToConsumers(l: Loaded?) {
         if (l == null) { OracleSentiment.clearOverride(); OracleSectorAllocation.clearOverride() }

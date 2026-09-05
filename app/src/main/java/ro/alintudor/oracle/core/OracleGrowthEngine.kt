@@ -63,10 +63,14 @@ object OracleGrowthEngine {
     // ratio); community sentiment is retail chatter (news is press only).
     // Long horizons lean on relative strength and range; short horizons lean
     // on volume trend and compression.
-    private val weights=mapOf(
-        "SHORT" to intArrayOf(21,18,18,12,16,12,3,4,4,2,2,1, 8,6,5,7,6),
-        "MEDIUM" to intArrayOf(12,12,12,16,12,9,9,5,5,6,5,4, 10,5,6,6,4),
-        "LONG" to intArrayOf(6,6,6,19,7,9,18,4,4,9,7,2, 12,3,8,5,2))
+    // The real horizon-weight recipe used to live here as literal numbers.
+    // It's been deliberately removed from the compiled app — the only place
+    // these values exist now is the owner's own GrowthLocal-emergency.json,
+    // loaded via TOOLS > Admin Only. Everything below that reads a horizon's
+    // weights goes through OracleGrowthEmergency.activeWeights(), which
+    // returns null when nothing is loaded — every caller is expected to
+    // handle that as "can't rank right now," not to crash.
+    private val weights: Map<String, IntArray> = emptyMap()
     private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx",
         "relative_strength","volatility_regime","range_position","volume_trend","community")
 
@@ -327,7 +331,7 @@ object OracleGrowthEngine {
                 score = o.optInt("score"), signal = o.optString("signal"), risk = o.optString("risk"),
                 allocationMax = o.optDouble("allocation", 1.0), forecastPct = o.optDouble("forecastPct", 0.0),
                 momentum5D = o.optDouble("momentum5D", 0.0), momentum20D = o.optDouble("momentum20D", 0.0),
-                weights = OracleGrowthEmergency.activeWeights(horizon, weights[horizon]!!).toList(),
+                weights = OracleGrowthEmergency.activeWeights(horizon, weights[horizon])?.toList() ?: emptyList(),
                 referencePrice = price, currentPrice = price,
                 adx = o.optDouble("adx", -1.0).takeIf { it >= 0.0 },
                 factorValues = keys.map { componentsJson?.optDouble(it, 50.0) ?: 50.0 },
@@ -354,6 +358,17 @@ object OracleGrowthEngine {
     private fun runInternal(context: Context, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
         val t0=System.nanoTime()
         OracleGrowthLog.log(context,"RUN","Growth run started (engine V6.0, ${keys.size} factors, seed=${seed.size} previous recommendations)")
+
+        // The real weight recipe was deliberately removed from this compiled
+        // app (see OracleGrowthEmergency) — without an owner-loaded file,
+        // there is genuinely nothing to rank candidates with. Bail out here,
+        // before any universe scan or enrichment work starts, rather than
+        // running the whole pipeline on meaningless placeholder scores.
+        if (listOf("SHORT","MEDIUM","LONG").any { OracleGrowthEmergency.activeWeights(it, weights[it]) == null }) {
+            OracleGrowthLog.log(context,"RUN","No horizon weights available (no emergency file loaded, and the server is unreachable) — local ranking is unavailable this run.")
+            progressState = progressState.copy(phase = OracleGrowthPhase.NO_DATA)
+            return emptyList()
+        }
 
         // Universe: S&P 500 union every tradable Nasdaq listing (cap >= $2B,
         // volume >= 500k), ordered by market cap — resolved from memory/disk,
@@ -532,7 +547,7 @@ object OracleGrowthEngine {
             val fairValue=OracleValuation.fairValue(f,sector)
             val health=OracleValuation.financialHealth(f)
             val correctedAllocation=(OracleSectorAllocation.apply(pick.allocation,sector)*regime.allocationFactor).let{ kotlin.math.round(it*10.0)/10.0 }.coerceAtLeast(0.5)
-            val correctedWeights=OracleGrowthEmergency.activeWeights(h, weights[h]!!).copyOf()
+            val correctedWeights=(OracleGrowthEmergency.activeWeights(h, weights[h]) ?: IntArray(keys.size)).copyOf()
             val news=newsContexts[pick.ticker]
             val company=meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) }
                 ?: OracleSP500Universe.nameFor(context,pick.ticker)
@@ -624,9 +639,12 @@ object OracleGrowthEngine {
         return C(t,p,base,rsi,m5,m20,vr,macd,ichi,s200,s50,adx,atrPct,comps,f,risk,alloc,0)
     }
 
-    /** V5.9.7: sector correction is applied only to allocation, never to score. */
+    /** V5.9.7: sector correction is applied only to allocation, never to score.
+     *  Returns -1 if no weights are available for this horizon from either
+     *  the emergency override or the (now-removed) built-in recipe — callers
+     *  must treat -1 as "can't rank," never as a real score. */
     private fun horizonScore(c:Map<String,Double>,h:String,sector:String?):Int{
-        val w=OracleGrowthEmergency.activeWeights(h, weights[h]!!)
+        val w=OracleGrowthEmergency.activeWeights(h, weights[h]) ?: return -1
         val total=w.sum().toDouble()
         val raw=(keys.indices.sumOf{(c[keys[it]]?:50.0)*w[it].toDouble()}/total).toInt().coerceIn(0,100)
         return when{raw in 97..100->raw-3;raw in 92..96->raw-1;else->raw}
