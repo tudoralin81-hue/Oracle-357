@@ -238,7 +238,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
         headline.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
         headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2))
+        headline.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
+        headline.addView(labelledIcon(patternButton(host, watchTicker), "PATTERNS"), LinearLayout.LayoutParams(-2, -2))
         top.addView(headline)
         // Extended-hours line — shown only while it's actually live. Yahoo only
         // ever populates preMarketPrice during the pre-market window and
