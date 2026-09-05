@@ -430,6 +430,8 @@ object OracleGrowthEngine {
             val cachedTitle=meta?.newsTitle?.takeIf { it.isNotBlank() && !it.contains("Google News",true) && !it.contains(" when:",true) }
             val f=fundamentals[pick.ticker]
             val sector=resolveSector(context,pick.ticker,f?.sector ?: meta?.sector) ?: "—"
+            val fairValue=OracleValuation.fairValue(f,sector)
+            val health=OracleValuation.financialHealth(f)
             val correctedAllocation=(OracleSectorAllocation.apply(pick.allocation,sector)*regime.allocationFactor).let{ kotlin.math.round(it*10.0)/10.0 }.coerceAtLeast(0.5)
             val correctedWeights=weights[h]!!.copyOf()
             val news=newsContexts[pick.ticker]
@@ -439,7 +441,8 @@ object OracleGrowthEngine {
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
             OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, LO ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
-            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard)
+            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard,
+                fairValueLabel=fairValue.label,fairValueScore=fairValue.score,financialHealthLabel=health.label,financialHealthScore=health.score)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)
         return out

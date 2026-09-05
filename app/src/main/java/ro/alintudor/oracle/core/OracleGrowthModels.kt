@@ -41,5 +41,11 @@ data class OracleGrowthRecommendation(
     // Hazard: the deliberate random ±3 nudge applied to this score
     // (see OracleGrowthEngine.hazardFor). Stored so the card can show it and
     // so a recorded signal stays explainable after the fact.
-    val hazard: Int = 0
+    val hazard: Int = 0,
+    // Composite verdicts (OracleValuation), computed from the same fundamentals
+    // already fetched for the "Fundamentals" scoring factor — no extra network cost.
+    val fairValueLabel: String = "",
+    val fairValueScore: Int? = null,
+    val financialHealthLabel: String = "",
+    val financialHealthScore: Int? = null
 )

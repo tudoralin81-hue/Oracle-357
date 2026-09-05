@@ -276,6 +276,16 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         lower.addView(momentum, LinearLayout.LayoutParams(0, -2, 1.1f))
         lower.addView(SparklineView(host.root.context, accent), LinearLayout.LayoutParams(host.dp(112), host.dp(52)))
         card.addView(lower)
+
+        // Fair Valuation and Financial Health: composite verdicts from the
+        // same fundamentals already fetched for the Growth score's own
+        // "Fundamentals" factor — the reasoning behind each is in Analysis.
+        if (item.fairValueScore != null || item.financialHealthScore != null) {
+            val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(2), 0, host.dp(8)) }
+            verdicts.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+            verdicts.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+            card.addView(verdicts)
+        }
         addCompactWeights(card, item.weights)
 
         val linked = news.firstOrNull { it.ticker.equals(item.ticker, true) }
@@ -320,6 +330,19 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             }
         }
         horizonPulse.start()
+    }
+
+    private fun fairValueColor(label: String) = when { label.contains("UNDERVALUED") -> green; label.contains("OVERVALUED") -> red; label.contains("FAIRLY") -> orange; else -> muted }
+    private fun healthColor(label: String) = when { label.contains("STRONG") -> green; label.contains("STABLE") -> orange; label.contains("DISTRESSED") -> red; label.contains("WEAK") -> Color.rgb(255, 150, 60); else -> muted }
+    private fun verdictBox(title: String, label: String, score: Int?, color: Int): LinearLayout {
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(host.dp(11), host.dp(9), host.dp(11), host.dp(9))
+            background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), color, host.dp(1))
+        }
+        box.addView(text(title, 9f, Typeface.DEFAULT_BOLD, muted, 0, 0))
+        box.addView(text(if (label.isBlank()) "\u2014" else label, 12f, Typeface.DEFAULT_BOLD, color, 0, 3))
+        if (score != null) box.addView(text("$score/100", 10f, Typeface.DEFAULT, Color.rgb(170, 178, 196), 0, 1))
+        return box
     }
 
     private fun addCompactWeights(parent: LinearLayout, weights: List<Int>) {

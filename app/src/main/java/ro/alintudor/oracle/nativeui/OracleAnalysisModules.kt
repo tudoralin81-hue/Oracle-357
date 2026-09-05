@@ -303,6 +303,12 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         relevantParameters.add("Beta" to num2(f?.beta))
         relevantParameters.add("Market cap" to capText(f?.marketCap))
 
+        // Composite verdicts (formula-based, all inputs shown alongside).
+        val fairValue = OracleValuation.fairValue(f, f?.sector ?: r.sector)
+        val health = OracleValuation.financialHealth(f)
+        relevantParameters.add("Fair Valuation" to fairValueText(fairValue))
+        relevantParameters.add("Financial Health" to financialHealthText(health))
+
         addMetricGrid(relevantGrid, relevantParameters)
         host.content.addView(relevantGrid, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(0, 0, 0, host.dp(10))
@@ -456,6 +462,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         return when {
             l == "SECTOR" || l == "INDUSTRY" -> Color.rgb(50, 220, 135)
             l == "BREAKOUT" -> if (v.contains("BREAKOUT: YES")) Color.rgb(50, 220, 135) else Color.rgb(205, 165, 38)
+            l == "FAIR VALUATION" -> when { v.contains("UNDERVALUED") -> Color.rgb(50, 220, 135); v.contains("OVERVALUED") -> Color.rgb(244, 67, 54); v.contains("FAIRLY") -> Color.rgb(205, 165, 38); else -> Color.rgb(140, 150, 172) }
+            l == "FINANCIAL HEALTH" -> when { v.contains("STRONG") -> Color.rgb(50, 220, 135); v.contains("STABLE") -> Color.rgb(205, 165, 38); v.contains("WEAK") -> Color.rgb(255, 150, 60); v.contains("DISTRESSED") -> Color.rgb(244, 67, 54); else -> Color.rgb(140, 150, 172) }
             l == "TREND" -> {
                 val p = numberAfter("Price"); val s50 = numberAfter("SMA50"); val s200 = numberAfter("SMA200")
                 when {
@@ -549,6 +557,19 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         }
     }
     private fun metricPair(value: Double?, signal: Double?): String = "${num2(value)}  •  SIG ${num2(signal)}"
+    private fun fairValueText(fv: OracleValuation.FairValue): String {
+        if (fv.score == null) return "${fv.label} — need P/E and growth data"
+        val peg = fv.peg?.let { "PEG ${"%.2f".format(Locale.US, it)}" } ?: "PEG n/a"
+        val pb = fv.priceToBook?.let { "P/B ${"%.2f".format(Locale.US, it)}" } ?: "P/B n/a"
+        return "${fv.label} (${fv.score}/100) • $peg • $pb • sector ref P/E ${"%.0f".format(Locale.US, fv.sectorPe ?: 20.0)}"
+    }
+    private fun financialHealthText(h: OracleValuation.FinancialHealth): String {
+        if (h.score == null) return "${h.label} — need balance-sheet data"
+        val cr = h.currentRatio?.let { "current ratio ${"%.2f".format(Locale.US, it)}" } ?: "current ratio n/a"
+        val de = h.debtToEquity?.let { "D/E ${"%.0f".format(Locale.US, it)}" } ?: "D/E n/a"
+        val roe = h.returnOnEquity?.let { "ROE ${"%.1f".format(Locale.US, it * 100.0)}%" } ?: "ROE n/a"
+        return "${h.label} (${h.score}/100) • $cr • $de • $roe"
+    }
     private fun num2(value: Double?): String = value?.let { "%.2f".format(Locale.US, it) } ?: "—"
     private fun pctFund(value: Double?): String = value?.let { "%.2f%%".format(Locale.US, it * 100.0) } ?: "—"
     private fun capText(value: Double?): String = when { value == null -> "—"; value >= 1e12 -> "%.2fT".format(Locale.US, value / 1e12); value >= 1e9 -> "%.2fB".format(Locale.US, value / 1e9); value >= 1e6 -> "%.2fM".format(Locale.US, value / 1e6); else -> "%.0f".format(Locale.US, value) }

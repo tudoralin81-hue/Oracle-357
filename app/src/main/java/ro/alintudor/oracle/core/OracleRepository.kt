@@ -70,7 +70,9 @@ class OracleRepository(val context: Context) {
         val adx=if(o.has("adx") && !o.isNull("adx"))o.optDouble("adx") else null
         return OracleGrowthRecommendation(o.optString("horizon"),o.optString("ticker"),o.optString("company"),o.optString("sector"),o.optInt("score"),o.optString("signal"),o.optString("risk"),o.optDouble("allocationMax"),o.optDouble("forecastPct"),o.optDouble("momentum5D"),o.optDouble("momentum20D"),weights,o.optString("newsTitle"),o.optString("newsSource"),o.optLong("referenceTimestamp"),actual,ref,cur,adx,
             marketRegime=o.optString("marketRegime","NORMAL"),regimeNote=o.optString("regimeNote",""),
-            earningsInDays=if(o.has("earningsInDays") && !o.isNull("earningsInDays")) o.optInt("earningsInDays") else null,hazard=o.optInt("hazard",0))
+            earningsInDays=if(o.has("earningsInDays") && !o.isNull("earningsInDays")) o.optInt("earningsInDays") else null,hazard=o.optInt("hazard",0),
+            fairValueLabel=o.optString("fairValueLabel",""),fairValueScore=if(o.has("fairValueScore") && !o.isNull("fairValueScore")) o.optInt("fairValueScore") else null,
+            financialHealthLabel=o.optString("financialHealthLabel",""),financialHealthScore=if(o.has("financialHealthScore") && !o.isNull("financialHealthScore")) o.optInt("financialHealthScore") else null)
     }
 }
 
@@ -93,4 +95,6 @@ private fun OracleGrowthRecommendation.toJson() = JSONObject().apply {
     if(currentPrice!=null)put("currentPrice",currentPrice) else put("currentPrice",JSONObject.NULL)
     if(adx!=null)put("adx",adx) else put("adx",JSONObject.NULL)
     put("marketRegime",marketRegime); put("regimeNote",regimeNote); put("hazard",hazard); if(earningsInDays!=null)put("earningsInDays",earningsInDays) else put("earningsInDays",JSONObject.NULL)
+    put("fairValueLabel",fairValueLabel); if(fairValueScore!=null)put("fairValueScore",fairValueScore) else put("fairValueScore",JSONObject.NULL)
+    put("financialHealthLabel",financialHealthLabel); if(financialHealthScore!=null)put("financialHealthScore",financialHealthScore) else put("financialHealthScore",JSONObject.NULL)
 }
