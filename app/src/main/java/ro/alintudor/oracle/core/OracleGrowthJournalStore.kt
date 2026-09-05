@@ -33,6 +33,9 @@ class OracleGrowthJournalStore(private val context: Context) {
 
     fun load(): List<OracleGrowthRecommendation> = parse(prefs.getString("entries", "[]") ?: "[]")
 
+    @Synchronized
+    fun clear() { prefs.edit().remove("entries").apply() }
+
     fun exportPdf(): String? {
         // Export the complete journal, including historical recommendations from 01.09.2026 onward.
         val cutoff = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ro", "RO")).apply { timeZone = zone }

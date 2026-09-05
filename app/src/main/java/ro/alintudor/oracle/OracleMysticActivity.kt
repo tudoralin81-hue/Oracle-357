@@ -97,19 +97,23 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun offerBiometricEnrollIfNeeded(store: OracleAuthStore, onDone: () -> Unit) {
-        if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable() || isFinishing || isDestroyed) { onDone(); return }
+        if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable() || isFinishing || isDestroyed) {
+            ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: skipped (enabled=${store.biometricEnabled()}, offered=${store.biometricOffered()}, available=${biometricAvailable()}, finishing=$isFinishing, destroyed=$isDestroyed)")
+            onDone(); return
+        }
         store.setBiometricOffered(true)
+        ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: showing dialog")
         // A failed dialog show (window not ready, activity mid-transition)
         // must never stall the login flow — skip straight to onDone().
         runCatching {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Enable fingerprint unlock?")
                 .setMessage("Skip typing your password next time you open Oracle — unlock with your fingerprint instead.")
-                .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); onDone() }
-                .setNegativeButton("Not now") { _, _ -> onDone() }
+                .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: user enabled"); onDone() }
+                .setNegativeButton("Not now") { _, _ -> ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: user declined"); onDone() }
                 .setCancelable(false)
                 .show()
-        }.onFailure { onDone() }
+        }.onFailure { ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: dialog.show() threw: ${it.javaClass.simpleName}: ${it.message}"); onDone() }
     }
 
     private fun legalDialog(title: String, body: String) {
@@ -159,11 +163,14 @@ class OracleMysticActivity : Activity() {
     private var proceedingPastAuth = false
 
     private fun proceedPastAuth() {
+        ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: entered (already proceeding=$proceedingPastAuth)")
         if (proceedingPastAuth) return
         proceedingPastAuth = true
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: requesting POST_NOTIFICATIONS")
             runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357) }
+                .onFailure { ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: requestPermissions threw: ${it.javaClass.simpleName}: ${it.message}") }
         }
         runCatching {
             OracleBootstrap.ensure(repository)
@@ -173,8 +180,9 @@ class OracleMysticActivity : Activity() {
             // If today's full-universe scan hasn't run yet (fresh install, or
             // the phone was off overnight), start it now in the background.
             ro.alintudor.oracle.core.OracleGrowthScanReceiver.scanNowIfMissing(this)
+            ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: showing boot loader")
             showBootLoader()
-        }.onFailure { proceedingPastAuth = false; showFatalError("Oracle failed to start", it) }
+        }.onFailure { proceedingPastAuth = false; ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: FAILED: ${it.javaClass.simpleName}: ${it.message}"); showFatalError("Oracle failed to start", it) }
     }
 
     // ---------------------------------------------------------------------
@@ -470,14 +478,21 @@ class OracleMysticActivity : Activity() {
             val password = passwordField.text.toString()
             if (username.isBlank() || password.isBlank()) { error.text = "Enter your username and password."; return@setOnClickListener }
             loginButton.isEnabled = false; loginButton.text = "LOGGING IN…"
+            ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "login: button tapped for user=$username")
             Thread {
                 val result = OracleApiClient.login(username, password)
+                ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: API call returned, success=${result.isSuccess}")
                 runOnUiThread {
+                    ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: on UI thread with result")
                     result.onSuccess { token ->
                         store.saveSession(username, token)
+                        ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: session saved, registering push token")
                         OracleFirebaseMessagingService.registerCurrentToken(this@OracleMysticActivity)
-                        OracleSyncManager.pullAll(this@OracleMysticActivity, token) {
+                        ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: starting pullAll")
+                        OracleSyncManager.pullAll(this@OracleMysticActivity, token) { pullSuccess ->
+                            ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: pullAll onDone, success=$pullSuccess")
                             offerBiometricEnrollIfNeeded(store) {
+                                ro.alintudor.oracle.core.OracleGrowthLog.log(this@OracleMysticActivity, "AUTH", "login: biometric-enroll step done, calling proceedPastAuth")
                                 authPassedThisProcess = true
                                 proceedPastAuth()
                             }
@@ -776,6 +791,7 @@ class OracleMysticActivity : Activity() {
             .setTitle("Exit the demo?")
             .setMessage("The sample portfolio is removed. Create an account to keep your own.")
             .setPositiveButton("Exit") { _, _ ->
+                ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "exit-demo confirmed")
                 val store = OracleAuthStore(this)
                 ro.alintudor.oracle.core.OracleDemo.exit(this)
                 store.clearSession()
@@ -787,7 +803,7 @@ class OracleMysticActivity : Activity() {
                 // later, e.g. biometric enrollment) right on top of that was
                 // the one path where login got stuck on "LOGGING IN..."
                 // until the app was backgrounded and resumed.
-                root.post { showLogin(store) }
+                root.post { ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "exit-demo: showing login screen (posted)"); showLogin(store) }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -912,6 +928,35 @@ class OracleMysticActivity : Activity() {
                 .setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
         card.addView(logRow, LinearLayout.LayoutParams(-1, -2))
+
+        // --- Growth history (the "LATEST RECOMMENDATIONS" journal) ------------
+        // Separate from the log above: this is the recommendation TRACK
+        // RECORD itself, not the diagnostic trail of engine runs — it grows
+        // by one entry per new pick, so heavy same-day testing (many
+        // refreshes while the anchor doesn't change) can leave a cluttered
+        // history behind that's worth being able to reset on its own.
+        card.addView(TextView(this).apply {
+            text = "GROWTH HISTORY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        val journalStore = ro.alintudor.oracle.core.OracleGrowthJournalStore(this)
+        val journalCount = journalStore.load().size
+        card.addView(TextView(this).apply {
+            text = if (journalCount == 0) "No recorded recommendations yet."
+                   else "$journalCount recommendations recorded — shown as \"Latest recommendations\" on Growth."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        card.addView(toolButton("CLEAR HISTORY", Color.rgb(255, 140, 140)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Clear the Growth history?")
+                .setMessage("Every past recommendation entry is deleted — this also resets the Performance track record. New entries start from the next pick.")
+                .setPositiveButton("Clear") { _, _ ->
+                    journalStore.clear()
+                    Toast.makeText(this, "Growth history cleared.", Toast.LENGTH_SHORT).show()
+                    showBackupScreen()
+                }
+                .setNegativeButton("Cancel", null).show()
+        }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
