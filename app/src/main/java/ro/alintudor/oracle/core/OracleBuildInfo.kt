@@ -31,7 +31,7 @@ object OracleBuildInfo {
         "NEWS" to Version(1, 18),
         "GROWTH" to Version(1, 29),
         "KNOWLEDGE" to Version(1, 20),
-        "ANALYSIS" to Version(1, 24),
+        "ANALYSIS" to Version(1, 25),
         "WATCHLIST" to Version(1, 21),
         "ACTIVITY JOURNAL" to Version(1, 18)
     )

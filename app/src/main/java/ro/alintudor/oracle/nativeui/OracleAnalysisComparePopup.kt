@@ -63,10 +63,15 @@ private fun showComparePopup(context: Context, accent: Int, tickerA: String, tic
         background = OracleNativeModule.rounded(Color.rgb(5, 8, 17), dp(12), accent, dp(1))
         isClickable = true; isFocusable = true; setOnClickListener { dialog.dismiss() }
     }, LinearLayout.LayoutParams(dp(42), dp(42)))
-    header.addView(TextView(context).apply {
+    val titleGroup = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
+    titleGroup.addView(TextView(context).apply {
         text = "$tickerA  vs  $tickerB"; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
-        setPadding(dp(12), 0, 0, 0)
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    })
+    titleGroup.addView(TextView(context).apply {
+        text = "${resolvedCompanyName(context, tickerA)}  vs  ${resolvedCompanyName(context, tickerB)}"
+        textSize = 10.5f; setTextColor(Color.rgb(150, 160, 182))
+    })
+    header.addView(titleGroup, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     root.addView(header)
     root.addView(View(context).apply { setBackgroundColor(accent) }, LinearLayout.LayoutParams(-1, dp(1)))
 
@@ -85,18 +90,20 @@ private fun showComparePopup(context: Context, accent: Int, tickerA: String, tic
     Thread {
         val a = runCatching { OracleMarketData.fetchDaily(tickerA, "3mo") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
         val b = runCatching { OracleMarketData.fetchDaily(tickerB, "3mo") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
+        val fundA = runCatching { OracleRealData.fundamentals(tickerA) }.getOrNull()
+        val fundB = runCatching { OracleRealData.fundamentals(tickerB) }.getOrNull()
         Handler(Looper.getMainLooper()).post {
             content.removeView(loader)
             if (a.size < 2 || b.size < 2) {
                 content.addView(TextView(context).apply { text = "Couldn't load 3-month data for one of these tickers."; textSize = 14f; setTextColor(Color.rgb(255, 130, 130)) })
                 return@post
             }
-            buildComparison(context, dp = ::dp, accent = accent, content = content, tickerA = tickerA, tickerB = tickerB, a = a, b = b)
+            buildComparison(context, dp = ::dp, accent = accent, content = content, tickerA = tickerA, tickerB = tickerB, a = a, b = b, fundA = fundA, fundB = fundB)
         }
     }.start()
 }
 
-private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, content: LinearLayout, tickerA: String, tickerB: String, a: List<OracleOhlcvPoint>, b: List<OracleOhlcvPoint>) {
+private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, content: LinearLayout, tickerA: String, tickerB: String, a: List<OracleOhlcvPoint>, b: List<OracleOhlcvPoint>, fundA: OracleFundamentals?, fundB: OracleFundamentals?) {
     fun pctReturn(series: List<OracleOhlcvPoint>, sessions: Int): Double? {
         if (series.size <= sessions) return null
         val base = series[series.size - 1 - sessions].close
@@ -213,6 +220,26 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
     sectionLabel("RELATIONSHIP")
     val corr = correlation(a, b)
     row("Correlation (daily)", corr?.let { String.format(Locale.US, "%.2f", it) } ?: "\u2014", "", Color.WHITE, Color.WHITE)
+
+    if (fundA != null || fundB != null) {
+        sectionLabel("FUNDAMENTALS")
+        fun capText(v: Double?) = v?.let {
+            when { it >= 1e12 -> String.format(Locale.US, "%.2fT", it / 1e12); it >= 1e9 -> String.format(Locale.US, "%.1fB", it / 1e9); it >= 1e6 -> String.format(Locale.US, "%.0fM", it / 1e6); else -> String.format(Locale.US, "%.0f", it) }
+        } ?: "\u2014"
+        fun pctText2(v: Double?) = v?.let { String.format(Locale.US, "%+.1f%%", it * 100.0) } ?: "\u2014"
+        fun numText2(v: Double?) = v?.let { String.format(Locale.US, "%.1f", it) } ?: "\u2014"
+        row("Sector", fundA?.sector ?: "\u2014", fundB?.sector ?: "\u2014")
+        row("Market cap", capText(fundA?.marketCap), capText(fundB?.marketCap))
+        val peA = fundA?.trailingPe; val peB = fundB?.trailingPe
+        row("P/E (trailing)", numText2(peA), numText2(peB), better(peA, peB, lowerIsBetter = true).first, better(peA, peB, lowerIsBetter = true).second)
+        row("P/E (forward)", numText2(fundA?.forwardPe), numText2(fundB?.forwardPe))
+        val pmA = fundA?.profitMargin; val pmB = fundB?.profitMargin
+        row("Profit margin", pctText2(pmA), pctText2(pmB), better(pmA, pmB).first, better(pmA, pmB).second)
+        val rgA = fundA?.revenueGrowth; val rgB = fundB?.revenueGrowth
+        row("Revenue growth", pctText2(rgA), pctText2(rgB), better(rgA, rgB).first, better(rgA, rgB).second)
+        val betaA = fundA?.beta; val betaB = fundB?.beta
+        row("Beta", numText2(betaA), numText2(betaB))
+    }
 
     // --- Verdict in plain words -------------------------------------------
     val verdict = StringBuilder()

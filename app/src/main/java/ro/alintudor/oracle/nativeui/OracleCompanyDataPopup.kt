@@ -18,11 +18,33 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import ro.alintudor.oracle.core.OracleCompanyProfile
+import ro.alintudor.oracle.core.OracleFundamentals
+import ro.alintudor.oracle.core.OracleMarketUniverse
 import ro.alintudor.oracle.core.OracleQuarterEarning
 import ro.alintudor.oracle.core.OracleQuarterFinancial
 import ro.alintudor.oracle.core.OracleRealData
+import ro.alintudor.oracle.core.OracleSP500Universe
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Resolves a ticker to its full company name: the curated S&P 500 list, then
+ * the broader Nasdaq universe feed, then a small hardcoded fallback for a
+ * handful of very common non-listed-elsewhere names, then the ticker itself.
+ * Shared by the Compare popup and OracleAnalysisModules' single-ticker view
+ * so a ticker resolves to the same name everywhere in the app.
+ */
+fun resolvedCompanyName(context: Context, t: String): String {
+    val ticker = t.trim().uppercase(Locale.US)
+    OracleSP500Universe.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
+    OracleMarketUniverse.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
+    return when (ticker) {
+        "AAOI" -> "Applied Optoelectronics, Inc."
+        "APLD" -> "Applied Digital Corporation"
+        "NVDA" -> "NVIDIA Corporation"; "AAPL" -> "Apple Inc."; "MSFT" -> "Microsoft Corporation"; "AMZN" -> "Amazon.com, Inc."; "GOOGL" -> "Alphabet Inc."; "META" -> "Meta Platforms, Inc."; "TSLA" -> "Tesla, Inc."; "AMD" -> "Advanced Micro Devices, Inc."; "AVGO" -> "Broadcom Inc."; "NFLX" -> "Netflix, Inc."
+        else -> ticker
+    }
+}
 
 /**
  * A small, consistently-styled "ⓘ" button meant to sit next to a ticker

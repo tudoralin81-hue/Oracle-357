@@ -689,17 +689,9 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     // are tried first, so any real ticker gets its actual full name — the
     // hardcoded map below is only a fast-path/offline fallback for a
     // handful of very common names, not the primary source.
-    private fun companyName(context: android.content.Context, t: String): String {
-        val ticker = t.trim().uppercase(Locale.US)
-        OracleSP500Universe.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
-        OracleMarketUniverse.nameFor(context, ticker)?.takeIf { it.isNotBlank() }?.let { return it }
-        return when (ticker) {
-            "AAOI" -> "Applied Optoelectronics, Inc."
-            "APLD" -> "Applied Digital Corporation"
-            "NVDA" -> "NVIDIA Corporation"; "AAPL" -> "Apple Inc."; "MSFT" -> "Microsoft Corporation"; "AMZN" -> "Amazon.com, Inc."; "GOOGL" -> "Alphabet Inc."; "META" -> "Meta Platforms, Inc."; "TSLA" -> "Tesla, Inc."; "AMD" -> "Advanced Micro Devices, Inc."; "AVGO" -> "Broadcom Inc."; "NFLX" -> "Netflix, Inc."
-            else -> ticker
-        }
-    }
+    // Shared with the Compare popup (OracleCompanyDataPopup.kt) so a ticker
+    // resolves to the same full name everywhere in the app.
+    private fun companyName(context: android.content.Context, t: String): String = resolvedCompanyName(context, t)
 
     private fun renderWatchlist(items: List<String>) {
         host.content.removeAllViews()
