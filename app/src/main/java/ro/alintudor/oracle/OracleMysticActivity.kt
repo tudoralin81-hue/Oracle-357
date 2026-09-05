@@ -575,6 +575,7 @@ class OracleMysticActivity : Activity() {
                 // operations would sync against the real account.
                 store.clearSession()
                 ro.alintudor.oracle.core.OracleDemo.enter(this@OracleMysticActivity)
+                ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this@OracleMysticActivity)
                 authPassedThisProcess = true
                 proceedPastAuth()
             }
@@ -837,6 +838,7 @@ class OracleMysticActivity : Activity() {
                 val store = OracleAuthStore(this)
                 ro.alintudor.oracle.core.OracleDemo.exit(this)
                 store.clearSession()
+                ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this)
                 authPassedThisProcess = false
                 // The real bug behind "stuck on LOGGING IN...": this flag only
                 // ever gets set back to false in proceedPastAuth()'s own
@@ -985,6 +987,7 @@ class OracleMysticActivity : Activity() {
                         val store = OracleAuthStore(this@OracleMysticActivity)
                         store.clearSession()
                         ro.alintudor.oracle.core.OracleAdminAccess.lock()
+                        ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this@OracleMysticActivity)
                         authPassedThisProcess = false
                         currentModule = null
                         showLogin(store)
@@ -1010,6 +1013,13 @@ class OracleMysticActivity : Activity() {
      *  the second, independent layer on top of that account check. */
     private fun promptAdminAccess() {
         if (ro.alintudor.oracle.core.OracleAdminAccess.isUnlockedThisProcess()) { showAdminScreen(); return }
+        fun focusAndShowKeyboard(field: EditText) {
+            field.requestFocus()
+            field.post {
+                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
         val pinField = EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
             setPadding(dp(20), dp(16), dp(20), dp(16))
@@ -1027,6 +1037,7 @@ class OracleMysticActivity : Activity() {
                     showAdminScreen()
                 }
                 .setNegativeButton("Cancel", null).show()
+            focusAndShowKeyboard(pinField)
         } else {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Admin PIN")
@@ -1038,6 +1049,7 @@ class OracleMysticActivity : Activity() {
                     } else Toast.makeText(this, "Wrong PIN.", Toast.LENGTH_SHORT).show()
                 }
                 .setNegativeButton("Cancel", null).show()
+            focusAndShowKeyboard(pinField)
         }
     }
 

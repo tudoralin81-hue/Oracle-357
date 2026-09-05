@@ -66,7 +66,18 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(appContext)
             val ids = manager.getAppWidgetIds(ComponentName(appContext, OracleGrowthWidgetProvider::class.java))
             if (ids.isEmpty()) return
-            val items = runCatching { OracleRepository(appContext).cachedGrowth() }.getOrDefault(emptyList())
+            // Re-checked on every single update, not just once: a home-screen
+            // widget is visible to anyone who can see the phone's home screen,
+            // without ever opening or unlocking the app itself — it must never
+            // keep showing real recommendations after a logout, and must never
+            // show them at all during a demo session (which is meant to be
+            // locked/sample data everywhere else in the app). The cached data
+            // itself isn't touched or cleared here — only what the widget is
+            // willing to display right now.
+            val authorized = runCatching {
+                ro.alintudor.oracle.core.OracleAuthStore(appContext).hasSession() && !ro.alintudor.oracle.core.OracleDemo.active(appContext)
+            }.getOrDefault(false)
+            val items = if (authorized) runCatching { OracleRepository(appContext).cachedGrowth() }.getOrDefault(emptyList()) else emptyList()
             val views = buildViews(appContext, items)
             for (id in ids) manager.updateAppWidget(id, views)
         }
