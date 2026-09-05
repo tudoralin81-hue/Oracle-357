@@ -24,24 +24,24 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         fun setTickerDraft(ticker: String) { tickerDraft = ticker.trim().uppercase(Locale.US) }
     }
 
-    fun render(actions: List<OracleAction> = emptyList(), knowledge: List<OracleKnowledgeItem> = emptyList(), positions: List<OraclePosition> = emptyList(), history: List<OracleHistoryPoint> = emptyList(), watchlist: List<String> = OracleWatchlistStore(host.root.context).load()) {
+    fun render(actions: List<OracleAction> = emptyList(), knowledge: List<OracleKnowledgeItem> = emptyList(), positions: List<OraclePosition> = emptyList(), history: List<OracleHistoryPoint> = emptyList(), watchlist: List<String> = OracleWatchlistStore(host.root.context).load(), silent: Boolean = false) {
         host.content.rebuildWithoutFlicker {
             host.content.removeAllViews()
             val p = OracleAnalytics.normalize(positions)
             val computed = OracleAnalytics.actions(p, history)
             when (moduleTitle) {
-                "GROWTH" -> renderGrowth()
+                "GROWTH" -> renderGrowth(silent)
                 "ANALYSIS" -> renderAnalysis()
-                "WATCHLIST" -> renderWatchlist(watchlist)
+                "WATCHLIST" -> renderWatchlist(watchlist, silent)
                 "KNOWLEDGE" -> renderKnowledgeSynced()
                 else -> renderActions(if (computed.isNotEmpty()) computed else actions)
             }
         }
     }
 
-    private fun renderGrowth() {
+    private fun renderGrowth(silent: Boolean = false) {
         val r = OracleRepository(host.root.context)
-        OracleGrowthModule(host).render(r.cachedGrowth(), r.cachedNews())
+        OracleGrowthModule(host).render(r.cachedGrowth(), r.cachedNews(), silent)
     }
 
     private fun renderKnowledgeSynced() {
@@ -238,6 +238,29 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
         headline.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2))
         top.addView(headline)
+        // Extended-hours line — shown only while it's actually live. Yahoo only
+        // ever populates preMarketPrice during the pre-market window and
+        // postMarketPrice during after-hours, so marketState here only picks
+        // which label/symbol to show, not whether there's data to show.
+        // 🌅 = pre-market (the session waking up), 🌙 = after-hours (gone to
+        // bed) — nothing shown during REGULAR trading or while fully CLOSED.
+        val f = r.fundamentals
+        val extLabel: String?; val extPrice: Double?; val extChange: Double?; val extSymbol: String?
+        when (f?.marketState) {
+            "PRE", "PREPRE" -> { extLabel = "PRE-MARKET"; extPrice = f.preMarketPrice; extChange = f.preMarketChangePercent; extSymbol = "\uD83C\uDF05" }
+            "POST", "POSTPOST" -> { extLabel = "AFTER-HOURS"; extPrice = f.postMarketPrice; extChange = f.postMarketChangePercent; extSymbol = "\uD83C\uDF19" }
+            else -> { extLabel = null; extPrice = null; extChange = null; extSymbol = null }
+        }
+        if (extLabel != null && extPrice != null && extPrice.isFinite() && extPrice > 0.0) {
+            val changeColor = if ((extChange ?: 0.0) >= 0.0) Color.rgb(45, 232, 92) else Color.rgb(255, 90, 90)
+            top.addView(TextView(host.root.context).apply {
+                text = "$extSymbol $extLabel  ${money(extPrice)}" + (extChange?.let { "  (${if (it >= 0) "+" else ""}${"%.2f".format(Locale.US, it)}%)" } ?: "")
+                textSize = 12.5f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(changeColor)
+                setPadding(0, host.dp(4), 0, 0)
+            })
+        }
         top.addView(TextView(host.root.context).apply {
             text = companyName(host.root.context, r.ticker)
             textSize = 15f
@@ -779,7 +802,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
     // resolves to the same full name everywhere in the app.
     private fun companyName(context: android.content.Context, t: String): String = resolvedCompanyName(context, t)
 
-    private fun renderWatchlist(items: List<String>) {
+    private fun renderWatchlist(items: List<String>, silent: Boolean = false) {
         host.content.rebuildWithoutFlicker {
         host.content.removeAllViews()
         host.addSectionLabel("WATCHLIST • SAVED TICKERS")
@@ -794,7 +817,9 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             watchlistScoring = true
             Thread {
                 runCatching { OracleTickerScoreCache.refresh(ctx, items, maxFetches = 12) }
-                host.root.post { watchlistScoring = false; if (host.root.isAttachedToWindow) renderWatchlist(store.load()) }
+                // This fires seconds after whatever screen state the user is
+                // already looking at (never a fresh navigation) — always silent.
+                host.root.post { watchlistScoring = false; if (host.root.isAttachedToWindow) renderWatchlist(store.load(), silent = true) }
             }.start()
         }
         items.map { it.trim().uppercase(Locale.US) }
@@ -884,21 +909,28 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 host.content.addView(row, LinearLayout.LayoutParams(-1, host.dp(100)).apply {
                     setMargins(0, 0, 0, host.dp(12))
                 })
-                row.alpha = 0f
-                row.translationY = host.dp(20).toFloat()
-                row.animate().alpha(1f).translationY(0f).setStartDelay(index * 80L).setDuration(360L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-                val rowStrokePx = host.dp(1)
-                android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
-                    duration = 2000L
-                    startDelay = index * 160L
-                    repeatCount = android.animation.ValueAnimator.INFINITE
-                    addUpdateListener { anim ->
-                        if (!row.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
-                        val q = anim.animatedValue as Float
-                        rowBg.setStroke((rowStrokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((130 + 100 * q).toInt(), 75, 225, 255))
-                    }
-                }.start()
+                // Same reasoning as Growth's cards: only animate in on a real
+                // fresh navigation. The async score-refresh re-render above
+                // passes silent=true since the user is already looking at
+                // this exact list — replaying the fade/slide + pulse on rows
+                // already on screen is what reads as an unprompted flicker.
+                if (!silent) {
+                    row.alpha = 0f
+                    row.translationY = host.dp(20).toFloat()
+                    row.animate().alpha(1f).translationY(0f).setStartDelay(index * 80L).setDuration(360L)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+                    val rowStrokePx = host.dp(1)
+                    android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                        duration = 2000L
+                        startDelay = index * 160L
+                        repeatCount = android.animation.ValueAnimator.INFINITE
+                        addUpdateListener { anim ->
+                            if (!row.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                            val q = anim.animatedValue as Float
+                            rowBg.setStroke((rowStrokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((130 + 100 * q).toInt(), 75, 225, 255))
+                        }
+                    }.start()
+                }
             }
         }
     }

@@ -46,7 +46,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private val white = Color.WHITE
     private val journalStore = OracleGrowthJournalStore(host.root.context)
 
-    fun render(items: List<OracleGrowthRecommendation>, fallbackNews: List<OracleNews> = emptyList()) {
+    fun render(items: List<OracleGrowthRecommendation>, fallbackNews: List<OracleNews> = emptyList(), silent: Boolean = false) {
         host.content.removeAllViews()
         if (items.isEmpty()) {
             addLoadingState()
@@ -62,7 +62,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         val ordered = listOf("SHORT", "MEDIUM", "LONG").mapNotNull { horizon ->
             items.firstOrNull { it.horizon.equals(horizon, true) }
         }
-        if (ordered.isNotEmpty()) addRecommendations(ordered, fallbackNews)
+        if (ordered.isNotEmpty()) addRecommendations(ordered, fallbackNews, silent)
         addNews(ordered, fallbackNews)
         addHistory(journalStore.load())
     }
@@ -216,7 +216,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
     }
 
-    private fun addRecommendations(items: List<OracleGrowthRecommendation>, news: List<OracleNews>) {
+    private fun addRecommendations(items: List<OracleGrowthRecommendation>, news: List<OracleNews>, silent: Boolean = false) {
         val section = TextView(host.root.context).apply {
             text = "ACTIVE RECOMMENDATIONS SUMMARY"
             textSize = 17f
@@ -225,10 +225,10 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             setPadding(host.dp(4), host.dp(3), host.dp(4), host.dp(7))
         }
         host.content.addView(section)
-        items.forEachIndexed { index, item -> addRecommendationCard(item, news, index) }
+        items.forEachIndexed { index, item -> addRecommendationCard(item, news, index, silent) }
     }
 
-    private fun addRecommendationCard(item: OracleGrowthRecommendation, news: List<OracleNews>, index: Int = 0) {
+    private fun addRecommendationCard(item: OracleGrowthRecommendation, news: List<OracleNews>, index: Int = 0, silent: Boolean = false) {
         val accent = when (item.horizon.uppercase(Locale.US)) { "SHORT" -> cyan; "MEDIUM" -> orange; else -> green }
         val cardBg = rounded(bg, accent, 1, 15)
         val card = card(12).apply { background = cardBg }
@@ -274,7 +274,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // FINANCIAL HEALTH on the second — every box the same size, the row
         // filling the card's width with no dead space on the right.
         val row1 = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(8), 0, 0) }
-        row1.addView(scoreMetric(item.score, demo), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        row1.addView(scoreMetric(item.score, demo, silent), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
         val decisionBox = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(host.dp(10), host.dp(6), host.dp(10), host.dp(6))
@@ -326,38 +326,44 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 8))
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
 
-        // Entrance: fade + rise in, staggered per card so they don't all pop at once.
-        card.alpha = 0f
-        card.translationY = host.dp(26).toFloat()
-        card.animate().alpha(1f).translationY(0f).setStartDelay(index * 120L).setDuration(420L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        // Entrance: fade + rise in, staggered per card so they don't all pop at
+        // once — but only on a genuine fresh navigation. A silent background
+        // refresh re-renders the exact same cards a user is already looking
+        // at; replaying this (plus the two pulse animations below) is what
+        // reads as an unprompted flicker/flash on a screen nothing was done to.
+        if (!silent) {
+            card.alpha = 0f
+            card.translationY = host.dp(26).toFloat()
+            card.animate().alpha(1f).translationY(0f).setStartDelay(index * 120L).setDuration(420L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
 
-        // Continuous subtle pulse on the accent border, so the cards feel alive.
-        val strokePx = host.dp(1)
-        val r = Color.red(accent); val g = Color.green(accent); val b = Color.blue(accent)
-        val pulse = android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
-            duration = 1900L
-            startDelay = index * 220L
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            addUpdateListener { anim ->
-                if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
-                val q = anim.animatedValue as Float
-                cardBg.setStroke((strokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((150 + 105 * q).toInt(), r, g, b))
+            // Continuous subtle pulse on the accent border, so the cards feel alive.
+            val strokePx = host.dp(1)
+            val r = Color.red(accent); val g = Color.green(accent); val b = Color.blue(accent)
+            val pulse = android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                duration = 1900L
+                startDelay = index * 220L
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { anim ->
+                    if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                    val q = anim.animatedValue as Float
+                    cardBg.setStroke((strokePx * (1f + 0.7f * q)).toInt().coerceAtLeast(1), Color.argb((150 + 105 * q).toInt(), r, g, b))
+                }
             }
-        }
-        pulse.start()
+            pulse.start()
 
-        // Slow pulse on the SHORT/MEDIUM/LONG TERM label.
-        val horizonPulse = android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
-            duration = 2600L
-            startDelay = index * 180L
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            addUpdateListener { anim ->
-                if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
-                horizonLabelView.alpha = anim.animatedValue as Float
+            // Slow pulse on the SHORT/MEDIUM/LONG TERM label.
+            val horizonPulse = android.animation.ValueAnimator.ofFloat(0.55f, 1f, 0.55f).apply {
+                duration = 2600L
+                startDelay = index * 180L
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { anim ->
+                    if (!card.isAttachedToWindow) { anim.cancel(); return@addUpdateListener }
+                    horizonLabelView.alpha = anim.animatedValue as Float
+                }
             }
+            horizonPulse.start()
         }
-        horizonPulse.start()
     }
 
     private fun fairValueColor(label: String) = when { label.contains("UNDERVALUED") -> green; label.contains("OVERVALUED") -> red; label.contains("FAIRLY") -> orange; else -> muted }
@@ -593,7 +599,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     /** The one number the whole card exists to show — deliberately bigger
      *  and boxed apart from its SIGNAL/RISK/ALLOCATION siblings, with a
      *  count-up animation so it draws the eye first on every card. */
-    private fun scoreMetric(score: Int, demo: Boolean): LinearLayout {
+    private fun scoreMetric(score: Int, demo: Boolean, silent: Boolean = false): LinearLayout {
         val box = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setPadding(host.dp(4), host.dp(10), host.dp(4), host.dp(10))
@@ -602,6 +608,10 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         box.addView(text("SCORE", 8f, Typeface.DEFAULT, muted, 0, 2))
         if (demo) {
             box.addView(text(OracleDemo.LOCK, 20f, Typeface.DEFAULT_BOLD, cyan, 0, 0))
+            return box
+        }
+        if (silent) {
+            box.addView(text("$score/100", 24f, Typeface.DEFAULT_BOLD, cyan, 0, 0))
             return box
         }
         val number = text("0", 24f, Typeface.DEFAULT_BOLD, cyan, 0, 0)

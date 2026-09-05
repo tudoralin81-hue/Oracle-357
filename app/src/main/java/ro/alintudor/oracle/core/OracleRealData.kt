@@ -11,7 +11,14 @@ data class OracleFundamentals(
     val sector: String?, val industry: String?, val trailingPe: Double?, val forwardPe: Double?,
     val revenueGrowth: Double?, val earningsGrowth: Double?, val profitMargin: Double?,
     val operatingMargin: Double?, val returnOnEquity: Double?, val debtToEquity: Double?,
-    val marketCap: Double?, val priceToBook: Double?, val currentRatio: Double?, val quickRatio: Double?, val beta: Double?, val rawText: String
+    val marketCap: Double?, val priceToBook: Double?, val currentRatio: Double?, val quickRatio: Double?, val beta: Double?, val rawText: String,
+    // Extended-hours (display only — never feeds the score). marketState comes
+    // straight from Yahoo: "PRE"/"PREPRE" before the open, "POST"/"POSTPOST"
+    // after the close, "REGULAR" or "CLOSED" otherwise — the pre/post price
+    // fields are only ever populated by Yahoo during the matching window, so
+    // no separate time-of-day check is needed on our side to know when to hide them.
+    val marketState: String? = null, val preMarketPrice: Double? = null, val preMarketChangePercent: Double? = null,
+    val postMarketPrice: Double? = null, val postMarketChangePercent: Double? = null
 )
 data class OracleNewsContext(val score:Int,val headlineCount:Int,val positiveHits:Int,val negativeHits:Int,val topHeadline:String?)
 data class OracleMarketContext(val market5D:Double?,val market20D:Double?,val sector5D:Double?,val sector20D:Double?,val sectorEtf:String?,val rawText:String)
@@ -150,7 +157,9 @@ object OracleRealData {
         val beta=summary?.beta ?: quote?.beta ?: ts?.beta
         if (listOf(sector,industry,pe,fpe,rg,eg,pm,om,roe,de,cap,pb,cr,qr,beta).all { it == null }) return null
         return OracleFundamentals(sector,industry,pe,fpe,rg,eg,pm,om,roe,de,cap,pb,cr,qr,beta,
-            buildFundamentalText(sector,industry,pe,fpe,rg,eg,pm,om,roe,de,cap,pb,cr,qr,beta))
+            buildFundamentalText(sector,industry,pe,fpe,rg,eg,pm,om,roe,de,cap,pb,cr,qr,beta),
+            summary?.marketState, summary?.preMarketPrice, summary?.preMarketChangePercent,
+            summary?.postMarketPrice, summary?.postMarketChangePercent)
     }
 
     private fun parseQuoteSummary(root:JSONObject,ticker:String):OracleFundamentals? = try {
@@ -175,7 +184,10 @@ object OracleRealData {
             num(fd,"operatingMargins"),num(fd,"returnOnEquity"),num(fd,"debtToEquity")?.let { it / 100.0 },
             marketCap,
             num(sd,"priceToBook")?:num(ks,"priceToBook"),
-            num(fd,"currentRatio"),num(fd,"quickRatio"),num(sd,"beta"), ""
+            num(fd,"currentRatio"),num(fd,"quickRatio"),num(sd,"beta"), "",
+            price?.optString("marketState")?.takeIf { it.isNotBlank() },
+            num(price,"preMarketPrice"), num(price,"preMarketChangePercent"),
+            num(price,"postMarketPrice"), num(price,"postMarketChangePercent")
         )
     } catch(_:Exception) { null }
 

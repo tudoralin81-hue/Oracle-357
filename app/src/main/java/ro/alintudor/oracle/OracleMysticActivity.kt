@@ -1214,7 +1214,7 @@ class OracleMysticActivity : Activity() {
                 host,
                 moduleTitle,
                 onWatchlistTickerClick = { ticker -> openWatchlistTicker(ticker) }
-            ).render(actions = data.actions, knowledge = data.knowledge, positions = data.positions, history = data.history)
+            ).render(actions = data.actions, knowledge = data.knowledge, positions = data.positions, history = data.history, silent = silent)
         }
 
     }
