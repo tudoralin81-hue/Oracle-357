@@ -16,8 +16,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
-/** GROWTH progress phase, polled by the loader UI (Requirement #6 — B540). */
-enum class OracleGrowthPhase { RUNNING, DONE, NO_DATA }
+/** GROWTH progress phase, polled by the loader UI (Requirement #6 — B540).
+ *  NO_DATA = a genuine OHLCV/network fetch failure (0 symbols received).
+ *  NO_LOCAL_WEIGHTS = a distinct reason: local ranking has nothing to rank
+ *  with because no GrowthLocal-emergency file is loaded — never show the
+ *  OHLCV-failure wording for this, it would be factually wrong. */
+enum class OracleGrowthPhase { RUNNING, DONE, NO_DATA, NO_LOCAL_WEIGHTS }
 
 /** GROWTH progress snapshot, polled by the loader UI (Requirement #6 — B540). */
 data class OracleGrowthProgress(
@@ -366,7 +370,7 @@ object OracleGrowthEngine {
         // running the whole pipeline on meaningless placeholder scores.
         if (listOf("SHORT","MEDIUM","LONG").any { OracleGrowthEmergency.activeWeights(it, weights[it]) == null }) {
             OracleGrowthLog.log(context,"RUN","No horizon weights available (no emergency file loaded, and the server is unreachable) — local ranking is unavailable this run.")
-            progressState = progressState.copy(phase = OracleGrowthPhase.NO_DATA)
+            progressState = progressState.copy(phase = OracleGrowthPhase.NO_LOCAL_WEIGHTS)
             return emptyList()
         }
 

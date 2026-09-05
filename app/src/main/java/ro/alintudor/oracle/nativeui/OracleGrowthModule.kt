@@ -88,6 +88,10 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             addNoDataState(initial)
             return
         }
+        if (initial.phase == OracleGrowthPhase.NO_LOCAL_WEIGHTS) {
+            addNoLocalWeightsState()
+            return
+        }
 
         val card = card(18)
         card.gravity = Gravity.CENTER
@@ -141,6 +145,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                     addNoDataState(p)
                     return
                 }
+                if (p.phase == OracleGrowthPhase.NO_LOCAL_WEIGHTS) {
+                    handler.removeCallbacksAndMessages(null)
+                    addNoLocalWeightsState()
+                    return
+                }
                 val total = p.total.coerceAtLeast(1)
                 val loaded = p.loaded.coerceIn(0, total)
                 // Requirement #6: the visible counter steps in increments of 50;
@@ -178,6 +187,25 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(text("The OHLCV data source did not respond.", 13f, Typeface.DEFAULT_BOLD, red, 0, 6).apply { gravity = Gravity.CENTER })
         card.addView(text("Growth recommendations could not be calculated (${progress.loaded} / ${progress.total} symbols received).", 11f, Typeface.DEFAULT, muted, 0, 6).apply { gravity = Gravity.CENTER })
         card.addView(text("Tap ↻ (top right) to retry.", 11f, Typeface.DEFAULT_BOLD, cyan, 0, 6).apply { gravity = Gravity.CENTER })
+        host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(200)).apply { setMargins(0, 0, 0, host.dp(10)) })
+    }
+
+    /** Distinct from addNoDataState above: this isn't a network/OHLCV failure
+     *  at all — the server has nothing usable AND the on-device formula has
+     *  been deliberately removed from this build, so local ranking has
+     *  nothing to compute with unless the owner's GrowthLocal-emergency file
+     *  is loaded (TOOLS > Admin Only). Reusing the OHLCV wording here would
+     *  describe a real network problem that isn't what actually happened. */
+    private fun addNoLocalWeightsState() {
+        host.content.removeAllViews()
+        val card = card(18)
+        card.gravity = Gravity.CENTER
+        card.background = rounded(bg, Color.rgb(255, 170, 40), 1, 16)
+        card.addView(text("🔌", 28f, Typeface.DEFAULT_BOLD, Color.rgb(255, 170, 40), 0, 0).apply { gravity = Gravity.CENTER })
+        card.addView(text("GROWTH", 17f, Typeface.DEFAULT_BOLD, green, 0, 10).apply { gravity = Gravity.CENTER })
+        card.addView(text("Local computation unavailable.", 13f, Typeface.DEFAULT_BOLD, Color.rgb(255, 170, 40), 0, 6).apply { gravity = Gravity.CENTER })
+        card.addView(text("The server has no usable picks right now, and no GrowthLocal-emergency file is loaded on this device — load one in TOOLS > Admin Only to compute locally.", 11f, Typeface.DEFAULT, muted, 0, 6).apply { gravity = Gravity.CENTER })
+        card.addView(text("Tap ↻ (top right) to retry the server.", 11f, Typeface.DEFAULT_BOLD, cyan, 0, 6).apply { gravity = Gravity.CENTER })
         host.content.addView(card, LinearLayout.LayoutParams(-1, host.dp(200)).apply { setMargins(0, 0, 0, host.dp(10)) })
     }
 

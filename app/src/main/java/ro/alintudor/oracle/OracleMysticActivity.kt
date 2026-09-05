@@ -831,6 +831,15 @@ class OracleMysticActivity : Activity() {
      *  not there's a real session (including in DEMO mode), since it isn't
      *  answering "am I logged in", only "can the app reach the server". */
     private fun checkServerConnectionSilently(hero: OracleMysticStartView) {
+        if (ro.alintudor.oracle.core.OracleGrowthEmergency.isForcingLocal(this)) {
+            // The real server may well be perfectly reachable — this toggle
+            // only tells Growth to act as if it weren't, for testing. Still
+            // ping in the background (kept in the network log for reference),
+            // but the dot itself reflects what's actually happening right now.
+            hero.setServerStatus("SERVER OFF (TEST)", Color.rgb(255, 170, 40))
+            Thread { ro.alintudor.oracle.core.OracleApiClient.ping() }.start()
+            return
+        }
         Thread {
             val ok = ro.alintudor.oracle.core.OracleApiClient.ping().isSuccess
             runOnUiThread {
