@@ -35,8 +35,35 @@ object OracleGrowthEmergency {
     )
 
     private var cached: Loaded? = null
+    @Volatile private var forceLocalFlag: Boolean? = null
 
     private fun file(context: Context) = File(context.applicationContext.filesDir, "oracle_growth_emergency.json")
+    private fun forceLocalFile(context: Context) = File(context.applicationContext.filesDir, "oracle_growth_force_local.flag")
+
+    /** Testing aid — see the TOOLS "FORCE LOCAL MODE" toggle. When on,
+     *  OracleGrowthEngine.run() skips tryServerPicks() entirely and always
+     *  computes on-device, so a loaded (or edited) weights/sentiment/sector
+     *  file can be tested end-to-end without touching the real server or
+     *  waiting for an actual outage. Persisted to a small flag file so a
+     *  test session survives an app restart without being silently lost —
+     *  and so it's just as deliberately visible to turn back off. */
+    fun isForcingLocal(context: Context): Boolean {
+        forceLocalFlag?.let { return it }
+        val v = forceLocalFile(context).exists()
+        forceLocalFlag = v
+        return v
+    }
+
+    fun setForceLocal(context: Context, on: Boolean) {
+        forceLocalFlag = on
+        val f = forceLocalFile(context)
+        if (on) runCatching { f.writeText("1") } else runCatching { f.delete() }
+        // The HARD FREEZE (OracleLocalProcessor) reuses today's snapshot
+        // regardless of source — without clearing it, toggling this on would
+        // silently keep showing whatever was already frozen (very possibly
+        // server-sourced) instead of triggering a genuine local recompute.
+        if (on) runCatching { OracleRepository(context).saveGrowth(emptyList()) }
+    }
 
     fun isLoaded(context: Context): Boolean = current(context) != null
 

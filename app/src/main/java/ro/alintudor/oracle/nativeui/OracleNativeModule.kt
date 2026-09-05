@@ -72,6 +72,20 @@ class OracleNativeModule(
         val moduleTitleRow = LinearLayout(context).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
         if (moduleKey.isNotBlank()) moduleTitleRow.addView(OracleModuleIcon(context, moduleKey, accent), LinearLayout.LayoutParams(dp(20),dp(20)).apply{ setMargins(0,0,dp(6),0) })
         moduleTitleRow.addView(TextView(context).apply { text=title;textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.18f;setTextColor(accent);gravity=Gravity.CENTER;includeFontPadding=true })
+        // A small connection-status dot for the modules that actually talk to
+        // the server — separate from the global "SERVER ON/OFF" dot on the
+        // START hub, this is per-module so each screen says whether ITS OWN
+        // data just came from the server or not, right where you're looking.
+        when (moduleKey) {
+            "growth" -> {
+                val local = ro.alintudor.oracle.core.OracleGrowthEmergency.isForcingLocal(context)
+                moduleTitleRow.addView(connectionDot(context, on = !local, label = if (local) "Growth: local mode (forced for testing)" else "Growth: server"))
+            }
+            "knowledge" -> {
+                val hasError = ro.alintudor.oracle.core.OracleKnowledgeSync.lastError(context).isNotBlank()
+                moduleTitleRow.addView(connectionDot(context, on = !hasError, label = if (hasError) "Knowledge: last sync failed, showing cached articles" else "Knowledge: synced"))
+            }
+        }
         center.addView(moduleTitleRow)
         // App icon next to the build number — the same mark the login/boot
         // screens use, small enough here to just anchor the version line.
@@ -132,6 +146,10 @@ class OracleNativeModule(
     fun restoreScrollY(value: Int) { if (!::scrollView.isInitialized) return; scrollPositions[title] = value.coerceAtLeast(0); scrollView.post { scrollView.scrollTo(0, value.coerceAtLeast(0)) } }
 
     private fun button(symbol:String,desc:String,color:Int,click:()->Unit)=TextView(context).apply{ text=symbol;textSize=30f;gravity=Gravity.CENTER;contentDescription=desc;typeface=Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);background=rounded(Color.rgb(5,8,17),dp(13),color,dp(1));isClickable=true;isFocusable=true;setOnClickListener{click()} }
+    private fun connectionDot(context: Context, on: Boolean, label: String) = TextView(context).apply {
+        text = "\u25CF"; textSize = 9f; setTextColor(if (on) Color.rgb(80, 235, 130) else Color.rgb(255, 120, 90))
+        contentDescription = label; gravity = Gravity.CENTER; setPadding(dp(5), 0, 0, 0)
+    }
     fun addCard(heading:String,body:String){
         val card=LinearLayout(context).apply{ orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)); background=rounded(Color.rgb(7,11,22),dp(15),Color.rgb(42,52,76),dp(1)) }
         card.addView(TextView(context).apply{text=heading.uppercase();textSize=17f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.04f;setTextColor(Color.WHITE)})

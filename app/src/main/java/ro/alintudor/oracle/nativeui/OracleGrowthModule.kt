@@ -56,6 +56,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // GrowthBanner from the shared module shell is the single Growth hero.
         // Do not add a second Growth banner here.
         journalStore.record(items)
+        addLocalModeBanner(items)
         addRegimeBanner(items)
         addSummary(items)
 
@@ -186,6 +187,23 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
 
     /** One line, only when it matters: the ranking is relative, this says
      *  whether the market as a whole is with it. */
+    private fun addLocalModeBanner(items: List<OracleGrowthRecommendation>) {
+        val first = items.firstOrNull() ?: return
+        if (!first.computedLocally) return
+        val color = Color.rgb(255, 170, 40)
+        val box = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(host.dp(14), host.dp(11), host.dp(14), host.dp(11))
+            background = OracleNativeModule.rounded(Color.rgb(14, 10, 5), host.dp(12), color, host.dp(1))
+        }
+        box.addView(text("\uD83D\uDD0C LOCAL MODE", 12f, Typeface.DEFAULT_BOLD, color, 0, 0))
+        box.addView(text(
+            if (OracleGrowthEmergency.isForcingLocal(host.root.context)) "Forced on for testing — computed on this device, not the server."
+            else "Server unreachable right now — computed on this device as a fallback.",
+            11f, Typeface.DEFAULT, Color.rgb(205, 210, 222), 0, 4
+        ))
+        host.content.addView(box, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
+    }
+
     private fun addRegimeBanner(items: List<OracleGrowthRecommendation>) {
         val first = items.firstOrNull() ?: return
         val level = first.marketRegime.uppercase(Locale.US)

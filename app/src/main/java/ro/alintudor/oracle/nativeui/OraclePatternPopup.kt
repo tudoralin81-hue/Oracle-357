@@ -134,14 +134,41 @@ private fun renderPatternResults(
             text = p.note; textSize = 12.5f; setTextColor(Color.rgb(190, 198, 216)); setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, dp(6), 0, 0)
         })
+        generalDescription(p.type)?.let { extra ->
+            card.addView(TextView(context).apply {
+                text = extra; textSize = 11.5f; setTextColor(Color.rgb(140, 150, 172)); setLineSpacing(dp(2).toFloat(), 1f)
+                setPadding(0, dp(6), 0, 0)
+            })
+        }
         // --- Chart snapshot: a window of candles around the pattern, with its
         // defining points marked and connected — visual confirmation next to
-        // the text, not instead of it. ---
+        // the text, not instead of it. Price range and date range labeled
+        // directly around the chart, since a bare line with no scale isn't
+        // actually verifiable at a glance. ---
         buildPatternSnapshot(context, dp, candles, p, color)?.let {
-            card.addView(it, LinearLayout.LayoutParams(-1, dp(90)).apply { topMargin = dp(10) })
+            card.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
         content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
     }
+}
+
+/** A short, general "what this pattern typically means" line — separate from
+ *  the per-detection note (which has this ticker's specific numbers) so the
+ *  card reads as "here's the textbook shape, and here's how this ticker
+ *  matched it" rather than repeating the same sentence twice. */
+private fun generalDescription(type: String): String? = when (type) {
+    "DOUBLE_TOP" -> "Two failed attempts to break the same high often mean buyers ran out of conviction there — a close below the pullback low between the peaks is the usual confirmation, not the second peak alone."
+    "DOUBLE_BOTTOM" -> "Two failed attempts to break the same low often mean sellers ran out of conviction there — a close above the rally high between the troughs is the usual confirmation."
+    "HEAD_SHOULDERS" -> "A classic exhaustion shape: the middle peak is the last, weaker push before momentum fades. Confirmation is a close below the neckline, not the shape alone."
+    "INV_HEAD_SHOULDERS" -> "The bullish mirror of Head & Shoulders — a final, weaker sell-off before buyers take over. Confirmation is a close above the neckline."
+    "TRIANGLE_ASC" -> "Buyers keep meeting the same ceiling but sellers give less ground each time — a squeeze that has historically favored an upside break, though it isn't guaranteed."
+    "TRIANGLE_DESC" -> "Sellers keep meeting the same floor but buyers give less ground each time — a squeeze that has historically favored a downside break, though it isn't guaranteed."
+    "TRIANGLE_SYM" -> "Neither side is winning yet — range keeps compressing. The direction of the eventual break matters far more than the triangle itself."
+    "BREAKOUT_RESISTANCE" -> "A level tested multiple times and finally cleared — often (not always) followed by a retest of that same level from above as new support."
+    "BREAKOUT_SUPPORT" -> "A level tested multiple times and finally lost — often (not always) followed by a retest of that same level from below as new resistance."
+    "FLAG_BULLISH" -> "A sharp rally followed by a shallow, orderly pullback — historically a continuation setup rather than a reversal, as long as the pullback stays shallow."
+    "FLAG_BEARISH" -> "A sharp decline followed by a shallow, orderly bounce — historically a continuation setup rather than a reversal, as long as the bounce stays shallow."
+    else -> null
 }
 
 /** Windows the candle list to roughly the pattern's own span plus some
@@ -156,9 +183,30 @@ private fun buildPatternSnapshot(context: Context, dp: (Int) -> Int, candles: Li
     if (to <= from) return null
     val window = candles.subList(from, to + 1)
     val localMarkers = pattern.markers.mapNotNull { (idx, price) -> if (idx in from..to) (idx - from) to price else null }
-    return PatternMiniChartView(context, window, localMarkers, color).apply {
+    val prices = window.map { it.close } + localMarkers.map { it.second }
+    val maxPrice = prices.max(); val minPrice = prices.min()
+    val dateFmt = java.text.SimpleDateFormat("d MMM", java.util.Locale.US)
+    val fromDate = dateFmt.format(java.util.Date(window.first().timestamp))
+    val toDate = dateFmt.format(java.util.Date(window.last().timestamp))
+
+    val container = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
         background = OracleNativeModule.rounded(Color.rgb(5, 8, 17), dp(8), Color.rgb(30, 38, 58), dp(1))
+        setPadding(dp(8), dp(6), dp(8), dp(6))
     }
+    container.addView(TextView(context).apply {
+        text = "%.2f".format(java.util.Locale.US, maxPrice); textSize = 9f; setTextColor(Color.rgb(120, 130, 152))
+    })
+    container.addView(PatternMiniChartView(context, window, localMarkers, color), LinearLayout.LayoutParams(-1, dp(78)).apply { topMargin = dp(2); bottomMargin = dp(2) })
+    val bottomRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+    bottomRow.addView(TextView(context).apply {
+        text = "%.2f".format(java.util.Locale.US, minPrice); textSize = 9f; setTextColor(Color.rgb(120, 130, 152))
+    }, LinearLayout.LayoutParams(0, -2, 1f))
+    bottomRow.addView(TextView(context).apply {
+        text = "$fromDate \u2192 $toDate"; textSize = 9f; setTextColor(Color.rgb(120, 130, 152)); gravity = Gravity.END
+    }, LinearLayout.LayoutParams(0, -2, 1f))
+    container.addView(bottomRow)
+    return container
 }
 
 /** A minimal, dependency-free line-chart View: the closing-price path across

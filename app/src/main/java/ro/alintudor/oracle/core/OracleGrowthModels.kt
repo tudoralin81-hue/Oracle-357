@@ -47,5 +47,10 @@ data class OracleGrowthRecommendation(
     val fairValueLabel: String = "",
     val fairValueScore: Int? = null,
     val financialHealthLabel: String = "",
-    val financialHealthScore: Int? = null
+    val financialHealthScore: Int? = null,
+    // true only for picks computed on-device by runInternal()/rankCandidates()
+    // — false (the default) covers both a genuine server-sourced pick AND
+    // any other caller that doesn't set this explicitly. Used purely for
+    // the LOCAL MODE badge on the Growth screen; never affects scoring.
+    val computedLocally: Boolean = false
 )

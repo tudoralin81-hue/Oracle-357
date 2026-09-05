@@ -273,7 +273,8 @@ object OracleGrowthEngine {
 
     fun run(context: Context, seed:List<OracleGrowthRecommendation> = emptyList()):List<OracleGrowthRecommendation> = try {
         OracleGrowthEmergency.current(context) // no-op if nothing was ever loaded; otherwise pushes the owner-loaded weights/sentiment/sector override in before either path below runs
-        tryServerPicks(context) ?: runInternal(context, seed)
+        if (OracleGrowthEmergency.isForcingLocal(context)) runInternal(context, seed)
+        else tryServerPicks(context) ?: runInternal(context, seed)
     } catch (_: Exception) {
         // Defensive: the universe/OHLCV/enrichment paths already catch their own
         // errors internally, but a genuinely unexpected failure must still leave
@@ -540,7 +541,7 @@ object OracleGrowthEngine {
                 ?: pick.ticker
             OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, LO ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
             out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source=ENGINE_TAG,marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard,
-                fairValueLabel=fairValue.label,fairValueScore=fairValue.score,financialHealthLabel=health.label,financialHealthScore=health.score)
+                fairValueLabel=fairValue.label,fairValueScore=fairValue.score,financialHealthLabel=health.label,financialHealthScore=health.score,computedLocally=true)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)
         return out

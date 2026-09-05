@@ -1064,6 +1064,19 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
         card.addView(emergencyRow, LinearLayout.LayoutParams(-1, -2))
 
+        val forcingLocal = ro.alintudor.oracle.core.OracleGrowthEmergency.isForcingLocal(this)
+        card.addView(TextView(this).apply {
+            text = if (forcingLocal) "Testing: forced onto local computation — Growth ignores the server until this is turned off."
+                   else "Growth uses the server normally. Force local to test a loaded file without touching the server."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(if (forcingLocal) Color.rgb(255, 170, 40) else muted); setPadding(dp(6), dp(10), dp(6), dp(8))
+        })
+        card.addView(toolButton(if (forcingLocal) "TURN OFF — USE SERVER AGAIN" else "FORCE LOCAL MODE (TESTING)", if (forcingLocal) Color.rgb(255, 170, 40) else Color.rgb(55, 215, 255)) {
+            val turningOn = !forcingLocal
+            ro.alintudor.oracle.core.OracleGrowthEmergency.setForceLocal(this, turningOn)
+            Toast.makeText(this, if (turningOn) "Forced local — today's Growth snapshot cleared, next open recomputes on-device." else "Back to normal — Growth will try the server again.", Toast.LENGTH_LONG).show()
+            showBackupScreen()
+        }, LinearLayout.LayoutParams(-1, -2))
+
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
