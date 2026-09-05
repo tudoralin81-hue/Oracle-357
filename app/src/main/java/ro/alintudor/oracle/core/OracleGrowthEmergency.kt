@@ -7,19 +7,18 @@ import java.io.File
 
 /**
  * GrowthLocal-emergency: an optional, owner-loaded override for the
- * weights/sentiment-lexicon/sector-allocation data that otherwise lives
- * hardcoded in OracleGrowthEngine.kt / OracleSentiment.kt /
- * OracleSectorAllocation.kt. Loaded via a file picker in TOOLS, kept ONLY in
- * this device's private storage (filesDir — never backed up to the cloud by
- * default, never bundled in the APK, never synced to the server).
+ * weights/sentiment-lexicon/sector-allocation data. Loaded via a file
+ * picker in TOOLS > Admin Only, kept ONLY in this device's private storage
+ * (filesDir — never backed up to the cloud by default, never bundled in
+ * the APK, never synced to the server).
  *
- * IMPORTANT — sequencing: as of this build, the hardcoded values in those
- * three files are UNTOUCHED. This object only parses, stores, and exposes
- * what was loaded, so the whole import→persist→reload path can be tested
- * end-to-end first. Wiring OracleGrowthEngine's actual ranking to prefer
- * this data over the hardcoded constants — and then removing the hardcoded
- * constants from what ships to testers — is the deliberate next step, not
- * this one.
+ * As of build 357.1.81, the real horizon-weight arrays (OracleGrowthEngine)
+ * and sector-multiplier table (OracleSectorAllocation) have been REMOVED
+ * from the compiled app — this file (loaded here) is now the ONLY place
+ * those values exist at all. The sentiment lexicon (OracleSentiment) was
+ * deliberately NOT removed — News and Analysis need it unconditionally,
+ * with no server fallback, so it still ships hardcoded; this object can
+ * still *override* it if a file is loaded, but nothing breaks if it isn't.
  */
 object OracleGrowthEmergency {
     data class Loaded(

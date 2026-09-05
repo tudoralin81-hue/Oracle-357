@@ -1195,7 +1195,15 @@ class OracleMysticActivity : Activity() {
         emergencyRow.addView(toolButton("LOAD FILE", Color.rgb(55, 215, 255)) {
             val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE); type = "*/*"
-                putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("application/json"))
+                // No MIME-type restriction: many file managers/storage
+                // providers don't tag .json files as application/json (some
+                // use text/plain, some leave it generic), so filtering by
+                // MIME type risks hiding the very file being looked for —
+                // confirmed exactly that just happened. The real gatekeeper
+                // is importFrom()'s own content validation below, which
+                // already rejects anything that isn't the expected shape
+                // with a clear message — that's more reliable than MIME
+                // sniffing ever is.
             }
             runCatching { startActivityForResult(intent, EMERGENCY_IMPORT_REQUEST) }.onFailure { Toast.makeText(this, "No file picker available", Toast.LENGTH_SHORT).show() }
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })

@@ -339,12 +339,19 @@ object OracleGrowthEngine {
                 ?: OracleMarketUniverse.nameFor(context, ticker)
                 ?: lookupCompanyName(ticker)
                 ?: ticker
+            val serverWeights = o.optJSONArray("weights")?.let { arr -> (0 until arr.length()).map { arr.optInt(it) } }
             recs += OracleGrowthRecommendation(
                 horizon = horizon, ticker = ticker, company = company, sector = sector,
                 score = o.optInt("score"), signal = o.optString("signal"), risk = o.optString("risk"),
                 allocationMax = o.optDouble("allocation", 1.0), forecastPct = o.optDouble("forecastPct", 0.0),
                 momentum5D = o.optDouble("momentum5D", 0.0), momentum20D = o.optDouble("momentum20D", 0.0),
-                weights = OracleGrowthEmergency.activeWeights(horizon, weights[horizon])?.toList() ?: emptyList(),
+                // Prefer weights the server itself sent for this pick (the
+                // real, currently-active recipe) over the local/emergency
+                // lookup, which for a normal user (no emergency file loaded)
+                // is empty by design now — this is what actually restores
+                // the Weights bars for everyone once the server includes
+                // this field; falls back to local until then.
+                weights = serverWeights ?: OracleGrowthEmergency.activeWeights(horizon, weights[horizon])?.toList() ?: emptyList(),
                 referencePrice = price, currentPrice = price,
                 adx = o.optDouble("adx", -1.0).takeIf { it >= 0.0 },
                 factorValues = keys.map { componentsJson?.optDouble(it, 50.0) ?: 50.0 },
