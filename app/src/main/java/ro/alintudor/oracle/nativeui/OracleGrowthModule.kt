@@ -568,9 +568,12 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         // narrow phones.
         addView(text(label, 8f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(-2, -2))
         addView(TextView(host.root.context).apply {
-            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            gravity = Gravity.END; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
+            // Up to 2 lines, no ellipsize: "STRONG BUY" wraps at its natural space
+            // into "STRONG" / "BUY" instead of being cut down to "STRO…" — the
+            // label already has first claim on width (see above), so the badge
+            // shrinking to 2 lines here can no longer squeeze it to 0dp either.
+            text = value; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); maxLines = 2
+            gravity = Gravity.CENTER; setPadding(host.dp(8), host.dp(2), host.dp(8), host.dp(2))
             background = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(8), color, host.dp(1))
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = host.dp(6) })
     }
