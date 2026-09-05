@@ -308,30 +308,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         verdicts.addView(verdictBox("FINANCIAL HEALTH", if (verdictsDemo) OracleDemo.LOCK else health.label, if (verdictsDemo) null else health.score, if (verdictsDemo) vMuted else healthColor(health.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
         host.content.addView(verdicts)
 
-        // ==== 3. EVIDENCE — the same 18-cell grid Growth draws, with this ticker's factor VALUES ====
-        host.addSectionLabel("FACTOR SCORES \u2022 SAME ENGINE AS GROWTH")
-        val gridCard = LinearLayout(host.root.context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(host.dp(15), host.dp(10), host.dp(15), host.dp(10))
-            background = GradientDrawable().apply { setColor(Color.rgb(7, 12, 23)); cornerRadius = host.dp(15).toFloat(); setStroke(host.dp(1), Color.rgb(34, 55, 82)) }
-        }
-        if (OracleDemo.active(host.root.context)) {
-            // The factor values ARE the engine's output for this ticker — the
-            // same thing the Growth score locks. Demo shows the grid exists,
-            // not the numbers.
-            gridCard.addView(TextView(host.root.context).apply {
-                text = "${OracleDemo.LOCK}  Factor scores are for account holders. The 17 factors and LO are shown with real values once you sign in."
-                textSize = 12f; setTextColor(Color.rgb(205, 213, 228)); setLineSpacing(host.dp(3).toFloat(), 1f)
-            })
-        } else {
-            OracleFactorGrid.add(host, gridCard, "Factor scores (0\u2013100)", r.growthComponents, 100)
-        }
-        host.content.addView(gridCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(10)) })
-
-        // ==== 4. CONTEXT — the chart ====
+        // ==== 3. CONTEXT — the chart ====
         addTechnicalChart(r.ticker)
 
-        // ==== 5. DETAILS — raw numbers, grouped and collapsed by default ====
+        // ==== 4. DETAILS — raw numbers, grouped and collapsed by default ====
         // Whoever wants a specific figure can open its group; nobody has to
         // scroll past ~28 cards to reach the chart.
         host.addSectionLabel("DETAILS")

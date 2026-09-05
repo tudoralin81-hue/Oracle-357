@@ -4,21 +4,18 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
-import kotlin.math.roundToInt
 
-/** Single-ticker analysis: raw technical/fundamental readouts plus the same
- *  17-factor grid Growth uses — deliberately no score/signal/risk/allocation
- *  of its own. Analysis is a research tool, not a second verdict engine;
- *  for a buy/sell recommendation, that's what Growth is for. */
+/** Single-ticker analysis: raw technical/fundamental readouts — deliberately
+ *  no score/signal/risk/allocation of its own, and (as of this version) no
+ *  dependency on OracleGrowthEngine either. Analysis is a self-contained
+ *  research tool; for a buy/sell recommendation, that's what Growth is for. */
 object OracleAnalysisEngine {
     // ANALYSIS_TECH_EXTRAS_V1
     val factorNames = listOf("Breakout","Trend","Momentum","Volume","Support / Resistance","Fundamentals","Bollinger","Ichimoku","Market / Sector","Risk / Reward","ADX")
 
     data class Result(
         val ticker:String,val price:Double,val sector:String?,val company:String?,val rsi:Double,val momentum5D:Double,
-        val momentum20D:Double,val volumeRatio:Double,val sma50:Double?,val sma200:Double?,val adx:Double?,val atrPct:Double,val atrValue:Double,val macd:Double?,val macdSignal:Double?,val week52High:Double?,val week52Low:Double?,val fundamentals:OracleFundamentals?,val factors:List<Double>,val rawValues:List<String>,
-        /** All 17 Growth factors for this ticker, 0..100, ordered as OracleGrowthEngine.factorKeys — computed by the Growth engine itself. */
-        val growthComponents:List<Int>
+        val momentum20D:Double,val volumeRatio:Double,val sma50:Double?,val sma200:Double?,val adx:Double?,val atrPct:Double,val atrValue:Double,val macd:Double?,val macdSignal:Double?,val week52High:Double?,val week52Low:Double?,val fundamentals:OracleFundamentals?,val factors:List<Double>,val rawValues:List<String>
     )
 
     fun analyze(raw:String):Result? {
@@ -42,14 +39,7 @@ object OracleAnalysisEngine {
         val factors=listOf(50.0,breakout,trend,momentum,volume,sr,fundamentalScore,boll,ichScore,marketScore,rr,adxScore)
         val rrRatio=if(atr>0)max(0.0,(hi-p)/atr)else 0.0
         val rawValues=listOf("${news.headlineCount} headlines • +${news.positiveHits} positive • -${news.negativeHits} negative • score ${news.score}/100",if(p>prior20)"BREAKOUT: YES • R20 ${money(prior20)} • VR %.2fx".format(Locale.US,vr)else"BREAKOUT: NO • R20 ${money(prior20)} • VR %.2fx".format(Locale.US,vr),"SMA20 ${money(s20)} • SMA50 ${money(s50)} • SMA200 ${money(s200)} • Price ${money(p)}","5D %.2f%% • 20D %.2f%%".format(Locale.US,m5,m20),"Volume %.2fx vs 20D average".format(Locale.US,vr),"Support ${money(lo)} • Resistance ${money(hi)}",fundamentals?.rawText?:"Fundamental data unavailable", "Lower ${money(mid?.minus(2*(sd?:0.0)))} • Mid ${money(mid)} • Upper ${money(mid?.plus(2*(sd?:0.0)))} • Position %.1f%%".format(Locale.US,bbPos*100),"Tenkan/Kijun ${if(ichi)"bullish"else"unconfirmed/bearish"}",marketContext.rawText,"R/R %.2fx • Target ${money(hi)} • ATR ${money(atr)}".format(Locale.US,rrRatio),"ADX(14) ${money(adx)}")
-        // Same factor code as Growth (Section: unified evidence grid). The four
-        // enriched factors are overlaid with the values this screen already
-        // fetched, so nothing is fetched twice.
-        val gc=OracleGrowthEngine.factorComponents(ticker,d)?.toMutableMap() ?: mutableMapOf()
-        gc["news"]=news.score.toDouble(); gc["fundamentals"]=fundamentalScore; gc["market_sector"]=marketScore
-        gc["community"]=(runCatching { OracleGrowthEngine.communityScoreFor(ticker) }.getOrNull() ?: 50).toDouble()
-        val growthComponents=OracleGrowthEngine.factorKeys.map{ (gc[it] ?: 50.0).roundToInt().coerceIn(0,100) }
-        return Result(ticker,p,resolvedSector,null,rsi,m5,m20,vr,s50,s200,adx,atrPct,atr,macdPair.first,macdPair.second,week52High,week52Low,fundamentals,factors,rawValues,growthComponents)
+        return Result(ticker,p,resolvedSector,null,rsi,m5,m20,vr,s50,s200,adx,atrPct,atr,macdPair.first,macdPair.second,week52High,week52Low,fundamentals,factors,rawValues)
     }
     private fun macd(valuesDesc:List<Double>):Pair<Double?,Double?> {
         if(valuesDesc.size<35) return null to null
