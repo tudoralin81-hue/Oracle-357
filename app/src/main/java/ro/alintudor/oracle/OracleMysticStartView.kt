@@ -26,6 +26,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     var alertsStatusText: String = "ALERTS \u2026"
     var alertsStatusColor: Int = Color.rgb(150, 150, 150)
     fun setAlertsStatus(text: String, color: Int) { alertsStatusText = text; alertsStatusColor = color; postInvalidate() }
+    /** Set from the Activity after a background /ping resolves. */
+    var serverStatusText: String = "SERVER \u2026"
+    var serverStatusColor: Int = Color.rgb(150, 150, 150)
+    fun setServerStatus(text: String, color: Int) { serverStatusText = text; serverStatusColor = color; postInvalidate() }
     private val modules = listOf(
         M("growth", "GROWTH", "FUTURE SCAN", Color.rgb(120, 255, 45)),
         M("analysis", "ANALYSIS", "CHARTS & TOOLS", Color.rgb(20, 220, 255)),
@@ -108,6 +112,12 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawCircle(dotCx,dotCy,dotR,p)
         p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText(alertsStatusText,dotCx+dotR+S(5f),brandY,p)
+        val alertsTextWidth=p.measureText(alertsStatusText)
+        val serverDotCx=dotCx+dotR+S(5f)+alertsTextWidth+S(16f); val serverDotCy=dotCy
+        p.style=Paint.Style.FILL;p.color=serverStatusColor;p.alpha=255
+        c.drawCircle(serverDotCx,serverDotCy,dotR,p)
+        p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText(serverStatusText,serverDotCx+dotR+S(5f),brandY,p)
 
         val toolsY=brandY+S(24f)
         // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS

@@ -96,6 +96,29 @@ class OracleMysticActivity : Activity() {
             .show()
     }
 
+    /** Metadata-only — endpoint, timestamp, HTTP outcome, byte sizes — NEVER
+     *  a value from the request or response body (see OracleNetworkLog).
+     *  Text is deliberately non-selectable: nothing here is sensitive on its
+     *  own, but this stays "look, don't take" the way it was asked for. */
+    private fun showNetworkLogDialog() {
+        val lines = ro.alintudor.oracle.core.OracleNetworkLog.read(300)
+        val panel = Color.rgb(7, 14, 28)
+        val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
+        scroll.addView(TextView(this).apply {
+            text = if (lines.isEmpty()) "Nothing recorded yet.\n\nEvery call the app makes to the server will show up here."
+                   else lines.joinToString("\n")
+            textSize = 10.5f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.rgb(200, 208, 222)); setLineSpacing(dp(2).toFloat(), 1f)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setTextIsSelectable(false)
+        })
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Server communication (last ${lines.size})")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
     private fun offerBiometricEnrollIfNeeded(store: OracleAuthStore, onDone: () -> Unit) {
         if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable() || isFinishing || isDestroyed) {
             ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: skipped (enabled=${store.biometricEnabled()}, offered=${store.biometricOffered()}, available=${biometricAvailable()}, finishing=$isFinishing, destroyed=$isDestroyed)")
@@ -781,6 +804,19 @@ class OracleMysticActivity : Activity() {
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         checkAlertsStatusSilently(hero)
+        checkServerConnectionSilently(hero)
+    }
+
+    /** No-auth /ping, on a background thread — works identically whether or
+     *  not there's a real session (including in DEMO mode), since it isn't
+     *  answering "am I logged in", only "can the app reach the server". */
+    private fun checkServerConnectionSilently(hero: OracleMysticStartView) {
+        Thread {
+            val ok = ro.alintudor.oracle.core.OracleApiClient.ping().isSuccess
+            runOnUiThread {
+                hero.setServerStatus(if (ok) "SERVER ON" else "SERVER OFF", if (ok) Color.rgb(105, 245, 35) else Color.rgb(255, 90, 90))
+            }
+        }.start()
     }
 
     /** Shared by the START tile and (defensively) by TOOLS' own button — the
@@ -957,6 +993,27 @@ class OracleMysticActivity : Activity() {
                 }
                 .setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(-1, -2))
+
+        // --- Server communication (metadata-only network log) -----------------
+        card.addView(TextView(this).apply {
+            text = "SERVER COMMUNICATION"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        val netLogCount = ro.alintudor.oracle.core.OracleNetworkLog.lineCount()
+        card.addView(TextView(this).apply {
+            text = if (netLogCount == 0) "No calls recorded yet."
+                   else "$netLogCount calls recorded — endpoint, timestamp and outcome only, never a real value."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        val netLogRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        netLogRow.addView(toolButton("VIEW", Color.rgb(55, 215, 255)) { showNetworkLogDialog() },
+            LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })
+        netLogRow.addView(toolButton("CLEAR", Color.rgb(255, 140, 140)) {
+            ro.alintudor.oracle.core.OracleNetworkLog.clear()
+            Toast.makeText(this, "Server communication log cleared.", Toast.LENGTH_SHORT).show()
+            showBackupScreen()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
+        card.addView(netLogRow, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER

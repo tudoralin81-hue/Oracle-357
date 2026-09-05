@@ -27,9 +27,22 @@ object OracleApiClient {
     }
 
     private fun readResponse(connection: HttpURLConnection): JSONObject {
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "{}"
+        val method = connection.requestMethod ?: "GET"
+        val path = runCatching { connection.url.path.removePrefix("/wp-json/oracle/v1") }.getOrDefault("?")
+        val code: Int
+        val text: String
+        try {
+            code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "{}"
+        } catch (e: Exception) {
+            // Never reached a response at all — logged as such (distinct
+            // from a real HTTP error code, which means the server WAS
+            // reachable) — then rethrown exactly as before.
+            OracleNetworkLog.log(method, path, null, 0)
+            throw e
+        }
+        OracleNetworkLog.log(method, path, code, text.length)
         if (code !in 200..299) {
             val message = runCatching { JSONObject(text).optString("message", "HTTP $code") }.getOrDefault("HTTP $code")
             throw IllegalStateException(message)
@@ -75,6 +88,14 @@ object OracleApiClient {
 
     fun getAllData(token: String): Result<JSONObject> = runCatching {
         readResponse(connection("/data", "GET", token))
+    }
+
+    /** No-auth health check for the "Server Connection" indicator on START —
+     *  deliberately unauthenticated so it answers the same yes/no question
+     *  whether or not there is a session, including in DEMO mode. */
+    fun ping(): Result<Unit> = runCatching {
+        readResponse(connection("/ping", "GET", null))
+        Unit
     }
 
     /** Stage 3: today's server-ranked SHORT/MEDIUM/LONG picks — the same
