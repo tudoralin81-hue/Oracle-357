@@ -1195,7 +1195,7 @@ class OracleMysticActivity : Activity() {
         emergencyRow.addView(toolButton("LOAD FILE", Color.rgb(55, 215, 255)) {
             val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE); type = "*/*"
-                putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain"))
+                putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("application/json"))
             }
             runCatching { startActivityForResult(intent, EMERGENCY_IMPORT_REQUEST) }.onFailure { Toast.makeText(this, "No file picker available", Toast.LENGTH_SHORT).show() }
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })

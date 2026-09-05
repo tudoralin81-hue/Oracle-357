@@ -75,6 +75,15 @@ object OracleGrowthEngine {
     // returns null when nothing is loaded — every caller is expected to
     // handle that as "can't rank right now," not to crash.
     private val weights: Map<String, IntArray> = emptyMap()
+    // The 3 valid horizon names — kept independent of `weights` above on
+    // purpose. `weights` used to double as a name-validation set via
+    // `.containsKey()`, which broke the SERVER picks path once weights lost
+    // its keys along with its values (a real regression: validating a
+    // horizon NAME should never have depended on whether its WEIGHT VALUES
+    // exist). Server-sourced picks always have their name, price, and
+    // ranking already computed server-side — none of that depends on
+    // whether this device has any local weights at all.
+    private val HORIZONS = setOf("SHORT", "MEDIUM", "LONG")
     private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx",
         "relative_strength","volatility_regime","range_position","volume_trend","community")
 
@@ -319,7 +328,7 @@ object OracleGrowthEngine {
         for (i in 0 until items.length()) {
             val o = items.optJSONObject(i) ?: continue
             val ticker = o.optString("ticker").uppercase(Locale.US).takeIf { it.isNotBlank() } ?: continue
-            val horizon = o.optString("horizon").uppercase(Locale.US).takeIf { weights.containsKey(it) } ?: continue
+            val horizon = o.optString("horizon").uppercase(Locale.US).takeIf { it in HORIZONS } ?: continue
             val price = o.optDouble("price", 0.0).takeIf { it > 0.0 }
             val componentsJson = o.optJSONObject("components")
             val sector = o.optString("sector").takeIf { it.isNotBlank() } ?: "—"
@@ -368,7 +377,7 @@ object OracleGrowthEngine {
         // there is genuinely nothing to rank candidates with. Bail out here,
         // before any universe scan or enrichment work starts, rather than
         // running the whole pipeline on meaningless placeholder scores.
-        if (listOf("SHORT","MEDIUM","LONG").any { OracleGrowthEmergency.activeWeights(it, weights[it]) == null }) {
+        if (HORIZONS.any { OracleGrowthEmergency.activeWeights(it, weights[it]) == null }) {
             OracleGrowthLog.log(context,"RUN","No horizon weights available (no emergency file loaded, and the server is unreachable) — local ranking is unavailable this run.")
             progressState = progressState.copy(phase = OracleGrowthPhase.NO_LOCAL_WEIGHTS)
             return emptyList()
@@ -535,7 +544,7 @@ object OracleGrowthEngine {
             c.copy(score=horizonScore(comp,"SHORT",sector),components=comp,news=n?.headlineCount ?: 0)
         }
         val out=mutableListOf<OracleGrowthRecommendation>();val used=mutableSetOf<String>()
-        for(h in listOf("SHORT","MEDIUM","LONG")){
+        for(h in HORIZONS){
             val ranked=enriched.sortedWith(compareByDescending<C>{horizonScore(it.components,h,resolveSector(context,it.ticker,fundamentals[it.ticker]?.sector))}.thenByDescending{tie(it,h)}.thenByDescending{it.score})
             // An entry into an earnings report is a coin flip, not a setup:
             // SHORT and MEDIUM skip names reporting within 7 days.
