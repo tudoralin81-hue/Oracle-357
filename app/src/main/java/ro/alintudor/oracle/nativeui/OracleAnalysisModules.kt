@@ -127,7 +127,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 return
             }
             if (OracleDemo.active(host.root.context) && t !in OracleDemo.TICKERS) {
-                Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo analysis is limited to AAPL, NVDA and JPM \u2014 create an account to analyze any ticker.", Toast.LENGTH_LONG).show()
+                Toast.makeText(host.root.context, "${OracleDemo.LOCK} Demo analysis is limited to AAPL and NVDA \u2014 create an account to analyze any ticker.", Toast.LENGTH_LONG).show()
                 return
             }
             tickerDraft = t
@@ -276,8 +276,11 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
 
         // ==== 2. VALUE & HEALTH — identical boxes to Growth ====
         val verdicts = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, host.dp(10)) }
-        verdicts.addView(verdictBox("FAIR VALUATION", fairValue.label, fairValue.score, fairValueColor(fairValue.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
-        verdicts.addView(verdictBox("FINANCIAL HEALTH", health.label, health.score, healthColor(health.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        // Same lock Growth applies to these two boxes — engine output for this
+        // ticker, not general explainer text.
+        val verdictsDemo = OracleDemo.active(host.root.context)
+        verdicts.addView(verdictBox("FAIR VALUATION", if (verdictsDemo) OracleDemo.LOCK else fairValue.label, if (verdictsDemo) null else fairValue.score, if (verdictsDemo) vMuted else fairValueColor(fairValue.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        verdicts.addView(verdictBox("FINANCIAL HEALTH", if (verdictsDemo) OracleDemo.LOCK else health.label, if (verdictsDemo) null else health.score, if (verdictsDemo) vMuted else healthColor(health.label)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
         host.content.addView(verdicts)
 
         // ==== 3. EVIDENCE — the same 18-cell grid Growth draws, with this ticker's factor VALUES ====

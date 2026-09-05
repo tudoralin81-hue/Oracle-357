@@ -73,6 +73,20 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
         text(c,"ORACLE",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
+        // A visitor should never be unsure they're in the demo — a small,
+        // permanent tag right under the brand, not just a per-module banner.
+        val demoActive = ro.alintudor.oracle.core.OracleDemo.active(context)
+        if (demoActive) {
+            val badgeY = Y(if (wide) 116f else 145f)
+            p.textSize = S(8f); p.typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD); p.textAlign = Paint.Align.CENTER; p.letterSpacing = .2f
+            val badgeText = "DEMO"; val badgeW = p.measureText(badgeText)
+            p.style = Paint.Style.FILL; p.color = Color.argb(60, 255, 160, 25)
+            c.drawRoundRect(RectF(cx - badgeW / 2f - S(10f), badgeY - S(11f), cx + badgeW / 2f + S(10f), badgeY + S(5f)), S(8f), S(8f), p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = S(1f); p.color = Color.rgb(255, 160, 25)
+            c.drawRoundRect(RectF(cx - badgeW / 2f - S(10f), badgeY - S(11f), cx + badgeW / 2f + S(10f), badgeY + S(5f)), S(8f), S(8f), p)
+            p.style = Paint.Style.FILL; p.color = Color.rgb(255, 160, 25)
+            c.drawText(badgeText, cx, badgeY, p)
+        }
         drawEyeExplosion(c)
         val introElapsed=(System.nanoTime()-introStartNanos)/1_000_000_000.0; val introDuration=0.7
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
@@ -96,8 +110,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawText(alertsStatusText,dotCx+dotR+S(5f),brandY,p)
 
         val toolsY=brandY+S(24f)
-        p.color=Color.rgb(150,160,182);p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
-        val toolsLabel="\uD83D\uDD27  TOOLS"
+        // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS
+        // itself is closed to a visitor, so there is no point pointing at it.
+        p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        val toolsLabel=if(demoActive) "\uD83D\uDD13  EXIT DEMO" else "\uD83D\uDD27  TOOLS"
         c.drawText(toolsLabel,alertsX,toolsY,p)
         val toolsWidth=p.measureText(toolsLabel)
         hit+=RectF(alertsX-S(6f),toolsY-S(12f),alertsX+toolsWidth+S(6f),toolsY+S(6f)) to "backup"

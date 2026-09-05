@@ -281,8 +281,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.addView(row1)
 
         val row2 = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, host.dp(8), 0, host.dp(8)) }
-        row2.addView(verdictBox("FAIR VALUATION", item.fairValueLabel, item.fairValueScore, fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
-        row2.addView(verdictBox("FINANCIAL HEALTH", item.financialHealthLabel, item.financialHealthScore, healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
+        // Same lock as SCORE/ALLOCATION: these are engine output for this
+        // specific ticker, not a general explainer — a demo visitor sees the
+        // boxes exist without the real read.
+        row2.addView(verdictBox("FAIR VALUATION", if (demo) OracleDemo.LOCK else item.fairValueLabel, if (demo) null else item.fairValueScore, if (demo) muted else fairValueColor(item.fairValueLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(0, 0, host.dp(4), 0) })
+        row2.addView(verdictBox("FINANCIAL HEALTH", if (demo) OracleDemo.LOCK else item.financialHealthLabel, if (demo) null else item.financialHealthScore, if (demo) muted else healthColor(item.financialHealthLabel)), LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(host.dp(4), 0, 0, 0) })
         card.addView(row2)
 
         // ---- 3. EVIDENCE: the 18-parameter grid, display unchanged ----

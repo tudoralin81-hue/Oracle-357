@@ -11,8 +11,8 @@ import android.content.Context
  */
 object OracleDemo {
     const val LOCK = "\uD83D\uDD12"
-    /** The only tickers the demo may analyze or compare — the same three it seeds into the sample portfolio. */
-    val TICKERS = setOf("AAPL", "NVDA", "JPM")
+    /** The only tickers the demo may analyze, compare, or hold — the same two it seeds into the sample portfolio. */
+    val TICKERS = setOf("AAPL", "NVDA")
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("oracle_demo", Context.MODE_PRIVATE)
     fun active(c: Context): Boolean = prefs(c).getBoolean("active", false)
 
@@ -21,9 +21,8 @@ object OracleDemo {
         val repo = OracleRepository(c)
         if (repo.cachedPositions().isEmpty()) {
             repo.savePositions(OracleCalculations.withWeights(listOf(
-                OracleCalculations.position("AAPL", "Apple Inc.", 10.0, 0.0, 0.0),
-                OracleCalculations.position("NVDA", "NVIDIA Corporation", 5.0, 0.0, 0.0),
-                OracleCalculations.position("JPM", "JPMorgan Chase & Co.", 8.0, 0.0, 0.0)
+                OracleCalculations.position("AAPL", "Apple Inc.", 5.0, 0.0, 0.0),
+                OracleCalculations.position("NVDA", "NVIDIA Corporation", 5.0, 0.0, 0.0)
             )))
             prefs(c).edit().putBoolean("seeded", true).apply()
         }

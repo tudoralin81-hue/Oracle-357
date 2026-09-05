@@ -764,7 +764,30 @@ class OracleMysticActivity : Activity() {
         checkAlertsStatusSilently(hero)
     }
 
+    /** Shared by the START tile and (defensively) by TOOLS' own button — the
+     *  exact same dialog either way, so exiting the demo behaves identically
+     *  no matter which door was used to reach it. */
+    private fun confirmExitDemo() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Exit the demo?")
+            .setMessage("The sample portfolio is removed. Create an account to keep your own.")
+            .setPositiveButton("Exit") { _, _ ->
+                val store = OracleAuthStore(this)
+                ro.alintudor.oracle.core.OracleDemo.exit(this)
+                store.clearSession()
+                authPassedThisProcess = false
+                currentModule = null
+                showLogin(store)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun showBackupScreen() {
+        // TOOLS is closed to a demo visitor — reaching this by any path (deep
+        // link, back-stack, a stale reference) redirects straight to the exit
+        // prompt instead of ever rendering the screen.
+        if (ro.alintudor.oracle.core.OracleDemo.active(this)) { confirmExitDemo(); return }
         root.removeAllViews()
         val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28); val border = Color.rgb(49, 82, 125)
         val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
@@ -884,20 +907,21 @@ class OracleMysticActivity : Activity() {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
         })
-        val demoNow = ro.alintudor.oracle.core.OracleDemo.active(this)
+        // The demo branch here is unreachable — showBackupScreen() itself
+        // redirects to confirmExitDemo() before this point whenever the demo
+        // is active, so a real logged-in session is the only case left.
         card.addView(TextView(this).apply {
-            text = if (demoNow) "EXIT DEMO" else "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(255, 110, 110))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
             setPadding(0, dp(14), 0, dp(14))
             isClickable = true; isFocusable = true
             setOnClickListener {
                 android.app.AlertDialog.Builder(this@OracleMysticActivity)
-                    .setTitle(if (demoNow) "Exit the demo?" else "Log out?")
-                    .setMessage(if (demoNow) "The sample portfolio is removed. Create an account to keep your own." else "You'll need your username and password (or fingerprint, if enabled) to log back in.")
-                    .setPositiveButton(if (demoNow) "Exit" else "Log out") { _, _ ->
+                    .setTitle("Log out?")
+                    .setMessage("You'll need your username and password (or fingerprint, if enabled) to log back in.")
+                    .setPositiveButton("Log out") { _, _ ->
                         val store = OracleAuthStore(this@OracleMysticActivity)
-                        if (demoNow) ro.alintudor.oracle.core.OracleDemo.exit(this@OracleMysticActivity)
                         store.clearSession()
                         authPassedThisProcess = false
                         currentModule = null
@@ -954,7 +978,10 @@ class OracleMysticActivity : Activity() {
 
     private fun openModule(key: String) {
         if (key == "disclaimer") { showDisclaimerDialog(); return }
-        if (key == "backup") { currentModule = "backup"; showBackupScreen(); return }
+        if (key == "backup") {
+            if (ro.alintudor.oracle.core.OracleDemo.active(this)) { confirmExitDemo(); return }
+            currentModule = "backup"; showBackupScreen(); return
+        }
         // A press on the refresh button re-enters this same function with the
         // same key the screen is already showing — distinct from a genuine
         // navigation into the module, where the screen must render immediately

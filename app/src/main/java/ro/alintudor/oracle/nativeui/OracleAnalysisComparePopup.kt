@@ -59,7 +59,7 @@ fun showCompareDialog(host: OracleNativeModule, primaryTicker: String) {
         button.setOnClickListener {
             val second = input.text.toString().trim().uppercase(Locale.US)
             if (OracleDemo.active(context) && second !in OracleDemo.TICKERS) {
-                error.text = "${OracleDemo.LOCK} Demo compares only AAPL, NVDA and JPM \u2014 create an account to compare any ticker."
+                error.text = "${OracleDemo.LOCK} Demo compares only AAPL and NVDA \u2014 create an account to compare any ticker."
                 error.visibility = View.VISIBLE
                 return@setOnClickListener
             }
