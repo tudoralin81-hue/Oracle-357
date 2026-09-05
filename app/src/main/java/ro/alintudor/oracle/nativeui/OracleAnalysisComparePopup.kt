@@ -21,8 +21,10 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import ro.alintudor.oracle.core.OracleFundamentals
 import ro.alintudor.oracle.core.OracleMarketData
 import ro.alintudor.oracle.core.OracleOhlcvPoint
+import ro.alintudor.oracle.core.OracleRealData
 import ro.alintudor.oracle.core.OracleTechnicalIndicators
 import java.util.Locale
 
