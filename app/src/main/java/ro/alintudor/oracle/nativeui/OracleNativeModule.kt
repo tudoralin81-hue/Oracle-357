@@ -18,7 +18,8 @@ class OracleNativeModule(
     private val context: Context,
     private val title: String,
     private val onBack: () -> Unit = {},
-    private val onRefresh: () -> Unit = {}
+    private val onRefresh: () -> Unit = {},
+    private val moduleKey: String = ""
 ) {
     val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(1,3,8)); setPadding(dp(10),0,dp(10),0) }
     val fixedToolbar = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(2),0,dp(2),dp(4)) }
@@ -43,8 +44,19 @@ class OracleNativeModule(
         header.addView(button("‹","Back",Color.rgb(255,205,45)) { onBack() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         val center = LinearLayout(context).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER }
         center.addView(TextView(context).apply { text="ORACLE";textSize=21f;typeface=Typeface.create(Typeface.SERIF,Typeface.BOLD);setTextColor(Color.WHITE);gravity=Gravity.CENTER;includeFontPadding=true })
-        center.addView(TextView(context).apply { text=title;textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.18f;setTextColor(accent);gravity=Gravity.CENTER;includeFontPadding=true })
-        center.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
+        // Module name gets the same hand-drawn glyph this module shows as its
+        // icon on the START hub, so a module screen is recognizable at a
+        // glance the same way its tile is.
+        val moduleTitleRow = LinearLayout(context).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
+        if (moduleKey.isNotBlank()) moduleTitleRow.addView(OracleModuleIcon(context, moduleKey, accent), LinearLayout.LayoutParams(dp(15),dp(15)).apply{ setMargins(0,0,dp(6),0) })
+        moduleTitleRow.addView(TextView(context).apply { text=title;textSize=11f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.18f;setTextColor(accent);gravity=Gravity.CENTER;includeFontPadding=true })
+        center.addView(moduleTitleRow)
+        // App icon next to the build number — the same mark the login/boot
+        // screens use, small enough here to just anchor the version line.
+        val buildRow = LinearLayout(context).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
+        buildRow.addView(ImageView(context).apply { setImageResource(ro.alintudor.oracle.R.drawable.ic_oracle); scaleType=ImageView.ScaleType.CENTER_INSIDE }, LinearLayout.LayoutParams(dp(13),dp(13)).apply{ setMargins(0,0,dp(5),0) })
+        buildRow.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
+        center.addView(buildRow)
         header.addView(center,LinearLayout.LayoutParams(0,dp(76),1f))
         header.addView(button("↻","Refresh",Color.rgb(255,205,45)) { onRefresh() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))

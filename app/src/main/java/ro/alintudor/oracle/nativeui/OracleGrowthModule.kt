@@ -247,16 +247,22 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         tickerGroup.addView(ticker)
         tickerGroup.addView(companyInfoButton(host, item.ticker), LinearLayout.LayoutParams(host.dp(26), host.dp(26)).apply { setMargins(host.dp(6), 0, 0, 0) })
         identity.addView(tickerGroup, LinearLayout.LayoutParams(host.dp(120), -2))
+        // WRAP_CONTENT + a capped maxWidth (not weight=1f) so this column
+        // sizes to the name's actual width instead of stretching to fill the
+        // whole card — on a wide/tablet card that used to push the logo all
+        // the way to the far edge, away from the name it belongs next to.
+        val companyNameView = text(item.company, 15f, Typeface.DEFAULT_BOLD, white, 0, 0).apply { maxWidth = host.dp(220) }
+        val companySectorView = text(item.sector, 11f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 4).apply { maxWidth = host.dp(220) }
         val company = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL }
-        company.addView(text(item.company, 15f, Typeface.DEFAULT_BOLD, white, 0, 0))
-        company.addView(text(item.sector, 11f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 4))
-        identity.addView(company, LinearLayout.LayoutParams(0, -2, 1f))
-        // Company logo in the space that used to sit empty to the right of the name.
+        company.addView(companyNameView)
+        company.addView(companySectorView)
+        identity.addView(company, LinearLayout.LayoutParams(-2, -2))
+        // Company logo, right next to the name now — no background box (was
+        // reading as a white frame around the logo art).
         val logo = ImageView(host.root.context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "${item.ticker} logo"
-            background = OracleNativeModule.rounded(Color.rgb(245, 247, 250), host.dp(10)); setPadding(host.dp(5), host.dp(5), host.dp(5), host.dp(5))
         }
-        identity.addView(logo, LinearLayout.LayoutParams(host.dp(48), host.dp(48)).apply { setMargins(host.dp(8), 0, 0, 0) })
+        identity.addView(logo, LinearLayout.LayoutParams(host.dp(40), host.dp(40)).apply { setMargins(host.dp(8), 0, 0, 0) })
         OracleLogoLoader.load(host.root.context, item.ticker, logo)
         card.addView(identity)
         card.addView(divider())

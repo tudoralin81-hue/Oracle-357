@@ -97,15 +97,19 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun offerBiometricEnrollIfNeeded(store: OracleAuthStore, onDone: () -> Unit) {
-        if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable()) { onDone(); return }
+        if (store.biometricEnabled() || store.biometricOffered() || !biometricAvailable() || isFinishing || isDestroyed) { onDone(); return }
         store.setBiometricOffered(true)
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Enable fingerprint unlock?")
-            .setMessage("Skip typing your password next time you open Oracle — unlock with your fingerprint instead.")
-            .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); onDone() }
-            .setNegativeButton("Not now") { _, _ -> onDone() }
-            .setCancelable(false)
-            .show()
+        // A failed dialog show (window not ready, activity mid-transition)
+        // must never stall the login flow — skip straight to onDone().
+        runCatching {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Enable fingerprint unlock?")
+                .setMessage("Skip typing your password next time you open Oracle — unlock with your fingerprint instead.")
+                .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); onDone() }
+                .setNegativeButton("Not now") { _, _ -> onDone() }
+                .setCancelable(false)
+                .show()
+        }.onFailure { onDone() }
     }
 
     private fun legalDialog(title: String, body: String) {
@@ -159,7 +163,7 @@ class OracleMysticActivity : Activity() {
         proceedingPastAuth = true
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357)
+            runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357) }
         }
         runCatching {
             OracleBootstrap.ensure(repository)
@@ -777,7 +781,13 @@ class OracleMysticActivity : Activity() {
                 store.clearSession()
                 authPassedThisProcess = false
                 currentModule = null
-                showLogin(store)
+                // Posted rather than called inline: this dialog's own window
+                // is still tearing down when this callback runs, and tearing
+                // down `root` (then possibly showing a second dialog moments
+                // later, e.g. biometric enrollment) right on top of that was
+                // the one path where login got stuck on "LOGGING IN..."
+                // until the app was backgrounded and resumed.
+                root.post { showLogin(store) }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -1054,7 +1064,7 @@ class OracleMysticActivity : Activity() {
         val existing = activeHost
         val host = if (reuseHost && existing != null) existing else {
             root.removeAllViews()
-            val fresh = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) })
+            val fresh = OracleNativeModule(this, moduleTitle, { showHub() }, { openModule(key) }, moduleKey = key)
             root.addView(fresh.root, FrameLayout.LayoutParams(-1, -1))
             activeHost = fresh
             fresh

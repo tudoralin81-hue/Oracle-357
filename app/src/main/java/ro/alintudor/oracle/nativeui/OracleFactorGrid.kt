@@ -82,7 +82,22 @@ object OracleFactorGrid {
                 }
             }, LinearLayout.LayoutParams(host.dp(7), host.dp(9)).apply { if (seg < 4) marginEnd = host.dp(2) })
         }
+        loadPulse(bar)
         parent.addView(bar)
+    }
+
+    /** The bar's real, final segments are already drawn underneath — this
+     *  just pulses the whole thing dim-bright three times before settling
+     *  fully visible, so opening the grid reads as "computing…" for an
+     *  instant rather than the 18 cells just snapping straight to their
+     *  answer. Purely cosmetic: nothing here is waiting on real data. */
+    private fun loadPulse(bar: View) {
+        bar.alpha = 0.3f
+        android.animation.ObjectAnimator.ofFloat(bar, View.ALPHA, 0.3f, 1f).apply {
+            duration = 230L
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = 4 // up, down, up, down, up — three times bright, ends bright
+        }.start()
     }
 
     /** LO: identical on every card — a symmetric band with a marked centre —
@@ -97,6 +112,7 @@ object OracleFactorGrid {
                 alpha = if (centre) 0.95f else 0.55f
             }, LinearLayout.LayoutParams(host.dp(7), host.dp(6)).apply { setMargins(host.dp(1), 0, host.dp(1), 0) })
         }
+        loadPulse(bar)
         parent.addView(bar)
     }
 }

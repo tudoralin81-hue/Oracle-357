@@ -185,9 +185,8 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         headline.addView(tickerPriceGroup, LinearLayout.LayoutParams(0, -2, 1f))
         val logo = ImageView(host.root.context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "${r.ticker} logo"
-            background = OracleNativeModule.rounded(Color.rgb(245, 247, 250), host.dp(10)); setPadding(host.dp(5), host.dp(5), host.dp(5), host.dp(5))
         }
-        headline.addView(logo, LinearLayout.LayoutParams(host.dp(44), host.dp(44)).apply { setMargins(0, 0, host.dp(10), 0) })
+        headline.addView(logo, LinearLayout.LayoutParams(host.dp(40), host.dp(40)).apply { setMargins(0, 0, host.dp(10), 0) })
         OracleLogoLoader.load(host.root.context, r.ticker, logo)
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)

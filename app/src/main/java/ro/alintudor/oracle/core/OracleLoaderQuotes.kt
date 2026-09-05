@@ -34,12 +34,12 @@ object OracleLoaderQuotes {
     }
 
     /** Two-color rendering: the quote body in [quoteColor], the attribution
-     *  ("— Author") in [authorColor], as one line-broken CharSequence. */
+     *  ("Author") in [authorColor], as one line-broken CharSequence. */
     fun spanned(quote: Quote, quoteColor: Int, authorColor: Int): CharSequence {
         val builder = android.text.SpannableStringBuilder()
         builder.append(quote.text)
         val breakAt = builder.length
-        builder.append("\n\u2014 ").append(quote.author)
+        builder.append("\n").append(quote.author)
         builder.setSpan(android.text.style.ForegroundColorSpan(quoteColor), 0, breakAt, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         builder.setSpan(android.text.style.ForegroundColorSpan(authorColor), breakAt, builder.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         return builder
