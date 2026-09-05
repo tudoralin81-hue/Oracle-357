@@ -214,9 +214,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     gravity = Gravity.CENTER; setTextColor(Color.rgb(150, 160, 182)); setPadding(0, host.dp(3), 0, 0)
                 }, LinearLayout.LayoutParams(-2, -2))
             }
-        val compareIcon = TextView(host.root.context).apply {
-            text = "\u21C4"; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(host.accent)
-            background = OracleNativeModule.rounded(Color.rgb(8, 12, 25), host.dp(21), host.accent, host.dp(1))
+        val compareIcon = CompareGlyphView(host.root.context, host.dp(42)).apply {
             isClickable = true; isFocusable = true; contentDescription = "Compare ${watchTicker} with another ticker"
             setOnClickListener { showCompareDialog(host, watchTicker) }
         }
@@ -1100,6 +1098,31 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                 canvas.drawCircle(cx, cy, width * 0.052f, paint)
                 paint.style = android.graphics.Paint.Style.STROKE
             }
+        }
+    }
+
+    /** Compare glyph drawn in the same thin-stroke style as WatchlistEyeView:
+     *  two small candle/bar columns of different heights side by side, i.e.
+     *  "this one against that one" — a plain \u21C4 arrow read as a swap/refresh. */
+    private class CompareGlyphView(context: android.content.Context, private val sizePx: Int) : android.view.View(context) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = (sizePx * 0.055f).coerceAtLeast(2f)
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+            color = Color.rgb(85, 205, 255)
+        }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
+            val baseline = h * 0.72f
+            val leftX = w * 0.34f; val rightX = w * 0.66f
+            val barW = w * 0.17f
+            // Left bar: taller (the winner); right bar: shorter.
+            canvas.drawRect(leftX - barW / 2f, h * 0.30f, leftX + barW / 2f, baseline, paint)
+            canvas.drawRect(rightX - barW / 2f, h * 0.46f, rightX + barW / 2f, baseline, paint)
+            canvas.drawLine(w * 0.18f, baseline, w * 0.82f, baseline, paint)
         }
     }
 

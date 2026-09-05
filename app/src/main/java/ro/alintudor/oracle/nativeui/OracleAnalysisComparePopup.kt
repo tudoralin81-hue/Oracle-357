@@ -102,59 +102,157 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
         val base = series[series.size - 1 - sessions].close
         return if (base > 0.0) (series.last().close / base - 1.0) * 100.0 else null
     }
+    fun annualVol(series: List<OracleOhlcvPoint>): Double? {
+        if (series.size < 21) return null
+        val rets = series.takeLast(60).zipWithNext { x, y -> if (x.close > 0.0) (y.close / x.close - 1.0) else 0.0 }
+        if (rets.size < 10) return null
+        val m = rets.average()
+        return kotlin.math.sqrt(rets.sumOf { (it - m) * (it - m) } / rets.size) * kotlin.math.sqrt(252.0) * 100.0
+    }
+    fun maxDrawdown(series: List<OracleOhlcvPoint>): Double? {
+        if (series.size < 5) return null
+        var peak = series.first().close; var worst = 0.0
+        for (p in series) { if (p.close > peak) peak = p.close; if (peak > 0.0) worst = minOf(worst, (p.close / peak - 1.0) * 100.0) }
+        return worst
+    }
+    fun fromHigh52(series: List<OracleOhlcvPoint>): Double? {
+        val hi = series.maxByOrNull { it.high }?.high ?: return null
+        return if (hi > 0.0) (series.last().close / hi - 1.0) * 100.0 else null
+    }
+    fun correlation(x: List<OracleOhlcvPoint>, y: List<OracleOhlcvPoint>): Double? {
+        val byDayY = y.associateBy { it.timestamp / 86_400_000L }
+        val pairs = ArrayList<Pair<Double, Double>>()
+        var prevX: Double? = null; var prevY: Double? = null
+        for (px in x) {
+            val py = byDayY[px.timestamp / 86_400_000L] ?: continue
+            if (prevX != null && prevY != null && prevX!! > 0.0 && prevY!! > 0.0) pairs += (px.close / prevX!! - 1.0) to (py.close / prevY!! - 1.0)
+            prevX = px.close; prevY = py.close
+        }
+        if (pairs.size < 15) return null
+        val mx = pairs.map { it.first }.average(); val my = pairs.map { it.second }.average()
+        val cov = pairs.sumOf { (it.first - mx) * (it.second - my) }
+        val sx = kotlin.math.sqrt(pairs.sumOf { (it.first - mx) * (it.first - mx) })
+        val sy = kotlin.math.sqrt(pairs.sumOf { (it.second - my) * (it.second - my) })
+        return if (sx > 0.0 && sy > 0.0) cov / (sx * sy) else null
+    }
+
     val techA = OracleTechnicalIndicators.fromCandles(tickerA, a)
     val techB = OracleTechnicalIndicators.fromCandles(tickerB, b)
 
-    // Relative performance chart: both rebased to 100 at the start of the
+    // Relative performance chart: both rebased to 0% at the start of the
     // shared window, so the lines are directly comparable regardless of price.
     content.addView(RelativeChartView(context, a, b, tickerA, tickerB, accent), LinearLayout.LayoutParams(-1, dp(220)).apply { bottomMargin = dp(16) })
 
     fun row(label: String, va: String, vb: String, colorA: Int = Color.WHITE, colorB: Int = Color.WHITE) {
         val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(9), 0, dp(9)) }
-        r.addView(TextView(context).apply { text = label; textSize = 12f; setTextColor(Color.rgb(150, 160, 182)) }, LinearLayout.LayoutParams(0, -2, 1.1f))
+        r.addView(TextView(context).apply { text = label; textSize = 12f; setTextColor(Color.rgb(150, 160, 182)) }, LinearLayout.LayoutParams(0, -2, 1.25f))
         r.addView(TextView(context).apply { text = va; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(colorA); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
         r.addView(TextView(context).apply { text = vb; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(colorB); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(r)
     }
     fun divider() = content.addView(View(context).apply { setBackgroundColor(Color.rgb(30, 38, 55)) }, LinearLayout.LayoutParams(-1, dp(1)))
+    fun sectionLabel(t: String) = content.addView(TextView(context).apply {
+        text = t; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.1f
+        setTextColor(accent); setPadding(0, dp(16), 0, dp(4))
+    })
     fun pctColor(v: Double?) = if ((v ?: 0.0) >= 0.0) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120)
     fun pctText(v: Double?) = v?.let { String.format(Locale.US, "%+.1f%%", it) } ?: "\u2014"
+    fun numText(v: Double?, d: Int = 1) = v?.let { String.format(Locale.US, "%.${d}f", it) } ?: "\u2014"
+    // Green marks the better of the two for metrics where "more" is better
+    // (or "less", when lowerIsBetter) — so the eye finds the winner per row.
+    fun better(x: Double?, y: Double?, lowerIsBetter: Boolean = false): Pair<Int, Int> {
+        if (x == null || y == null) return Color.WHITE to Color.WHITE
+        val win = Color.rgb(105, 245, 35); val lose = Color.rgb(190, 198, 214)
+        val xWins = if (lowerIsBetter) x < y else x > y
+        return if (x == y) Color.WHITE to Color.WHITE else if (xWins) win to lose else lose to win
+    }
 
     val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(6)) }
-    head.addView(TextView(context).apply { text = ""; }, LinearLayout.LayoutParams(0, -2, 1.1f))
-    head.addView(TextView(context).apply { text = tickerA; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
-    head.addView(TextView(context).apply { text = tickerB; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
+    head.addView(TextView(context).apply { text = "" }, LinearLayout.LayoutParams(0, -2, 1.25f))
+    head.addView(TextView(context).apply { text = tickerA; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
+    head.addView(TextView(context).apply { text = tickerB; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(255, 205, 45)); gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
     content.addView(head)
     divider()
-    row("Price", String.format(Locale.US, "%.2f", a.last().close), String.format(Locale.US, "%.2f", b.last().close))
-    divider()
+
+    sectionLabel("PRICE & PERFORMANCE")
+    row("Price", numText(a.last().close, 2), numText(b.last().close, 2))
     val r5a = pctReturn(a, 5); val r5b = pctReturn(b, 5)
     row("Return 5D", pctText(r5a), pctText(r5b), pctColor(r5a), pctColor(r5b))
     val r20a = pctReturn(a, 20); val r20b = pctReturn(b, 20)
     row("Return 20D", pctText(r20a), pctText(r20b), pctColor(r20a), pctColor(r20b))
     val r60a = pctReturn(a, minOf(60, a.size - 1)); val r60b = pctReturn(b, minOf(60, b.size - 1))
     row("Return \u224860D", pctText(r60a), pctText(r60b), pctColor(r60a), pctColor(r60b))
-    divider()
-    row("RSI(14)", techA?.rsi?.let { String.format(Locale.US, "%.0f", it) } ?: "\u2014", techB?.rsi?.let { String.format(Locale.US, "%.0f", it) } ?: "\u2014")
+    val fhA = fromHigh52(a); val fhB = fromHigh52(b)
+    row("From 3-month high", pctText(fhA), pctText(fhB), better(fhA, fhB).first, better(fhA, fhB).second)
+
+    sectionLabel("RISK")
+    val volA = annualVol(a); val volB = annualVol(b)
+    row("Volatility (annual.)", volA?.let { String.format(Locale.US, "%.0f%%", it) } ?: "\u2014", volB?.let { String.format(Locale.US, "%.0f%%", it) } ?: "\u2014",
+        better(volA, volB, lowerIsBetter = true).first, better(volA, volB, lowerIsBetter = true).second)
+    val ddA = maxDrawdown(a); val ddB = maxDrawdown(b)
+    row("Max drawdown 3M", pctText(ddA), pctText(ddB), better(ddA, ddB).first, better(ddA, ddB).second)
+    val atrA = techA?.atr14?.let { it / a.last().close * 100.0 }; val atrB = techB?.atr14?.let { it / b.last().close * 100.0 }
+    row("Daily range (ATR%)", atrA?.let { String.format(Locale.US, "%.1f%%", it) } ?: "\u2014", atrB?.let { String.format(Locale.US, "%.1f%%", it) } ?: "\u2014",
+        better(atrA, atrB, lowerIsBetter = true).first, better(atrA, atrB, lowerIsBetter = true).second)
+    // Return per unit of volatility — the honest way to compare two names
+    // that moved differently for very different amounts of risk.
+    val effA = if (volA != null && volA > 0.0 && r60a != null) r60a / volA else null
+    val effB = if (volB != null && volB > 0.0 && r60b != null) r60b / volB else null
+    row("Return / risk", numText(effA, 2), numText(effB, 2), better(effA, effB).first, better(effA, effB).second)
+
+    sectionLabel("TREND & MOMENTUM")
+    row("RSI(14)", numText(techA?.rsi, 0), numText(techB?.rsi, 0))
     row("vs SMA50", techA?.let { if (a.last().close >= it.sma50) "Above" else "Below" } ?: "\u2014", techB?.let { if (b.last().close >= it.sma50) "Above" else "Below" } ?: "\u2014",
         techA?.let { if (a.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE,
         techB?.let { if (b.last().close >= it.sma50) Color.rgb(105, 245, 35) else Color.rgb(255, 120, 120) } ?: Color.WHITE)
-    row("ADX(14)", techA?.adx?.let { String.format(Locale.US, "%.0f", it) } ?: "\u2014", techB?.adx?.let { String.format(Locale.US, "%.0f", it) } ?: "\u2014")
-    val techScoreA = techA?.techScore; val techScoreB = techB?.techScore
-    divider()
-    row("Oracle score", techScoreA?.let { "$it/100" } ?: "\u2014", techScoreB?.let { "$it/100" } ?: "\u2014",
-        techScoreA?.let { if (it >= 65) Color.rgb(105, 245, 35) else Color.rgb(255, 205, 45) } ?: Color.WHITE,
-        techScoreB?.let { if (it >= 65) Color.rgb(105, 245, 35) else Color.rgb(255, 205, 45) } ?: Color.WHITE)
+    row("ADX(14) trend strength", numText(techA?.adx, 0), numText(techB?.adx, 0), better(techA?.adx, techB?.adx).first, better(techA?.adx, techB?.adx).second)
+    val techScoreA = techA?.techScore?.toDouble(); val techScoreB = techB?.techScore?.toDouble()
+    row("Oracle score", techScoreA?.let { "${it.toInt()}/100" } ?: "\u2014", techScoreB?.let { "${it.toInt()}/100" } ?: "\u2014",
+        better(techScoreA, techScoreB).first, better(techScoreA, techScoreB).second)
 
-    val winner = when {
-        r20a == null || r20b == null -> null
-        r20a > r20b -> tickerA
-        r20b > r20a -> tickerB
-        else -> null
+    sectionLabel("RELATIONSHIP")
+    val corr = correlation(a, b)
+    row("Correlation (daily)", corr?.let { String.format(Locale.US, "%.2f", it) } ?: "\u2014", "", Color.WHITE, Color.WHITE)
+
+    // --- Verdict in plain words -------------------------------------------
+    val verdict = StringBuilder()
+    if (r20a != null && r20b != null) {
+        val lead = kotlin.math.abs(r20a - r20b)
+        val leader = if (r20a > r20b) tickerA else tickerB
+        val laggard = if (r20a > r20b) tickerB else tickerA
+        verdict.append(when {
+            lead < 1.5 -> "Over the last 20 sessions $tickerA and $tickerB moved almost identically \u2014 there is no meaningful performance gap between them. "
+            else -> "$leader leads $laggard by ${String.format(Locale.US, "%.1f", lead)} points over the last 20 sessions. "
+        })
     }
-    if (winner != null) content.addView(TextView(context).apply {
-        text = "$winner has outperformed over the last 20 sessions."
-        textSize = 12f; setTextColor(Color.rgb(150, 160, 182)); setPadding(0, dp(14), 0, 0)
+    if (volA != null && volB != null && effA != null && effB != null) {
+        val calmer = if (volA < volB) tickerA else tickerB
+        val efficient = if (effA > effB) tickerA else tickerB
+        verdict.append("$calmer is the calmer of the two (${String.format(Locale.US, "%.0f%%", minOf(volA, volB))} vs ${String.format(Locale.US, "%.0f%%", maxOf(volA, volB))} annualised), ")
+        verdict.append(if (calmer == efficient) "and it also delivered more return per unit of risk. " else "but $efficient delivered more return per unit of risk. ")
+    }
+    if (corr != null) {
+        verdict.append(when {
+            corr >= 0.75 -> "They move closely together (correlation ${String.format(Locale.US, "%.2f", corr)}), so holding both adds little diversification \u2014 it is largely one bet in two names."
+            corr >= 0.4 -> "They are moderately correlated (${String.format(Locale.US, "%.2f", corr)}): related, but not interchangeable."
+            corr >= 0.0 -> "They are only loosely correlated (${String.format(Locale.US, "%.2f", corr)}), so together they genuinely spread risk."
+            else -> "They tend to move in opposite directions (${String.format(Locale.US, "%.2f", corr)}) \u2014 one hedges the other."
+        })
+    }
+    if (verdict.isNotBlank()) {
+        content.addView(TextView(context).apply {
+            text = "IN SHORT"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.1f
+            setTextColor(accent); setPadding(0, dp(20), 0, dp(6))
+        })
+        content.addView(TextView(context).apply {
+            text = verdict.toString().trim(); textSize = 13f; setTextColor(Color.rgb(205, 212, 226)); setLineSpacing(dp(4).toFloat(), 1f)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), dp(12), Color.rgb(35, 44, 66), dp(1))
+        }, LinearLayout.LayoutParams(-1, -2))
+    }
+    content.addView(TextView(context).apply {
+        text = "Window: last 3 months of daily closes. Informational only \u2014 not investment advice."
+        textSize = 10f; setTextColor(Color.rgb(120, 130, 152)); setPadding(0, dp(14), 0, 0)
     })
 }
 
