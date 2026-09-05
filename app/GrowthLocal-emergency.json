@@ -1,0 +1,457 @@
+{
+  "fileFormat": "oracle-growth-emergency-v1",
+  "generatedFrom": "OracleGrowthEngine.kt / OracleSentiment.kt / OracleSectorAllocation.kt",
+  "generatedAt": "2026-09-05",
+  "factorKeys": [
+    "news",
+    "breakout",
+    "trend",
+    "momentum",
+    "volume",
+    "support_resistance",
+    "fundamentals",
+    "bollinger",
+    "ichimoku",
+    "market_sector",
+    "risk_reward",
+    "adx",
+    "relative_strength",
+    "volatility_regime",
+    "range_position",
+    "volume_trend",
+    "community"
+  ],
+  "horizonWeights": {
+    "SHORT": [
+      21,
+      18,
+      18,
+      12,
+      16,
+      12,
+      3,
+      4,
+      4,
+      2,
+      2,
+      1,
+      8,
+      6,
+      5,
+      7,
+      6
+    ],
+    "MEDIUM": [
+      12,
+      12,
+      12,
+      16,
+      12,
+      9,
+      9,
+      5,
+      5,
+      6,
+      5,
+      4,
+      10,
+      5,
+      6,
+      6,
+      4
+    ],
+    "LONG": [
+      6,
+      6,
+      6,
+      19,
+      7,
+      9,
+      18,
+      4,
+      4,
+      9,
+      7,
+      2,
+      12,
+      3,
+      8,
+      5,
+      2
+    ]
+  },
+  "sentiment": {
+    "phrases": [
+      {
+        "phrase": "beats estimates",
+        "weight": 1.0
+      },
+      {
+        "phrase": "beat estimates",
+        "weight": 1.0
+      },
+      {
+        "phrase": "beats expectations",
+        "weight": 1.0
+      },
+      {
+        "phrase": "raises guidance",
+        "weight": 1.0
+      },
+      {
+        "phrase": "raised guidance",
+        "weight": 1.0
+      },
+      {
+        "phrase": "record revenue",
+        "weight": 0.9
+      },
+      {
+        "phrase": "record profit",
+        "weight": 0.9
+      },
+      {
+        "phrase": "record quarter",
+        "weight": 0.9
+      },
+      {
+        "phrase": "upgraded to buy",
+        "weight": 0.9
+      },
+      {
+        "phrase": "upgrades to buy",
+        "weight": 0.9
+      },
+      {
+        "phrase": "price target raised",
+        "weight": 0.8
+      },
+      {
+        "phrase": "raises price target",
+        "weight": 0.8
+      },
+      {
+        "phrase": "strong demand",
+        "weight": 0.7
+      },
+      {
+        "phrase": "surges",
+        "weight": 0.7
+      },
+      {
+        "phrase": "soars",
+        "weight": 0.7
+      },
+      {
+        "phrase": "jumps",
+        "weight": 0.5
+      },
+      {
+        "phrase": "buyback",
+        "weight": 0.5
+      },
+      {
+        "phrase": "dividend increase",
+        "weight": 0.5
+      },
+      {
+        "phrase": "raises dividend",
+        "weight": 0.5
+      },
+      {
+        "phrase": "fda approval",
+        "weight": 0.9
+      },
+      {
+        "phrase": "wins contract",
+        "weight": 0.7
+      },
+      {
+        "phrase": "new partnership",
+        "weight": 0.5
+      },
+      {
+        "phrase": "upgrade",
+        "weight": 0.5
+      },
+      {
+        "phrase": "outperform",
+        "weight": 0.5
+      },
+      {
+        "phrase": "bullish",
+        "weight": 0.4
+      },
+      {
+        "phrase": "rally",
+        "weight": 0.4
+      },
+      {
+        "phrase": "all-time high",
+        "weight": 0.6
+      },
+      {
+        "phrase": "better than expected",
+        "weight": 0.8
+      },
+      {
+        "phrase": "misses estimates",
+        "weight": -1.0
+      },
+      {
+        "phrase": "missed estimates",
+        "weight": -1.0
+      },
+      {
+        "phrase": "misses expectations",
+        "weight": -1.0
+      },
+      {
+        "phrase": "cuts guidance",
+        "weight": -1.0
+      },
+      {
+        "phrase": "cut guidance",
+        "weight": -1.0
+      },
+      {
+        "phrase": "lowers guidance",
+        "weight": -1.0
+      },
+      {
+        "phrase": "downgraded to sell",
+        "weight": -0.9
+      },
+      {
+        "phrase": "downgrades to sell",
+        "weight": -0.9
+      },
+      {
+        "phrase": "price target cut",
+        "weight": -0.7
+      },
+      {
+        "phrase": "cuts price target",
+        "weight": -0.7
+      },
+      {
+        "phrase": "lawsuit",
+        "weight": -0.6
+      },
+      {
+        "phrase": "investigation",
+        "weight": -0.6
+      },
+      {
+        "phrase": "sec probe",
+        "weight": -0.8
+      },
+      {
+        "phrase": "fraud",
+        "weight": -1.0
+      },
+      {
+        "phrase": "bankruptcy",
+        "weight": -1.0
+      },
+      {
+        "phrase": "recall",
+        "weight": -0.7
+      },
+      {
+        "phrase": "layoffs",
+        "weight": -0.4
+      },
+      {
+        "phrase": "plunges",
+        "weight": -0.8
+      },
+      {
+        "phrase": "tumbles",
+        "weight": -0.7
+      },
+      {
+        "phrase": "slumps",
+        "weight": -0.6
+      },
+      {
+        "phrase": "falls",
+        "weight": -0.4
+      },
+      {
+        "phrase": "downgrade",
+        "weight": -0.5
+      },
+      {
+        "phrase": "underperform",
+        "weight": -0.5
+      },
+      {
+        "phrase": "bearish",
+        "weight": -0.4
+      },
+      {
+        "phrase": "dilution",
+        "weight": -0.7
+      },
+      {
+        "phrase": "stock offering",
+        "weight": -0.6
+      },
+      {
+        "phrase": "share offering",
+        "weight": -0.6
+      },
+      {
+        "phrase": "worse than expected",
+        "weight": -0.8
+      },
+      {
+        "phrase": "delay",
+        "weight": -0.4
+      },
+      {
+        "phrase": "warning",
+        "weight": -0.5
+      },
+      {
+        "phrase": "profit warning",
+        "weight": -0.9
+      },
+      {
+        "phrase": "loses",
+        "weight": -0.4
+      },
+      {
+        "phrase": "loss widens",
+        "weight": -0.7
+      },
+      {
+        "phrase": "ceo resigns",
+        "weight": -0.5
+      },
+      {
+        "phrase": "ceo steps down",
+        "weight": -0.4
+      },
+      {
+        "phrase": "growth",
+        "weight": 0.2
+      },
+      {
+        "phrase": "profit",
+        "weight": 0.2
+      },
+      {
+        "phrase": "expands",
+        "weight": 0.3
+      },
+      {
+        "phrase": "launches",
+        "weight": 0.2
+      },
+      {
+        "phrase": "decline",
+        "weight": -0.3
+      },
+      {
+        "phrase": "weak",
+        "weight": -0.3
+      },
+      {
+        "phrase": "cuts jobs",
+        "weight": -0.4
+      },
+      {
+        "phrase": "shortfall",
+        "weight": -0.5
+      }
+    ],
+    "negations": [
+      "no ",
+      "not ",
+      "denies ",
+      "despite ",
+      "without ",
+      "avoids ",
+      "isn't ",
+      "won't ",
+      "n't "
+    ],
+    "negationDampening": 0.6,
+    "confidenceDivisor": 6.0,
+    "confidenceMin": 0.35,
+    "confidenceMax": 1.0,
+    "spread": 45.0
+  },
+  "sectorAllocation": {
+    "minFactor": 0.5,
+    "maxFactor": 1.25,
+    "defaultFactor": 1.0,
+    "rules": [
+      {
+        "contains": [
+          "biotech",
+          "biotechnology"
+        ],
+        "factor": 0.75
+      },
+      {
+        "contains": [
+          "semiconductor",
+          "eda"
+        ],
+        "factor": 0.9
+      },
+      {
+        "contains": [
+          "fintech",
+          "financial technology"
+        ],
+        "factor": 0.9
+      },
+      {
+        "contains": [
+          "cybersecurity",
+          "cyber"
+        ],
+        "factor": 0.9
+      },
+      {
+        "contains": [
+          "artificial intelligence",
+          "ai",
+          "ai /",
+          "/ ai"
+        ],
+        "factor": 0.85
+      },
+      {
+        "contains": [
+          "healthcare defensive",
+          "defensive healthcare"
+        ],
+        "factor": 1.05
+      },
+      {
+        "contains": [
+          "healthcare",
+          "health care"
+        ],
+        "factor": 1.05
+      },
+      {
+        "contains": [
+          "industr"
+        ],
+        "factor": 1.0
+      },
+      {
+        "contains": [
+          "utilities"
+        ],
+        "factor": 1.1
+      }
+    ]
+  }
+}

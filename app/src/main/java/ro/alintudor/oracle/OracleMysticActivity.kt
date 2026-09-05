@@ -34,6 +34,7 @@ class OracleMysticActivity : Activity() {
         // rest of this process (matches how most local-lock apps behave —
         // re-locking only on a genuine fresh process start).
         @Volatile private var authPassedThisProcess = false
+        private const val EMERGENCY_IMPORT_REQUEST = 4243
     }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
@@ -1029,6 +1030,40 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
         card.addView(netLogRow, LinearLayout.LayoutParams(-1, -2))
 
+        // --- Growth local emergency (owner-only fallback data, see core/OracleGrowthEmergency.kt) ---
+        card.addView(TextView(this).apply {
+            text = "GROWTH LOCAL EMERGENCY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        val emergencyLoaded = ro.alintudor.oracle.core.OracleGrowthEmergency.isLoaded(this)
+        val emergencyLoadedAt = ro.alintudor.oracle.core.OracleGrowthEmergency.loadedAt(this)
+        card.addView(TextView(this).apply {
+            text = if (!emergencyLoaded) "Not loaded — the on-device fallback engine uses its built-in data."
+                   else "Loaded " + android.text.format.DateFormat.format("d MMM yyyy, HH:mm", emergencyLoadedAt ?: 0L) + " — the fallback engine uses this file's data."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        val emergencyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        emergencyRow.addView(toolButton("LOAD FILE", Color.rgb(55, 215, 255)) {
+            val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(android.content.Intent.CATEGORY_OPENABLE); type = "*/*"
+                putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain"))
+            }
+            runCatching { startActivityForResult(intent, EMERGENCY_IMPORT_REQUEST) }.onFailure { Toast.makeText(this, "No file picker available", Toast.LENGTH_SHORT).show() }
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, dp(5), 0) })
+        emergencyRow.addView(toolButton("CLEAR", Color.rgb(255, 140, 140)) {
+            if (!emergencyLoaded) { Toast.makeText(this, "Nothing loaded.", Toast.LENGTH_SHORT).show(); return@toolButton }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Clear the loaded emergency file?")
+                .setMessage("The fallback engine goes back to its built-in data.")
+                .setPositiveButton("Clear") { _, _ ->
+                    ro.alintudor.oracle.core.OracleGrowthEmergency.clear(this)
+                    Toast.makeText(this, "Emergency file cleared.", Toast.LENGTH_SHORT).show()
+                    showBackupScreen()
+                }
+                .setNegativeButton("Cancel", null).show()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
+        card.addView(emergencyRow, LinearLayout.LayoutParams(-1, -2))
+
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(gold); setPadding(0, dp(28), 0, dp(14))
@@ -1071,17 +1106,27 @@ class OracleMysticActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != ro.alintudor.oracle.nativeui.OraclePortfolioModule.CSV_IMPORT_REQUEST || resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
-        Thread {
-            val text = runCatching { contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "" }.getOrDefault("")
-            val rows = runCatching { ro.alintudor.oracle.core.OracleCsvImport.parse(text) }.getOrDefault(emptyList())
-            val n = if (rows.isNotEmpty()) ro.alintudor.oracle.nativeui.OraclePortfolioModule.applyImport(this, rows) else 0
-            runOnUiThread {
-                if (n == 0) Toast.makeText(this, "No positions recognized in that file (needs ticker, quantity and price columns).", Toast.LENGTH_LONG).show()
-                else { Toast.makeText(this, "Imported $n position${if (n == 1) "" else "s"} — prices refresh now.", Toast.LENGTH_LONG).show(); currentModule = null; openModule("portfolio") }
-            }
-        }.start()
+        when (requestCode) {
+            ro.alintudor.oracle.nativeui.OraclePortfolioModule.CSV_IMPORT_REQUEST -> Thread {
+                val text = runCatching { contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "" }.getOrDefault("")
+                val rows = runCatching { ro.alintudor.oracle.core.OracleCsvImport.parse(text) }.getOrDefault(emptyList())
+                val n = if (rows.isNotEmpty()) ro.alintudor.oracle.nativeui.OraclePortfolioModule.applyImport(this, rows) else 0
+                runOnUiThread {
+                    if (n == 0) Toast.makeText(this, "No positions recognized in that file (needs ticker, quantity and price columns).", Toast.LENGTH_LONG).show()
+                    else { Toast.makeText(this, "Imported $n position${if (n == 1) "" else "s"} — prices refresh now.", Toast.LENGTH_LONG).show(); currentModule = null; openModule("portfolio") }
+                }
+            }.start()
+            EMERGENCY_IMPORT_REQUEST -> Thread {
+                val text = runCatching { contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: "" }.getOrDefault("")
+                val summary = ro.alintudor.oracle.core.OracleGrowthEmergency.importFrom(this, text)
+                runOnUiThread {
+                    if (summary == null) Toast.makeText(this, "That file didn't match the expected format — nothing changed.", Toast.LENGTH_LONG).show()
+                    else { Toast.makeText(this, summary, Toast.LENGTH_LONG).show(); currentModule = null; showBackupScreen() }
+                }
+            }.start()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
