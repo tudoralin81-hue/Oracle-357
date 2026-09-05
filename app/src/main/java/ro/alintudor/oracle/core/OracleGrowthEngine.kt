@@ -188,6 +188,18 @@ object OracleGrowthEngine {
      *  regenerated rather than frozen (see OracleLocalProcessor). */
     fun factorCount():Int = keys.size
 
+    /**
+     * Bump this whenever ANYTHING about what a recommendation carries changes
+     * — a new factor, a new derived field (Fair Valuation, Financial
+     * Health, ...), a formula change — even if factorCount() itself does
+     * not move. This is what the freeze check compares, so a schema change
+     * always forces exactly one fresh rank before freezing again, instead of
+     * silently serving recommendations missing the new fields until the next
+     * trading day. factorCount() alone was not enough: it missed the Fair
+     * Valuation / Financial Health addition entirely (17 factors, unchanged).
+     */
+    const val ENGINE_TAG = "ORACLE_ENGINE_V6.1_FAIRVALUE_HEALTH"
+
     /** Benchmark (SPY) closes, newest-first, shared by every evaluate() call in
      *  a run so relative strength costs one fetch instead of one per candidate. */
     @Volatile private var benchmarkCloses:List<Double> = emptyList()
@@ -441,7 +453,7 @@ object OracleGrowthEngine {
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
             OracleGrowthLog.log(context,"RANK","$h pick: ${pick.ticker} \u2014 base score $baseScore, LO ${if(hazard>=0)"+" else ""}$hazard, final $score, signal ${capSignal(rating(score),regime)}, allocation ${correctedAllocation}%, sector $sector${earningsInDays[pick.ticker]?.let{" (earnings in $it days)"} ?: ""}")
-            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard,
+            out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source=ENGINE_TAG,marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard,
                 fairValueLabel=fairValue.label,fairValueScore=fairValue.score,financialHealthLabel=health.label,financialHealthScore=health.score)
         }
         progressState=progressState.copy(phase=if(out.isEmpty()) OracleGrowthPhase.NO_DATA else OracleGrowthPhase.DONE)

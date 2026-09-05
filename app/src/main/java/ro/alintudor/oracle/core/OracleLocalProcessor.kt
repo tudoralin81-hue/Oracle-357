@@ -42,7 +42,7 @@ object OracleLocalProcessor {
             // engine no longer computes, until the next trading day — the app
             // would silently disagree with itself. A superseded snapshot is
             // regenerated once, immediately, and then frozen as usual.
-            val producedByCurrentEngine = current.all { it.weights.size == OracleGrowthEngine.factorCount() }
+            val producedByCurrentEngine = current.all { it.weights.size == OracleGrowthEngine.factorCount() && it.source == OracleGrowthEngine.ENGINE_TAG }
             if (current.isNotEmpty() && current.all { it.referenceTimestamp == anchor } && producedByCurrentEngine) {
                 OracleGrowthLog.log(repository.context, "FREEZE", "Reusing frozen snapshot for this trading day (${current.size} recommendations) — no rerank")
                 return@synchronized current
