@@ -141,6 +141,10 @@ class OracleMysticActivity : Activity() {
             OracleBootstrap.ensure(repository)
             OracleKnowledgeSync.scheduleNextCheck(this)
             ro.alintudor.oracle.core.OracleAlertCheckReceiver.schedule(this)
+            ro.alintudor.oracle.core.OracleGrowthScanReceiver.schedule(this)
+            // If today's full-universe scan hasn't run yet (fresh install, or
+            // the phone was off overnight), start it now in the background.
+            ro.alintudor.oracle.core.OracleGrowthScanReceiver.scanNowIfMissing(this)
             showBootLoader()
         }.onFailure { proceedingPastAuth = false; showFatalError("Oracle failed to start", it) }
     }

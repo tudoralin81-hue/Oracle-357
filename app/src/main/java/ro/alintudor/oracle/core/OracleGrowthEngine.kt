@@ -1,6 +1,8 @@
 package ro.alintudor.oracle.core
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -67,6 +69,117 @@ object OracleGrowthEngine {
         "LONG" to intArrayOf(6,6,6,19,7,9,18,4,4,9,7,2, 12,3,8,5,2))
     private val keys=listOf("news","breakout","trend","momentum","volume","support_resistance","fundamentals","bollinger","ichimoku","market_sector","risk_reward","adx",
         "relative_strength","volatility_regime","range_position","volume_trend","community")
+
+    // ---------------------------------------------------------------------
+    // FULL-UNIVERSE BACKGROUND SCAN
+    //
+    // The 20-second budget in run() exists because someone is watching the
+    // screen. A scan running in the background has no such constraint, so the
+    // whole universe (~1,400 names) can be covered properly there and cached
+    // to disk. run() then only has to rank what is already computed, which is
+    // both faster on screen and no longer dependent on connection speed at the
+    // moment the user happens to open Growth.
+    // ---------------------------------------------------------------------
+    private const val SCAN_CACHE_FILE = "oracle_universe_scan.json"
+    private const val FULL_SCAN_BUDGET_NANOS = 8L * 60L * 1_000_000_000L // 8 minutes, hard ceiling
+    private const val FULL_SCAN_BATCH = 40
+    private const val FULL_SCAN_THREADS = 8
+
+    /** Progress of the background scan, for the UI to show honestly. */
+    data class FullScanState(val scanned:Int, val total:Int, val anchor:Long, val running:Boolean, val finishedAt:Long)
+    @Volatile var fullScanState = FullScanState(0,0,0L,false,0L); private set
+
+    private fun scanCacheFile(context: Context) = java.io.File(context.applicationContext.filesDir, SCAN_CACHE_FILE)
+
+    private fun cToJson(c:C):JSONObject = JSONObject().apply{
+        put("t",c.ticker); put("p",c.price); put("s",c.score); c.rsi?.let{put("rsi",it)}
+        put("m5",c.mom5); put("m20",c.mom20); put("vr",c.vr); c.macdHist?.let{put("mh",it)}
+        put("ich",c.ichi); c.sma200?.let{put("s200",it)}; c.sma50?.let{put("s50",it)}; c.adx?.let{put("adx",it)}
+        put("atr",c.atrPct); put("risk",c.risk); put("alloc",c.allocation)
+        put("comp",JSONObject().apply{ c.components.forEach{(k,v)->put(k,v)} })
+        put("fc",JSONObject().apply{ c.forecast.forEach{(k,v)->put(k,v)} })
+    }
+
+    private fun jsonToC(o:JSONObject):C?{
+        val t=o.optString("t").takeIf{it.isNotBlank()} ?: return null
+        fun map(name:String):Map<String,Double>{
+            val j=o.optJSONObject(name) ?: return emptyMap()
+            val m=LinkedHashMap<String,Double>(); for(k in j.keys()) m[k]=j.optDouble(k,50.0); return m
+        }
+        val comp=map("comp"); if(comp.size!=keys.size) return null   // produced by an older engine
+        return C(t,o.optDouble("p",0.0),o.optInt("s",0),
+            if(o.has("rsi")) o.optDouble("rsi") else null,o.optDouble("m5",0.0),o.optDouble("m20",0.0),o.optDouble("vr",1.0),
+            if(o.has("mh")) o.optDouble("mh") else null,o.optBoolean("ich",false),
+            if(o.has("s200")) o.optDouble("s200") else null,if(o.has("s50")) o.optDouble("s50") else null,
+            if(o.has("adx")) o.optDouble("adx") else null,o.optDouble("atr",1.0),comp,map("fc"),
+            o.optString("risk","MEDIUM"),o.optDouble("alloc",1.0),0)
+    }
+
+    private fun readScanCache(context: Context, anchor: Long):List<C>{
+        return runCatching{
+            val f=scanCacheFile(context); if(!f.exists()) return emptyList()
+            val root=JSONObject(f.readText())
+            if(root.optLong("anchor",0L)!=anchor) return emptyList()
+            val arr=root.optJSONArray("items") ?: return emptyList()
+            (0 until arr.length()).mapNotNull{ i-> arr.optJSONObject(i)?.let{ jsonToC(it) } }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeScanCache(context: Context, anchor: Long, items:List<C>){
+        runCatching{
+            val root=JSONObject().apply{
+                put("anchor",anchor); put("savedAt",System.currentTimeMillis()); put("factors",keys.size)
+                put("items",JSONArray().apply{ items.forEach{ put(cToJson(it)) } })
+            }
+            scanCacheFile(context).writeText(root.toString())
+        }
+    }
+
+    /** True when a usable full-universe scan already exists for this trading day. */
+    fun hasFreshFullScan(context: Context):Boolean =
+        readScanCache(context, OracleMarketCalendar.growthAnchor(System.currentTimeMillis())).size >= 200
+
+    /**
+     * Scans the ENTIRE universe and caches every candidate. Background only —
+     * takes minutes, must never be called on the UI thread. Results are written
+     * incrementally so a scan cut short by the OS still leaves usable progress.
+     */
+    fun scanFullUniverse(context: Context):Int{
+        val anchor=OracleMarketCalendar.growthAnchor(System.currentTimeMillis())
+        val universe=runCatching{ OracleMarketUniverse.companies(context).map{it.ticker}.distinct() }
+            .getOrDefault(emptyList())
+            .ifEmpty{ runCatching{ OracleSP500Universe.tickers(context) }.getOrDefault(emptyList()) }
+        if(universe.isEmpty()) return 0
+        val existing=readScanCache(context,anchor).associateBy{it.ticker}.toMutableMap()
+        val deadline=System.nanoTime()+FULL_SCAN_BUDGET_NANOS
+        fullScanState=FullScanState(existing.size,universe.size,anchor,true,0L)
+        val pool=Executors.newFixedThreadPool(FULL_SCAN_THREADS)
+        try{
+            // Skip what this anchor already has: a resumed scan continues
+            // instead of redoing work, so repeated short wake-ups still converge.
+            val todo=universe.filter{ it !in existing }
+            for(chunk in todo.chunked(FULL_SCAN_BATCH*FULL_SCAN_THREADS)){
+                if(System.nanoTime()>deadline) break
+                val futures=chunk.chunked(FULL_SCAN_BATCH).map{ batch->
+                    pool.submit<List<C>>{
+                        val data=runCatching{ OracleMarketData.fetchDailyBatch(batch,"1y") }.getOrDefault(emptyMap())
+                        data.mapNotNull{ (ticker,candles)-> if(candles.size>=60) runCatching{ evaluate(ticker,candles) }.getOrNull() else null }
+                    }
+                }
+                futures.forEach{ f->
+                    val remaining=deadline-System.nanoTime()
+                    if(remaining>0) runCatching{ f.get(remaining, TimeUnit.NANOSECONDS) }.getOrNull()?.forEach{ existing[it.ticker]=it }
+                }
+                writeScanCache(context,anchor,existing.values.toList())
+                fullScanState=fullScanState.copy(scanned=existing.size)
+            }
+        } finally {
+            pool.shutdownNow()
+            writeScanCache(context,anchor,existing.values.toList())
+            fullScanState=FullScanState(existing.size,universe.size,anchor,false,System.currentTimeMillis())
+        }
+        return existing.size
+    }
 
     /** Number of scoring factors this engine version produces. A cached
      *  snapshot with a different count came from an older engine and must be
@@ -141,10 +254,17 @@ object OracleGrowthEngine {
         val byTicker=seed.associateBy{it.ticker.uppercase(Locale.US)}
         val t0=System.nanoTime()
 
-        // B540: universe (Requirement #2) — exactly 500 unique S&P 500 companies,
-        // resolved from memory/disk/bundled cache; never a blocking network call.
-        val universeCompanies=runCatching { OracleSP500Universe.companies(context) }.getOrDefault(emptyList())
-        val universe=universeCompanies.map{it.ticker}.distinct()
+        // Universe: S&P 500 union every tradable Nasdaq listing (cap >= $2B,
+        // volume >= 500k), ordered by market cap — resolved from memory/disk,
+        // never a blocking network call. The engine scans the most liquid
+        // prefix of it (ON_DEVICE_SCAN_LIMIT), because the scan has a hard
+        // time budget and covering more than fits would just mean dropping a
+        // connection-speed-dependent subset mid-run. Falls back to the S&P 500
+        // alone whenever the extended feed is unavailable.
+        val universe=runCatching { OracleMarketUniverse.scanTickers(context) }
+            .getOrDefault(emptyList())
+            .ifEmpty { runCatching { OracleSP500Universe.tickers(context) }.getOrDefault(emptyList()) }
+            .distinct()
         progressState=OracleGrowthProgress(0, universe.size.coerceAtLeast(1), t0, OracleGrowthPhase.RUNNING)
         if(universe.isEmpty()){
             progressState=progressState.copy(phase=OracleGrowthPhase.NO_DATA)
@@ -163,6 +283,15 @@ object OracleGrowthEngine {
         // each batch completes (never an artificial/simulated counter).
         // One benchmark fetch per run powers relative strength for every candidate.
         benchmarkCloses=runCatching { OracleMarketData.fetchDaily("SPY","1y").sortedByDescending{it.timestamp}.map{it.close}.filter{it>0.0} }.getOrDefault(emptyList())
+        // If the background scan already covered the whole universe for this
+        // trading day, rank that instead of re-fetching a bounded subset live.
+        val anchorNow=OracleMarketCalendar.growthAnchor(System.currentTimeMillis())
+        val cachedCandidates=readScanCache(context,anchorNow)
+        if(cachedCandidates.size>=200){
+            progressState=OracleGrowthProgress(cachedCandidates.size, cachedCandidates.size, t0, OracleGrowthPhase.RUNNING)
+            return rankCandidates(context,cachedCandidates,t0,totalDeadline,seed)
+        }
+
         val loadedCounter=AtomicInteger(0)
         val candidateQueue=ConcurrentLinkedQueue<C>()
         val scanPool=Executors.newFixedThreadPool(SCAN_THREADS)
@@ -195,6 +324,10 @@ object OracleGrowthEngine {
             return emptyList()
         }
         val candidates=candidateQueue.toList()
+        return rankCandidates(context,candidates,t0,totalDeadline,seed)
+    }
+
+    private fun rankCandidates(context: Context, candidates:List<C>, t0:Long, totalDeadline:Long, seed:List<OracleGrowthRecommendation>):List<OracleGrowthRecommendation>{
 
         // Enrich the technical shortlist with real non-OHLC data before ranking.
         // The previous implementation silently used 50/100 for News, Fundamentals
@@ -288,6 +421,7 @@ object OracleGrowthEngine {
             val news=newsContexts[pick.ticker]
             val company=meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) }
                 ?: OracleSP500Universe.nameFor(context,pick.ticker)
+                ?: OracleMarketUniverse.nameFor(context,pick.ticker)
                 ?: lookupCompanyName(pick.ticker)
                 ?: pick.ticker
             out+=OracleGrowthRecommendation(horizon=h,ticker=pick.ticker,company=company,sector=sector,score=score,signal=capSignal(rating(score),regime),risk=pick.risk,allocationMax=correctedAllocation,forecastPct=pick.forecast[h.lowercase(Locale.US)]?:0.0,momentum5D=pick.mom5,momentum20D=pick.mom20,weights=correctedWeights.toList(),newsTitle=cachedTitle ?: news?.topHeadline.orEmpty(),newsSource=meta?.newsSource.orEmpty(),referenceTimestamp=meta?.referenceTimestamp?:0L,currentPrice=pick.price,adx=pick.adx,factorValues=keys.map{pick.components[it]?:50.0},factorScore=score.toDouble(),generatedAt=System.currentTimeMillis(),source="ORACLE_ENGINE_V6.0_17FACTOR",marketRegime=regime.level,regimeNote=regime.note,earningsInDays=earningsInDays[pick.ticker],hazard=hazard)
@@ -298,7 +432,9 @@ object OracleGrowthEngine {
 
     /** Sector resolution used by Growth only: live/known sector, then the S&P 500 universe (Requirement #8). */
     private fun resolveSector(context: Context, ticker:String, remoteSector:String?):String? =
-        OracleRealData.resolvedSector(ticker,remoteSector) ?: OracleSP500Universe.sectorFor(context,ticker)
+        OracleRealData.resolvedSector(ticker,remoteSector)
+            ?: OracleSP500Universe.sectorFor(context,ticker)
+            ?: OracleMarketUniverse.sectorFor(context,ticker)
 
     private fun lookupCompanyName(ticker:String):String? = runCatching {
         val ua="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36"
