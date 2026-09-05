@@ -806,8 +806,12 @@ class OracleMysticActivity : Activity() {
         }
     }
 
+    private enum class NonModuleScreen { HUB, TOOLS, ADMIN }
+    private var currentNonModuleScreen = NonModuleScreen.HUB
+
     private fun showHub() {
         currentModule = null
+        currentNonModuleScreen = NonModuleScreen.HUB
         root.removeAllViews()
         val scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(Color.rgb(3, 4, 12)) }
         val page = LinearLayout(this).apply {
@@ -872,6 +876,7 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun showBackupScreen() {
+        currentNonModuleScreen = NonModuleScreen.TOOLS
         // TOOLS is closed to a demo visitor — reaching this by any path (deep
         // link, back-stack, a stale reference) redirects straight to the exit
         // prompt instead of ever rendering the screen.
@@ -1068,6 +1073,7 @@ class OracleMysticActivity : Activity() {
      *  fallback file + force-local testing toggle. See core/OracleAdminAccess.kt
      *  for the two-layer gate that gets here (owner account + this-device PIN). */
     private fun showAdminScreen() {
+        currentNonModuleScreen = NonModuleScreen.ADMIN
         root.removeAllViews()
         val bg = Color.rgb(3, 4, 12); val panel = Color.rgb(7, 14, 28)
         val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55); val green = Color.rgb(105, 245, 35)
@@ -1390,7 +1396,12 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun handleBack() {
-        if (currentModule != null) showHub() else finish()
+        when {
+            currentModule != null -> showHub()
+            currentNonModuleScreen == NonModuleScreen.ADMIN -> showBackupScreen()
+            currentNonModuleScreen == NonModuleScreen.TOOLS -> showHub()
+            else -> finish()
+        }
     }
 
     private fun showGrowthCalculationError(error: Throwable) {

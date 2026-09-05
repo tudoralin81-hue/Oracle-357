@@ -101,32 +101,32 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
 
-        text(c,"DISCLAIMER",cx,brandY,S(10f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
-        p.textAlign=Paint.Align.CENTER;p.textSize=S(10f);p.letterSpacing=.18f
+        text(c,"DISCLAIMER",cx,brandY,S(13f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
+        p.textAlign=Paint.Align.CENTER;p.textSize=S(13f);p.letterSpacing=.18f
         val discWidth=p.measureText("DISCLAIMER")
-        hit+=RectF(cx-discWidth/2f-S(10f),brandY-S(18f),cx+discWidth/2f+S(10f),brandY+S(8f)) to "disclaimer"
+        hit+=RectF(cx-discWidth/2f-S(14f),brandY-S(22f),cx+discWidth/2f+S(14f),brandY+S(12f)) to "disclaimer"
 
         val alertsX=X(if(wide)100f else 60f)
-        val dotR=S(3f); val dotCx=alertsX+dotR; val dotCy=brandY-S(2.5f)
+        val dotR=S(3.5f); val dotCx=alertsX+dotR; val dotCy=brandY-S(3f)
         p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=255
         c.drawCircle(dotCx,dotCy,dotR,p)
-        p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
-        c.drawText(alertsStatusText,dotCx+dotR+S(5f),brandY,p)
+        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText(alertsStatusText,dotCx+dotR+S(6f),brandY,p)
         val alertsTextWidth=p.measureText(alertsStatusText)
-        val serverDotCx=dotCx+dotR+S(5f)+alertsTextWidth+S(16f); val serverDotCy=dotCy
+        val serverDotCx=dotCx+dotR+S(6f)+alertsTextWidth+S(18f); val serverDotCy=dotCy
         p.style=Paint.Style.FILL;p.color=serverStatusColor;p.alpha=255
         c.drawCircle(serverDotCx,serverDotCy,dotR,p)
-        p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
-        c.drawText(serverStatusText,serverDotCx+dotR+S(5f),brandY,p)
+        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText(serverStatusText,serverDotCx+dotR+S(6f),brandY,p)
 
-        val toolsY=brandY+S(24f)
+        val toolsY=brandY+S(30f)
         // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS
         // itself is closed to a visitor, so there is no point pointing at it.
-        p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(7.5f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         val toolsLabel=if(demoActive) "\uD83D\uDD13  EXIT DEMO" else "\uD83D\uDD27  TOOLS"
         c.drawText(toolsLabel,alertsX,toolsY,p)
         val toolsWidth=p.measureText(toolsLabel)
-        hit+=RectF(alertsX-S(6f),toolsY-S(12f),alertsX+toolsWidth+S(6f),toolsY+S(6f)) to "backup"
+        hit+=RectF(alertsX-S(10f),toolsY-S(18f),alertsX+toolsWidth+S(10f),toolsY+S(12f)) to "backup"
 
         postInvalidateDelayed(32L)
     }

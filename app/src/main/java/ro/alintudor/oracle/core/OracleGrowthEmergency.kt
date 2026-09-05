@@ -121,6 +121,12 @@ object OracleGrowthEmergency {
         cached = null
         runCatching { file(context).delete() }
         applyToConsumers(null)
+        // Same reasoning as setForceLocal(true): while actively testing
+        // (force-local on), a cleared file should be reflected right away,
+        // not hidden behind today's already-frozen snapshot. Outside a test
+        // session this is skipped — a normal day's recommendations correctly
+        // keep standing until tomorrow regardless of what happens to this file.
+        if (isForcingLocal(context)) runCatching { OracleRepository(context).saveGrowth(emptyList()) }
     }
 
     private fun parse(text: String): Loaded {
