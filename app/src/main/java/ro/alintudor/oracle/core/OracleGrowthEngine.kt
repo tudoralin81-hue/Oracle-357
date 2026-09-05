@@ -272,6 +272,7 @@ object OracleGrowthEngine {
     }
 
     fun run(context: Context, seed:List<OracleGrowthRecommendation> = emptyList()):List<OracleGrowthRecommendation> = try {
+        OracleGrowthEmergency.current(context) // no-op if nothing was ever loaded; otherwise pushes the owner-loaded weights/sentiment/sector override in before either path below runs
         tryServerPicks(context) ?: runInternal(context, seed)
     } catch (_: Exception) {
         // Defensive: the universe/OHLCV/enrichment paths already catch their own
@@ -325,7 +326,7 @@ object OracleGrowthEngine {
                 score = o.optInt("score"), signal = o.optString("signal"), risk = o.optString("risk"),
                 allocationMax = o.optDouble("allocation", 1.0), forecastPct = o.optDouble("forecastPct", 0.0),
                 momentum5D = o.optDouble("momentum5D", 0.0), momentum20D = o.optDouble("momentum20D", 0.0),
-                weights = weights[horizon]!!.toList(),
+                weights = OracleGrowthEmergency.activeWeights(horizon, weights[horizon]!!).toList(),
                 referencePrice = price, currentPrice = price,
                 adx = o.optDouble("adx", -1.0).takeIf { it >= 0.0 },
                 factorValues = keys.map { componentsJson?.optDouble(it, 50.0) ?: 50.0 },
@@ -530,7 +531,7 @@ object OracleGrowthEngine {
             val fairValue=OracleValuation.fairValue(f,sector)
             val health=OracleValuation.financialHealth(f)
             val correctedAllocation=(OracleSectorAllocation.apply(pick.allocation,sector)*regime.allocationFactor).let{ kotlin.math.round(it*10.0)/10.0 }.coerceAtLeast(0.5)
-            val correctedWeights=weights[h]!!.copyOf()
+            val correctedWeights=OracleGrowthEmergency.activeWeights(h, weights[h]!!).copyOf()
             val news=newsContexts[pick.ticker]
             val company=meta?.company?.takeIf { it.isNotBlank() && !it.equals(pick.ticker,true) }
                 ?: OracleSP500Universe.nameFor(context,pick.ticker)
@@ -624,7 +625,7 @@ object OracleGrowthEngine {
 
     /** V5.9.7: sector correction is applied only to allocation, never to score. */
     private fun horizonScore(c:Map<String,Double>,h:String,sector:String?):Int{
-        val w=weights[h]!!
+        val w=OracleGrowthEmergency.activeWeights(h, weights[h]!!)
         val total=w.sum().toDouble()
         val raw=(keys.indices.sumOf{(c[keys[it]]?:50.0)*w[it].toDouble()}/total).toInt().coerceIn(0,100)
         return when{raw in 97..100->raw-3;raw in 92..96->raw-1;else->raw}

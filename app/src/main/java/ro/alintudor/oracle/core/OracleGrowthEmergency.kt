@@ -42,12 +42,29 @@ object OracleGrowthEmergency {
 
     fun loadedAt(context: Context): Long? = current(context)?.loadedAt
 
+    /** The active horizon weights for the engine to use: the loaded override
+     *  if one is cached, otherwise the caller's own built-in fallback. Does
+     *  NOT take a Context — relies on `current(context)` having already run
+     *  at least once this process (OracleGrowthEngine.runInternal calls it
+     *  at the top of every run, which keeps this cheap and Context-free at
+     *  the actual per-horizon call sites deep in the ranking code). */
+    fun activeWeights(horizon: String, builtIn: IntArray): IntArray = cached?.horizonWeights?.get(horizon) ?: builtIn
+
+    private fun applyToConsumers(l: Loaded?) {
+        if (l == null) { OracleSentiment.clearOverride(); OracleSectorAllocation.clearOverride() }
+        else {
+            OracleSentiment.applyOverride(l.sentimentPhrases, l.sentimentNegations)
+            OracleSectorAllocation.applyOverride(l.sectorRules, l.sectorMin, l.sectorMax, l.sectorDefault)
+        }
+    }
+
     fun current(context: Context): Loaded? {
         cached?.let { return it }
         val f = file(context)
         if (!f.exists()) return null
         val loaded = runCatching { parse(f.readText()) }.getOrNull()
         cached = loaded
+        applyToConsumers(loaded)
         return loaded
     }
 
@@ -63,6 +80,7 @@ object OracleGrowthEmergency {
         val stamped = parsed.copy(loadedAt = System.currentTimeMillis())
         cached = stamped
         runCatching { file(context).writeText(toStorageJson(stamped)) }.getOrElse { cached = null; return null }
+        applyToConsumers(stamped)
         return "Loaded ${stamped.horizonWeights.size} horizons \u00d7 ${stamped.factorKeys.size} factors, " +
             "${stamped.sentimentPhrases.size} sentiment phrases, ${stamped.sectorRules.size} sector rules."
     }
@@ -70,6 +88,7 @@ object OracleGrowthEmergency {
     fun clear(context: Context) {
         cached = null
         runCatching { file(context).delete() }
+        applyToConsumers(null)
     }
 
     private fun parse(text: String): Loaded {

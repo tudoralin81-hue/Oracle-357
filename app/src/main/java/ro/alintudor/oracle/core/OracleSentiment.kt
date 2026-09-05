@@ -24,14 +24,24 @@ object OracleSentiment {
     )
     private val negations = listOf("no ", "not ", "denies ", "despite ", "without ", "avoids ", "isn't ", "won't ", "n't ")
 
+    // Pushed by OracleGrowthEmergency when an owner-loaded file is active —
+    // never set from anywhere else. Null means "use the built-in lexicon
+    // above", which is the only path for every build until this is wired up.
+    private var overridePhrases: List<Pair<String, Double>>? = null
+    private var overrideNegations: List<String>? = null
+    fun applyOverride(phrases: List<Pair<String, Double>>, negations: List<String>) { overridePhrases = phrases; overrideNegations = negations }
+    fun clearOverride() { overridePhrases = null; overrideNegations = null }
+
     fun scoreOne(headline: String): Double {
+        val activePhrases = overridePhrases ?: phrases
+        val activeNegations = overrideNegations ?: negations
         val t = " " + headline.lowercase(Locale.US).replace(Regex("[^a-z0-9' -]"), " ").replace(Regex("\\s+"), " ") + " "
         var total = 0.0; var hits = 0
-        for ((phrase, weight) in phrases) {
+        for ((phrase, weight) in activePhrases) {
             var idx = t.indexOf(phrase)
             while (idx >= 0) {
                 val before = t.substring(maxOf(0, idx - 12), idx)
-                val negated = negations.any { before.endsWith(it) || before.contains(" $it".trim() + " ") }
+                val negated = activeNegations.any { before.endsWith(it) || before.contains(" $it".trim() + " ") }
                 total += if (negated) -weight * 0.6 else weight
                 hits++
                 idx = t.indexOf(phrase, idx + phrase.length)

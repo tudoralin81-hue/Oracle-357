@@ -9,10 +9,25 @@ object OracleSectorAllocation {
     private const val MIN_FACTOR = 0.50
     private const val MAX_FACTOR = 1.25
 
+    // Pushed by OracleGrowthEmergency when an owner-loaded file is active —
+    // same pattern as OracleSentiment's override. Null = use the built-in
+    // rules below, which is the only path for every build until this is wired up.
+    private var overrideRules: List<Pair<List<String>, Double>>? = null
+    private var overrideMin: Double = MIN_FACTOR
+    private var overrideMax: Double = MAX_FACTOR
+    private var overrideDefault: Double = 1.0
+    fun applyOverride(rules: List<Pair<List<String>, Double>>, min: Double, max: Double, default: Double) {
+        overrideRules = rules; overrideMin = min; overrideMax = max; overrideDefault = default
+    }
+    fun clearOverride() { overrideRules = null; overrideMin = MIN_FACTOR; overrideMax = MAX_FACTOR; overrideDefault = 1.0 }
+
     /** Allocation correction is separate from the 12-component Growth score. */
     fun factorFor(sector: String?): Double {
-        val s = sector?.trim()?.lowercase() ?: return 1.0
-        return when {
+        val s = sector?.trim()?.lowercase() ?: return overrideDefault
+        val rules = overrideRules
+        val raw = if (rules != null) {
+            rules.firstOrNull { (keywords, _) -> keywords.any { s.contains(it) } }?.second ?: overrideDefault
+        } else when {
             s.contains("biotech") || s.contains("biotechnology") -> 0.750
             s.contains("semiconductor") || s.contains("eda") -> 0.900
             s.contains("fintech") || s.contains("financial technology") -> 0.900
@@ -23,7 +38,8 @@ object OracleSectorAllocation {
             s.contains("industr") -> 1.000
             s.contains("utilities") -> 1.100
             else -> 1.000
-        }.coerceIn(MIN_FACTOR, MAX_FACTOR)
+        }
+        return raw.coerceIn(if (rules != null) overrideMin else MIN_FACTOR, if (rules != null) overrideMax else MAX_FACTOR)
     }
 
     /** Allocation final = continuous base allocation * sector factor, rounded to exactly 1 decimal %. */

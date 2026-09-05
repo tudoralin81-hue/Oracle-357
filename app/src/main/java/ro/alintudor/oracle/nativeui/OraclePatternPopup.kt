@@ -2,7 +2,11 @@ package ro.alintudor.oracle.nativeui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Handler
@@ -17,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import ro.alintudor.oracle.core.OracleChartPattern
 import ro.alintudor.oracle.core.OracleMarketData
+import ro.alintudor.oracle.core.OracleOhlcvPoint
 import ro.alintudor.oracle.core.OraclePatternDetector
 import java.util.Locale
 
@@ -66,18 +71,19 @@ fun showPatternDialog(context: Context, accent: Int, ticker: String) {
     dialog.show()
 
     Thread {
-        val candles = runCatching { OracleMarketData.fetchDaily(ticker, "1y") }.getOrDefault(emptyList())
+        val fetched = runCatching { OracleMarketData.fetchDaily(ticker, "1y") }.getOrDefault(emptyList())
+        val candles = fetched.sortedBy { it.timestamp } // oldest-first, matching what the detector scans internally
         val patterns = runCatching { OraclePatternDetector.detect(candles) }.getOrDefault(emptyList())
         val summary = OraclePatternDetector.summarize(patterns)
         Handler(Looper.getMainLooper()).post {
             content.removeView(loader)
-            renderPatternResults(context, dp = ::dp, content = content, accent = accent, patterns = patterns, verdict = summary.verdict, bullishCount = summary.bullishCount, bearishCount = summary.bearishCount)
+            renderPatternResults(context, dp = ::dp, content = content, accent = accent, candles = candles, patterns = patterns, verdict = summary.verdict, bullishCount = summary.bullishCount, bearishCount = summary.bearishCount)
         }
     }.start()
 }
 
 private fun renderPatternResults(
-    context: Context, dp: (Int) -> Int, content: LinearLayout, accent: Int,
+    context: Context, dp: (Int) -> Int, content: LinearLayout, accent: Int, candles: List<OracleOhlcvPoint>,
     patterns: List<OracleChartPattern>, verdict: String, bullishCount: Int, bearishCount: Int
 ) {
     val verdictColor = when {
@@ -128,6 +134,71 @@ private fun renderPatternResults(
             text = p.note; textSize = 12.5f; setTextColor(Color.rgb(190, 198, 216)); setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, dp(6), 0, 0)
         })
+        // --- Chart snapshot: a window of candles around the pattern, with its
+        // defining points marked and connected — visual confirmation next to
+        // the text, not instead of it. ---
+        buildPatternSnapshot(context, dp, candles, p, color)?.let {
+            card.addView(it, LinearLayout.LayoutParams(-1, dp(90)).apply { topMargin = dp(10) })
+        }
         content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+    }
+}
+
+/** Windows the candle list to roughly the pattern's own span plus some
+ *  padding on both sides for context, and translates the pattern's markers
+ *  (given in full-list indices) into indices local to that window. */
+private fun buildPatternSnapshot(context: Context, dp: (Int) -> Int, candles: List<OracleOhlcvPoint>, pattern: OracleChartPattern, color: Int): View? {
+    if (candles.isEmpty()) return null
+    val span = pattern.toIndex - pattern.fromIndex
+    val padding = maxOf(4, span / 4)
+    val from = maxOf(0, pattern.fromIndex - padding)
+    val to = minOf(candles.size - 1, pattern.toIndex + padding)
+    if (to <= from) return null
+    val window = candles.subList(from, to + 1)
+    val localMarkers = pattern.markers.mapNotNull { (idx, price) -> if (idx in from..to) (idx - from) to price else null }
+    return PatternMiniChartView(context, window, localMarkers, color).apply {
+        background = OracleNativeModule.rounded(Color.rgb(5, 8, 17), dp(8), Color.rgb(30, 38, 58), dp(1))
+    }
+}
+
+/** A minimal, dependency-free line-chart View: the closing-price path across
+ *  the window in a neutral tone, plus the pattern's own marker points in its
+ *  direction color, connected by a dashed line so the shape the detector
+ *  matched is visible at a glance. Deliberately simple (no axes, no candle
+ *  bodies) — this is a confirmation thumbnail, not the main chart. */
+private class PatternMiniChartView(
+    context: Context,
+    private val candles: List<OracleOhlcvPoint>,
+    private val markers: List<Pair<Int, Double>>,
+    private val color: Int
+) : View(context) {
+    private val linePaint = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 3f; color = Color.rgb(95, 105, 135) }
+    private val markerLinePaint = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 2.5f; pathEffect = DashPathEffect(floatArrayOf(7f, 6f), 0f) }
+    private val markerDotPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (candles.size < 2) return
+        val w = width.toFloat(); val h = height.toFloat()
+        val padY = h * 0.12f
+        val prices = candles.map { it.close } + markers.map { it.second }
+        val minP = prices.min(); val maxP = prices.max()
+        val span = (maxP - minP).takeIf { it > 0.0 } ?: (maxP.takeIf { it > 0.0 } ?: 1.0) * 0.02
+        fun y(v: Double): Float = h - padY - ((v - minP) / span * (h - padY * 2)).toFloat()
+        val stepX = w / (candles.size - 1).toFloat()
+        fun x(i: Int): Float = i * stepX
+
+        val path = Path()
+        candles.forEachIndexed { i, c -> if (i == 0) path.moveTo(x(i), y(c.close)) else path.lineTo(x(i), y(c.close)) }
+        canvas.drawPath(path, linePaint)
+
+        if (markers.size >= 2) {
+            markerLinePaint.color = color
+            val mp = Path()
+            markers.forEachIndexed { i, (idx, price) -> if (i == 0) mp.moveTo(x(idx), y(price)) else mp.lineTo(x(idx), y(price)) }
+            canvas.drawPath(mp, markerLinePaint)
+        }
+        markerDotPaint.color = color
+        markers.forEach { (idx, price) -> canvas.drawCircle(x(idx), y(price), h * 0.045f, markerDotPaint) }
     }
 }

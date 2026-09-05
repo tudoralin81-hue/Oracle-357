@@ -19,7 +19,13 @@ data class OracleChartPattern(
     val bullish: Boolean?,
     val fromIndex: Int,
     val toIndex: Int,
-    val note: String
+    val note: String,
+    /** The specific points (index into the oldest-first candle list, price)
+     *  that define this pattern — the two peaks of a Double Top, all three
+     *  peaks + neckline points of a Head & Shoulders, the swing points of a
+     *  Triangle's trendlines, etc. Ordered oldest-to-newest. Drawn as the
+     *  visual "proof" on each pattern's chart snapshot. */
+    val markers: List<Pair<Int, Double>>
 )
 
 data class OraclePatternSummary(val patterns: List<OracleChartPattern>, val verdict: String, val bullishCount: Int, val bearishCount: Int)
@@ -94,7 +100,8 @@ object OraclePatternDetector {
             if (dropPct < 3.0) continue
             if (candles.size - 1 - h2.index > 15) continue
             return OracleChartPattern("DOUBLE_TOP", "Double Top", false, h1.index, h2.index,
-                "Two peaks near %.2f and %.2f, separated by a pullback to %.2f (%.1f%% drop). Bearish reversal signal.".format(h1.price, h2.price, valley.price, dropPct))
+                "Two peaks near %.2f and %.2f, separated by a pullback to %.2f (%.1f%% drop). Bearish reversal signal.".format(h1.price, h2.price, valley.price, dropPct),
+                listOf(h1.index to h1.price, valley.index to valley.price, h2.index to h2.price))
         }
         return null
     }
@@ -112,7 +119,8 @@ object OraclePatternDetector {
             if (risePct < 3.0) continue
             if (candles.size - 1 - l2.index > 15) continue
             return OracleChartPattern("DOUBLE_BOTTOM", "Double Bottom", true, l1.index, l2.index,
-                "Two troughs near %.2f and %.2f, separated by a rally to %.2f (%.1f%% rise). Bullish reversal signal.".format(l1.price, l2.price, peak.price, risePct))
+                "Two troughs near %.2f and %.2f, separated by a rally to %.2f (%.1f%% rise). Bullish reversal signal.".format(l1.price, l2.price, peak.price, risePct),
+                listOf(l1.index to l1.price, peak.index to peak.price, l2.index to l2.price))
         }
         return null
     }
@@ -125,11 +133,13 @@ object OraclePatternDetector {
             val ls = recent[i]; val head = recent[i + 1]; val rs = recent[i + 2]
             if (head.price <= ls.price * 1.02 || head.price <= rs.price * 1.02) continue
             if (pctDiff(ls.price, rs.price) > 6.0) continue
-            val neckline = lows.filter { it.index in ls.index..rs.index }.map { it.price }
-            if (neckline.size < 2 || pctDiff(neckline.min(), neckline.max()) > 5.0) continue
+            val necklinePts = lows.filter { it.index in ls.index..rs.index }
+            if (necklinePts.size < 2 || pctDiff(necklinePts.minOf { it.price }, necklinePts.maxOf { it.price }) > 5.0) continue
             if (candles.size - 1 - rs.index > 15) continue
+            val neckAvg = necklinePts.map { it.price }.average()
             return OracleChartPattern("HEAD_SHOULDERS", "Head & Shoulders", false, ls.index, rs.index,
-                "Head at %.2f clearly above both shoulders (%.2f, %.2f); neckline near %.2f. Bearish reversal signal.".format(head.price, ls.price, rs.price, neckline.average()))
+                "Head at %.2f clearly above both shoulders (%.2f, %.2f); neckline near %.2f. Bearish reversal signal.".format(head.price, ls.price, rs.price, neckAvg),
+                (listOf(ls.index to ls.price, head.index to head.price, rs.index to rs.price) + necklinePts.map { it.index to it.price }).sortedBy { it.first })
         }
         return null
     }
@@ -142,11 +152,13 @@ object OraclePatternDetector {
             val ls = recent[i]; val head = recent[i + 1]; val rs = recent[i + 2]
             if (head.price >= ls.price * 0.98 || head.price >= rs.price * 0.98) continue
             if (pctDiff(ls.price, rs.price) > 6.0) continue
-            val neckline = highs.filter { it.index in ls.index..rs.index }.map { it.price }
-            if (neckline.size < 2 || pctDiff(neckline.min(), neckline.max()) > 5.0) continue
+            val necklinePts = highs.filter { it.index in ls.index..rs.index }
+            if (necklinePts.size < 2 || pctDiff(necklinePts.minOf { it.price }, necklinePts.maxOf { it.price }) > 5.0) continue
             if (candles.size - 1 - rs.index > 15) continue
+            val neckAvg = necklinePts.map { it.price }.average()
             return OracleChartPattern("INV_HEAD_SHOULDERS", "Inverse Head & Shoulders", true, ls.index, rs.index,
-                "Head at %.2f clearly below both shoulders (%.2f, %.2f); neckline near %.2f. Bullish reversal signal.".format(head.price, ls.price, rs.price, neckline.average()))
+                "Head at %.2f clearly below both shoulders (%.2f, %.2f); neckline near %.2f. Bullish reversal signal.".format(head.price, ls.price, rs.price, neckAvg),
+                (listOf(ls.index to ls.price, head.index to head.price, rs.index to rs.price) + necklinePts.map { it.index to it.price }).sortedBy { it.first })
         }
         return null
     }
@@ -162,13 +174,14 @@ object OraclePatternDetector {
         val lPct = slope(recentLows) / avgPrice * 100.0
         val flat = 0.15
         val span = minOf(recentHighs.first().index, recentLows.first().index) to maxOf(recentHighs.last().index, recentLows.last().index)
+        val allMarkers = (recentHighs + recentLows).sortedBy { it.index }.map { it.index to it.price }
         return when {
             kotlin.math.abs(hPct) < flat && lPct > flat -> OracleChartPattern("TRIANGLE_ASC", "Ascending Triangle", true, span.first, span.second,
-                "Flat resistance near %.2f with rising support — typically resolves upward.".format(recentHighs.map { it.price }.average()))
+                "Flat resistance near %.2f with rising support — typically resolves upward.".format(recentHighs.map { it.price }.average()), allMarkers)
             kotlin.math.abs(lPct) < flat && hPct < -flat -> OracleChartPattern("TRIANGLE_DESC", "Descending Triangle", false, span.first, span.second,
-                "Flat support near %.2f with falling resistance — typically resolves downward.".format(recentLows.map { it.price }.average()))
+                "Flat support near %.2f with falling resistance — typically resolves downward.".format(recentLows.map { it.price }.average()), allMarkers)
             hPct < -flat && lPct > flat -> OracleChartPattern("TRIANGLE_SYM", "Symmetric Triangle", null, span.first, span.second,
-                "Converging trendlines — the breakout direction is the signal to watch, not the triangle itself.")
+                "Converging trendlines — the breakout direction is the signal to watch, not the triangle itself.", allMarkers)
             else -> null
         }
     }
@@ -177,24 +190,29 @@ object OraclePatternDetector {
     private fun detectBreakout(candles: List<OracleOhlcvPoint>): OracleChartPattern? {
         if (candles.size < 30) return null
         val recent = candles.takeLast(40)
+        val baseIndex = candles.size - recent.size
         val last = recent.last()
-        fun cluster(values: List<Double>): Pair<Double, Int>? {
-            var bestValue = 0.0; var bestCount = 0
-            for (v in values) {
-                val count = values.count { kotlin.math.abs(it - v) / v * 100.0 < 1.0 }
-                if (count >= 2 && count > bestCount) { bestValue = v; bestCount = count }
+        // Returns the clustered level, how many touches, and the LOCAL indices (into `recent`) that touched it.
+        fun cluster(indexed: List<Pair<Int, Double>>): Triple<Double, Int, List<Int>>? {
+            var bestValue = 0.0; var bestTouches = emptyList<Int>()
+            for ((_, v) in indexed) {
+                val touches = indexed.filter { kotlin.math.abs(it.second - v) / v * 100.0 < 1.0 }.map { it.first }
+                if (touches.size >= 2 && touches.size > bestTouches.size) { bestValue = v; bestTouches = touches }
             }
-            return if (bestCount >= 2) bestValue to bestCount else null
+            return if (bestTouches.size >= 2) Triple(bestValue, bestTouches.size, bestTouches) else null
         }
-        val resistance = cluster(recent.dropLast(3).map { it.high })
-        val support = cluster(recent.dropLast(3).map { it.low })
+        val priorCount = recent.size - 3
+        val resistance = cluster(recent.take(priorCount).mapIndexed { i, c -> i to c.high })
+        val support = cluster(recent.take(priorCount).mapIndexed { i, c -> i to c.low })
         if (resistance != null && last.close > resistance.first * 1.005) {
-            return OracleChartPattern("BREAKOUT_RESISTANCE", "Resistance Breakout", true, recent.size - 4, recent.size - 1,
-                "Price tested ~%.2f %d times, then closed above it at %.2f. Bullish breakout.".format(resistance.first, resistance.second, last.close))
+            val markers = resistance.third.map { (baseIndex + it) to recent[it].high } + listOf((baseIndex + recent.size - 1) to last.close)
+            return OracleChartPattern("BREAKOUT_RESISTANCE", "Resistance Breakout", true, baseIndex + recent.size - 4, baseIndex + recent.size - 1,
+                "Price tested ~%.2f %d times, then closed above it at %.2f. Bullish breakout.".format(resistance.first, resistance.second, last.close), markers)
         }
         if (support != null && last.close < support.first * 0.995) {
-            return OracleChartPattern("BREAKOUT_SUPPORT", "Support Breakdown", false, recent.size - 4, recent.size - 1,
-                "Price tested ~%.2f %d times, then closed below it at %.2f. Bearish breakdown.".format(support.first, support.second, last.close))
+            val markers = support.third.map { (baseIndex + it) to recent[it].low } + listOf((baseIndex + recent.size - 1) to last.close)
+            return OracleChartPattern("BREAKOUT_SUPPORT", "Support Breakdown", false, baseIndex + recent.size - 4, baseIndex + recent.size - 1,
+                "Price tested ~%.2f %d times, then closed below it at %.2f. Bearish breakdown.".format(support.first, support.second, last.close), markers)
         }
         return null
     }
@@ -204,17 +222,22 @@ object OraclePatternDetector {
         val poleWindow = 8; val flagWindow = 7
         val poleStart = candles.size - poleWindow - flagWindow
         if (poleStart < 0) return null
+        val poleEndIndex = candles.size - flagWindow - 1
         val poleBegin = candles[poleStart].close
-        val poleEnd = candles[candles.size - flagWindow - 1].close
+        val poleEnd = candles[poleEndIndex].close
         if (poleBegin <= 0.0) return null
         val poleMovePct = (poleEnd - poleBegin) / poleBegin * 100.0
         if (kotlin.math.abs(poleMovePct) < 8.0) return null
         val flagCandles = candles.takeLast(flagWindow)
-        val flagRangePct = (flagCandles.maxOf { it.high } - flagCandles.minOf { it.low }) / poleEnd * 100.0
+        val flagHighPoint = flagCandles.maxByOrNull { it.high }!!
+        val flagLowPoint = flagCandles.minByOrNull { it.low }!!
+        val flagRangePct = (flagHighPoint.high - flagLowPoint.low) / poleEnd * 100.0
         if (flagRangePct > kotlin.math.abs(poleMovePct) * 0.5) return null
         val bullish = poleMovePct > 0
+        val flagHighIdx = candles.indexOf(flagHighPoint); val flagLowIdx = candles.indexOf(flagLowPoint)
         return OracleChartPattern(if (bullish) "FLAG_BULLISH" else "FLAG_BEARISH", if (bullish) "Bull Flag" else "Bear Flag", bullish,
             poleStart, candles.size - 1,
-            "Sharp %.1f%% move, then a tight %.1f%% consolidation — a %s continuation setup if it breaks the same direction.".format(poleMovePct, flagRangePct, if (bullish) "bullish" else "bearish"))
+            "Sharp %.1f%% move, then a tight %.1f%% consolidation — a %s continuation setup if it breaks the same direction.".format(poleMovePct, flagRangePct, if (bullish) "bullish" else "bearish"),
+            listOf(poleStart to poleBegin, poleEndIndex to poleEnd, flagHighIdx to flagHighPoint.high, flagLowIdx to flagLowPoint.low).sortedBy { it.first })
     }
 }
