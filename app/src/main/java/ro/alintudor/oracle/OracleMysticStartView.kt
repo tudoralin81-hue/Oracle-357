@@ -132,9 +132,22 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         run {
             val tickerY = Y(if (wide) 741f else 995f)
             if (urgentAlertTexts.isEmpty()) {
+                val emptySpeed = 55f // px/sec, slower than the pulse row — this is a calm state, not something to watch
                 p.style=Paint.Style.FILL;p.color=Color.rgb(150,160,182);p.alpha=255;p.textSize=S(18f)
-                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.CENTER;p.letterSpacing=.02f
-                c.drawText("No active alerts",cx,tickerY,p)
+                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+                val segment = "No active alerts          "
+                val segmentWidth = p.measureText(segment)
+                if (segmentWidth > 0f) {
+                    val scrollX = (time.toFloat() * emptySpeed) % segmentWidth
+                    val baseX = -scrollX
+                    c.save(); c.clipRect(0f, tickerY - S(20f), w, tickerY + S(8f))
+                    var repeat = 0
+                    while (baseX + repeat * segmentWidth < w && repeat < 12) {
+                        c.drawText(segment, baseX + repeat * segmentWidth, tickerY, p)
+                        repeat++
+                    }
+                    c.restore()
+                }
             } else {
                 val passSeconds = 14.0; val passes = 4; val pauseSeconds = 10.0
                 val cycle = passes * passSeconds + pauseSeconds
