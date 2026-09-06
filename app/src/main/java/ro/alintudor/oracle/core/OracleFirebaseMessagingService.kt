@@ -49,8 +49,8 @@ class OracleFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val title = message.notification?.title ?: message.data["title"] ?: "Lux Oculi"
-        val body = message.notification?.body ?: message.data["body"] ?: return
+        val title = message.data["title"] ?: message.notification?.title ?: "Lux Oculi"
+        val body = message.data["body"] ?: message.notification?.body ?: return
         runCatching { OracleInboxStore(this).add(title, body) }
         showNotification(title, body)
     }
