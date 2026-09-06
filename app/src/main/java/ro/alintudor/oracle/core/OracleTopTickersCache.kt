@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 
 /**
- * Top 30 tickers by score from the server's full universe scan (all ~954
+ * Top 50 tickers by score from the server's full universe scan (all ~954
  * names it scanned today) — deliberately NOT derived from anything this
  * account has personally looked at (Watchlist, Portfolio, Alerts). Only
  * the ticker+score pairs are kept, not the full per-ticker payload
@@ -45,6 +45,6 @@ object OracleTopTickersCache {
             ticker to o.optInt("baseScore")
         }
         if (parsed.isEmpty()) return
-        save(context, parsed.sortedByDescending { it.second }.take(30))
+        save(context, parsed.sortedByDescending { it.second }.take(50))
     }
 }

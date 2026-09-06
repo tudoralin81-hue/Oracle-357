@@ -120,7 +120,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         // "ticker board" rather than text floating loose on the starfield.
         run {
             val bandTop = Y(if (wide) 724f else 973f); val bandBottom = Y(if (wide) 780f else 1036f)
-            p.style=Paint.Style.FILL;p.color=Color.argb(7,210,214,222)
+            p.style=Paint.Style.FILL;p.color=Color.argb(5,210,214,222)
             c.drawRect(0f, bandTop, w, bandBottom, p)
         }
         run {
@@ -130,7 +130,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                 p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.CENTER;p.letterSpacing=.02f
                 c.drawText("No active alerts",cx,tickerY,p)
             } else {
-                val passSeconds = 8.5; val passes = 4; val pauseSeconds = 10.0
+                val passSeconds = 11.0; val passes = 4; val pauseSeconds = 10.0
                 val cycle = passes * passSeconds + pauseSeconds
                 val withinCycle = time % cycle
                 if (withinCycle < passes * passSeconds) {
@@ -151,29 +151,34 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         }
         // Second row: an LED-style tape of today's top-scoring tickers
         // (universe-wide, not tied to Portfolio or Alerts) — green for
-        // score \u2265 50, red below — a plain "how's the board looking today"
-        // readout, distinct from the alert row above.
+        // score \u2265 50, red below. Genuinely continuous: chained repeated
+        // copies of the full ticker list scroll back-to-back with no reset
+        // or pause ever visible, unlike the alert row above.
         if (marketPulseItems.isNotEmpty()) {
             val pulseY = Y(if (wide) 766f else 1022f)
-            val pulseCycle = 30.0
-            val pulseProgress = (time % pulseCycle) / pulseCycle
+            val speed = 70f // px/sec, raw canvas pixels
             p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
             val gap = "     "
             val segmentWidths = marketPulseItems.map { (ticker, value, _) -> p.measureText("$ticker $value$gap") }
             val totalWidth = segmentWidths.sum()
             if (totalWidth > 0f) {
-                val startX = w - (totalWidth + w) * pulseProgress.toFloat()
-                var x = startX
+                val scrollX = (time.toFloat() * speed) % totalWidth
+                val baseX = -scrollX
                 c.save(); c.clipRect(0f, pulseY - S(20f), w, pulseY + S(8f))
-                for (i in marketPulseItems.indices) {
-                    val (ticker, value, positive) = marketPulseItems[i]
-                    val segText = "$ticker "
-                    p.color = Color.WHITE
-                    c.drawText(segText, x, pulseY, p)
-                    x += p.measureText(segText)
-                    p.color = if (positive) Color.rgb(105,245,35) else Color.rgb(255,90,90)
-                    c.drawText(value, x, pulseY, p)
-                    x += p.measureText(value) + p.measureText(gap)
+                var repeat = 0
+                while (baseX + repeat * totalWidth < w && repeat < 8) {
+                    var x = baseX + repeat * totalWidth
+                    for (i in marketPulseItems.indices) {
+                        val (ticker, value, positive) = marketPulseItems[i]
+                        val segText = "$ticker "
+                        p.color = Color.WHITE
+                        c.drawText(segText, x, pulseY, p)
+                        x += p.measureText(segText)
+                        p.color = if (positive) Color.rgb(105,245,35) else Color.rgb(255,90,90)
+                        c.drawText(value, x, pulseY, p)
+                        x += p.measureText(value) + p.measureText(gap)
+                    }
+                    repeat++
                 }
                 c.restore()
             }
