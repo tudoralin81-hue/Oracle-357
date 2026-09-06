@@ -55,7 +55,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             val watchlistSignals = signalAll.filter { it.title.endsWith("(Watchlist)") }
             val portfolioSignals = signalAll - watchlistSignals.toSet()
 
-            addAlertDonut(alerts.size, listOf(
+            addAlertDonut(listOf(
                 Triple("URGENT", Color.rgb(255, 90, 90), trueCritical.size),
                 Triple("YOUR ALERTS", Color.rgb(80, 200, 255), userFired.size),
                 Triple("PORTFOLIO", host.accent, portfolioSignals.size),
@@ -153,9 +153,9 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
      *  category, with the true grand total in the middle — this is the
      *  "show literally everything, including inactive" view; the 5
      *  sections further down are where you act on any one of them. */
-    private fun addAlertDonut(total: Int, segments: List<Triple<String, Int, Int>>) {
+    private fun addAlertDonut(segments: List<Triple<String, Int, Int>>) {
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(OracleAlertDonutView(context, segments.map { it.second to it.third }, total), LinearLayout.LayoutParams(host.dp(96), host.dp(96)))
+        row.addView(OracleAlertDonutView(context, segments.map { it.second to it.third }), LinearLayout.LayoutParams(host.dp(96), host.dp(96)))
         val legend = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(14), 0, 0, 0) }
         segments.forEach { (label, color, count) ->
             val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(3), 0, host.dp(3)) }
@@ -245,7 +245,8 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
 /** Segmented ring chart — proportion of each (color, count) segment out of
  *  total, drawn as arcs, with the total shown as a number in the middle.
  *  Zero total draws a flat neutral-gray ring instead of doing 0/0 math. */
-class OracleAlertDonutView(context: Context, private val segments: List<Pair<Int, Int>>, private val total: Int) : View(context) {
+class OracleAlertDonutView(context: Context, private val segments: List<Pair<Int, Int>>) : View(context) {
+    private val total = segments.sumOf { it.second }
     private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.BUTT }
     private val totalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.WHITE; typeface = Typeface.DEFAULT_BOLD }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.rgb(150, 160, 182); typeface = Typeface.DEFAULT_BOLD }

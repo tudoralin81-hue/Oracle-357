@@ -161,4 +161,10 @@ object OracleApiClient {
     fun setUserStatus(token: String, userId: Int, decision: String): Result<JSONObject> = runCatching {
         post("/users/status", token, JSONObject().apply { put("userId", userId); put("decision", decision) })
     }
+
+    /** Owner-only: push (and email, if they have one) a one-off message
+     *  straight into a specific user's app. */
+    fun notifyUser(token: String, userId: Int, title: String, message: String): Result<JSONObject> = runCatching {
+        post("/users/notify", token, JSONObject().apply { put("userId", userId); put("title", title); put("message", message) })
+    }
 }

@@ -1254,10 +1254,10 @@ class OracleMysticActivity : Activity() {
             val actionLog = u.optJSONArray("actionLog")
             if (actionLog != null && actionLog.length() > 0) {
                 row.addView(TextView(this).apply {
-                    text = "HISTORY"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(muted); letterSpacing = 0.12f
+                    text = "HISTORY \u2022 ${actionLog.length()}"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(muted); letterSpacing = 0.12f
                     setPadding(0, dp(8), 0, dp(2))
                 })
-                for (h in 0 until minOf(actionLog.length(), 5)) {
+                for (h in 0 until actionLog.length()) {
                     val entry = actionLog.optJSONObject(h) ?: continue
                     row.addView(TextView(this).apply {
                         text = "${entry.optString("at", "—")}  \u2014  ${entry.optString("action", "")}"
@@ -1292,6 +1292,35 @@ class OracleMysticActivity : Activity() {
                             .setNegativeButton("Cancel", null).show()
                     }
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+                row.addView(TextView(this).apply {
+                    text = "SEND MESSAGE"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.rgb(80, 200, 255))
+                    background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(9).toFloat(); setStroke(dp(1), Color.rgb(80, 200, 255)) }
+                    setPadding(0, dp(8), 0, dp(8)); isClickable = true; isFocusable = true
+                    setOnClickListener {
+                        val messageField = EditText(this@OracleMysticActivity).apply {
+                            hint = "Message for $username"; setPadding(dp(16), dp(12), dp(16), dp(12)); minLines = 2
+                        }
+                        android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                            .setTitle("Message $username")
+                            .setMessage("Sent as a push notification, and by email if they have one on file.")
+                            .setView(messageField)
+                            .setPositiveButton("Send") { _, _ ->
+                                val text = messageField.text.toString().trim()
+                                if (text.isBlank()) { Toast.makeText(this@OracleMysticActivity, "Enter a message.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                                val token = OracleAuthStore(this@OracleMysticActivity).token()
+                                Thread {
+                                    val result = OracleApiClient.notifyUser(token, id, "Message from Lux Oculi", text)
+                                    runOnUiThread {
+                                        if (isFinishing) return@runOnUiThread
+                                        result.onSuccess { Toast.makeText(this@OracleMysticActivity, "Sent to $username.", Toast.LENGTH_SHORT).show(); showUserManagementDialog() }
+                                            .onFailure { Toast.makeText(this@OracleMysticActivity, "Failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+                                    }
+                                }.start()
+                            }
+                            .setNegativeButton("Cancel", null).show()
+                        messageField.requestFocus()
+                    }
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
             }
             list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
         }

@@ -24,16 +24,16 @@ import ro.alintudor.oracle.core.OracleMarketCalendar
  *  with it for attention. */
 class OracleMatrixRainView(context: Context) : View(context) {
     private val paint = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.MONOSPACE }
-    private val columns = 2
+    private val maxColumns = 8
     private val rows = 4
-    private val chars = Array(columns) { CharArray(rows) { if (Math.random() < 0.5) '0' else '1' } }
-    private val phase = Array(columns) { FloatArray(rows) { (Math.random() * 6.28).toFloat() } }
+    private val chars = Array(maxColumns) { CharArray(rows) { if (Math.random() < 0.5) '0' else '1' } }
+    private val phase = Array(maxColumns) { FloatArray(rows) { (Math.random() * 6.28).toFloat() } }
     private val startNanos = System.nanoTime()
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
             if (Math.random() < 0.35) {
-                val col = (Math.random() * columns).toInt(); val row = (Math.random() * rows).toInt()
+                val col = (Math.random() * maxColumns).toInt(); val row = (Math.random() * rows).toInt()
                 chars[col][row] = if (chars[col][row] == '0') '1' else '0'
             }
             invalidate()
@@ -45,6 +45,10 @@ class OracleMatrixRainView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
+        val density = resources.displayMetrics.density
+        val targetColumnWidth = 16f * density
+        val columns = (w / targetColumnWidth).toInt().coerceIn(0, maxColumns)
+        if (columns == 0) return
         val cellH = h / rows
         paint.textSize = cellH * 0.6f
         val t = (System.nanoTime() - startNanos) / 1_000_000_000.0
@@ -140,9 +144,9 @@ class OracleNativeModule(
         buildRow.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
         center.addView(buildRow)
         val centerRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(dp(20), dp(50)))
-        centerRow.addView(center, LinearLayout.LayoutParams(0, dp(76), 1f))
-        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(dp(20), dp(50)))
+        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(0, dp(50), 1f))
+        centerRow.addView(center, LinearLayout.LayoutParams(-2, dp(76)))
+        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(0, dp(50), 1f))
         header.addView(centerRow, LinearLayout.LayoutParams(0, dp(76), 1f))
         header.addView(button("↻","Refresh",Color.rgb(255,205,45)) { onRefresh() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
