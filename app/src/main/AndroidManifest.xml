@@ -6,7 +6,7 @@
     <application
         android:name=".core.OracleApp"
         android:theme="@style/AppTheme"
-        android:label="Oracle2.1"
+        android:label="Oracle3.0"
         android:icon="@drawable/ic_oracle"
         android:roundIcon="@drawable/ic_oracle"
         android:allowBackup="false"

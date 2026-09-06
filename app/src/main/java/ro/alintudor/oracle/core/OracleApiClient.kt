@@ -139,4 +139,16 @@ object OracleApiClient {
         post("/register-device", token, JSONObject().apply { put("fcm_token", fcmToken) })
         Unit
     }
+
+    /** Owner-only: every registered user's account data — mirrors the
+     *  WordPress admin "Oracle Users" table, from inside the app itself. */
+    fun listUsers(token: String): Result<JSONObject> = runCatching {
+        readResponse(connection("/users", "GET", token))
+    }
+
+    /** Owner-only: approve or revoke ("reject") one user by id — the same
+     *  action the WP admin page's own buttons perform. */
+    fun setUserStatus(token: String, userId: Int, decision: String): Result<JSONObject> = runCatching {
+        post("/users/status", token, JSONObject().apply { put("userId", userId); put("decision", decision) })
+    }
 }

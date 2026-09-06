@@ -1037,6 +1037,115 @@ class OracleMysticActivity : Activity() {
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
     }
 
+    /** Owner-only: fetches every registered user from the server and shows
+     *  them in a scrollable dialog with an Approve/Revoke action per row —
+     *  the same list and the same two actions the WordPress admin "Oracle
+     *  Users" page already has, just reachable without leaving the app. */
+    private fun showUserManagementDialog() {
+        val token = OracleAuthStore(this).token()
+        if (token.isBlank()) { Toast.makeText(this, "Not logged in.", Toast.LENGTH_SHORT).show(); return }
+        val loadingDialog = android.app.AlertDialog.Builder(this).setTitle("Users").setMessage("Loading…").setCancelable(false).show()
+        Thread {
+            val result = OracleApiClient.listUsers(token)
+            runOnUiThread {
+                loadingDialog.dismiss()
+                if (isFinishing) return@runOnUiThread
+                result.onSuccess { response -> renderUserManagementDialog(response.optJSONArray("users") ?: org.json.JSONArray()) }
+                    .onFailure { Toast.makeText(this, "Couldn't load users: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun renderUserManagementDialog(users: org.json.JSONArray) {
+        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195)
+        val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)) }
+        if (users.length() == 0) {
+            list.addView(TextView(this).apply { text = "No accounts registered yet."; setTextColor(muted); textSize = 13f })
+        }
+        for (i in 0 until users.length()) {
+            val u = users.optJSONObject(i) ?: continue
+            val id = u.optInt("id")
+            val username = u.optString("username")
+            val status = u.optString("status", "approved")
+            val isOwner = u.optBoolean("isOwner", false)
+            val statusColor = when (status) { "approved" -> Color.rgb(105, 245, 35); "pending" -> Color.rgb(255, 205, 55); else -> Color.rgb(255, 90, 90) }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = dp(11).toFloat(); setStroke(dp(1), statusColor) }
+            }
+            val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            top.addView(TextView(this).apply { text = username; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(0, -2, 1f))
+            top.addView(TextView(this).apply { text = status.uppercase(); textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(statusColor) })
+            row.addView(top)
+            val email = u.optString("notificationEmail")
+            row.addView(TextView(this).apply { text = if (email.isBlank()) "No notification email" else email; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
+            row.addView(TextView(this).apply { text = "Registered ${u.optString("createdAt", "—")}"; textSize = 10f; setTextColor(muted); setPadding(0, dp(2), 0, 0) })
+            if (!isOwner) {
+                val actionLabel = if (status == "pending") "APPROVE" else "REVOKE"
+                val actionColor = if (status == "pending") Color.rgb(105, 245, 35) else Color.rgb(255, 90, 90)
+                row.addView(TextView(this).apply {
+                    text = actionLabel; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(actionColor)
+                    background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(9).toFloat(); setStroke(dp(1), actionColor) }
+                    setPadding(0, dp(8), 0, dp(8)); isClickable = true; isFocusable = true
+                    setOnClickListener {
+                        val decision = if (status == "pending") "approve" else "reject"
+                        val confirmMessage = if (decision == "reject") "Revoke access for $username? They'll be signed out on their next sync." else "Approve $username?"
+                        android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                            .setTitle(if (decision == "reject") "Revoke access?" else "Approve account?")
+                            .setMessage(confirmMessage)
+                            .setPositiveButton(if (decision == "reject") "Revoke" else "Approve") { _, _ ->
+                                val token = OracleAuthStore(this@OracleMysticActivity).token()
+                                Thread {
+                                    val result = OracleApiClient.setUserStatus(token, id, decision)
+                                    runOnUiThread {
+                                        if (isFinishing) return@runOnUiThread
+                                        result.onSuccess { Toast.makeText(this@OracleMysticActivity, "$username is now ${if (decision == "approve") "approved" else "revoked"}.", Toast.LENGTH_SHORT).show(); showUserManagementDialog() }
+                                            .onFailure { Toast.makeText(this@OracleMysticActivity, "Failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+                                    }
+                                }.start()
+                            }
+                            .setNegativeButton("Cancel", null).show()
+                    }
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }
+            list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        }
+        scroll.addView(list)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Users (${users.length()})")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    /** Reachable only from inside the already-unlocked Admin Only screen —
+     *  changes the existing PIN to a new one. setPin() already just
+     *  overwrites, so this needs no separate storage-layer support. */
+    private fun showChangePinDialog() {
+        val pinField = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Change Admin PIN")
+            .setMessage("Enter a new PIN for this device. It replaces the current one immediately.")
+            .setView(pinField)
+            .setPositiveButton("Save") { _, _ ->
+                val pin = pinField.text.toString().trim()
+                if (pin.length < 4) { Toast.makeText(this, "Use at least 4 digits.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                ro.alintudor.oracle.core.OracleAdminAccess.setPin(this, pin)
+                Toast.makeText(this, "PIN changed.", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null).show()
+        pinField.requestFocus()
+        pinField.post {
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(pinField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
     /** Gate for the Admin Only screen: PIN entry if one's already set, or a
      *  one-time "create a PIN" flow the first time. Only ever reachable from
      *  a button that itself only renders for the owner's account — this is
@@ -1240,6 +1349,28 @@ class OracleMysticActivity : Activity() {
             Toast.makeText(this, if (turningOn) "Forced local — today's Growth snapshot cleared, next open recomputes on-device." else "Back to normal — Growth will try the server again.", Toast.LENGTH_LONG).show()
             showAdminScreen()
         }, LinearLayout.LayoutParams(-1, -2))
+
+        // --- User management (list, approve, revoke — mirrors the WP admin page) ---
+        card.addView(TextView(this).apply {
+            text = "USER MANAGEMENT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        card.addView(TextView(this).apply {
+            text = "Every registered account, with the same approve/revoke controls as the WordPress admin page."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        card.addView(toolButton("VIEW USERS", Color.rgb(55, 215, 255)) { showUserManagementDialog() }, LinearLayout.LayoutParams(-1, -2))
+
+        // --- Change the Admin PIN itself --------------------------------------
+        card.addView(TextView(this).apply {
+            text = "ADMIN PIN"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        card.addView(TextView(this).apply {
+            text = "This device's PIN for unlocking this screen."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        card.addView(toolButton("CHANGE PIN", Color.rgb(255, 170, 40)) { showChangePinDialog() }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "\u2190 Back to Tools"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(28), 0, 0)
