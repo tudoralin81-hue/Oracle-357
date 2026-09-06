@@ -257,6 +257,18 @@ class OracleMysticActivity : Activity() {
         }
     }
 
+    /** Mirrors the server's oracle_password_requirement_error() exactly —
+     *  gives the same feedback immediately, without waiting on a round-trip
+     *  to find out the password will be rejected. Returns null if valid. */
+    private fun passwordRequirementError(password: String): String? {
+        if (password.length < 8 || password.length > 16) return "Password must be 8\u201316 characters."
+        if (!password.any { it.isUpperCase() }) return "Password needs at least one uppercase letter."
+        if (!password.any { it.isLowerCase() }) return "Password needs at least one lowercase letter."
+        if (!password.any { it.isDigit() }) return "Password needs at least one number."
+        if (password.all { it.isLetterOrDigit() }) return "Password needs at least one symbol."
+        return null
+    }
+
     private fun authField(container: LinearLayout, label: String, muted: Int, panel: Int, border: Int, isPassword: Boolean = false, onAutofilled: ((View) -> Unit)? = null): EditText {
         container.addView(TextView(this).apply { text = label; textSize = 11f; setTextColor(muted); setPadding(dp(2), dp(10), 0, dp(4)) })
         // Plain EditText, unless a caller wants to know about genuine system
@@ -323,6 +335,10 @@ class OracleMysticActivity : Activity() {
 
         val usernameField = authField(card, "USERNAME", muted, panel, border)
         val passwordField = authField(card, "PASSWORD", muted, panel, border, isPassword = true)
+        card.addView(TextView(this).apply {
+            text = "8\u201316 characters, with an uppercase letter, a lowercase letter, a number, and a symbol. Case-sensitive."
+            textSize = 10.5f; setTextColor(muted); setPadding(dp(2), dp(4), dp(2), 0)
+        })
         val confirmField = authField(card, "CONFIRM PASSWORD", muted, panel, border, isPassword = true)
 
         card.addView(TextView(this).apply {
@@ -383,7 +399,7 @@ class OracleMysticActivity : Activity() {
             val answeredCount = questionAnswerFields.values.count { it.text.toString().isNotBlank() }
             error.text = when {
                 username.isBlank() -> "Enter a username."
-                password.length < 8 -> "Password needs at least 8 characters."
+                passwordRequirementError(password) != null -> passwordRequirementError(password)!!
                 password != confirm -> "Passwords don't match."
                 answeredCount < OracleAuthStore.REQUIRED_SECURITY_ANSWERS -> "Answer at least ${OracleAuthStore.REQUIRED_SECURITY_ANSWERS} security questions — they're the only way to reset your password later."
                 !termsCheckbox.isChecked -> "You need to accept the Terms & Conditions to continue."
@@ -454,6 +470,16 @@ class OracleMysticActivity : Activity() {
             letterSpacing = 0.03f
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), gold) }
             setPadding(dp(16), dp(22), dp(16), dp(22))
+        })
+        card.addView(TextView(this).apply {
+            text = "\uD83D\uDCCB  COPY CODE"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold)
+            setPadding(0, dp(10), 0, 0)
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Oracle backup code", code))
+                Toast.makeText(this, "Copied.", Toast.LENGTH_SHORT).show()
+            }
         })
         card.addView(TextView(this).apply {
             text = "I'VE SAVED IT — CONTINUE"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
@@ -634,6 +660,10 @@ class OracleMysticActivity : Activity() {
         card.addView(TextView(this).apply { text = "— OR —"; textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(14), 0, dp(2)) })
         val backupField = authField(card, "BACKUP CODE (from registration)", muted, panel, border)
         val newPasswordField = authField(card, "NEW PASSWORD", muted, panel, border, isPassword = true)
+        card.addView(TextView(this).apply {
+            text = "8\u201316 characters, with an uppercase letter, a lowercase letter, a number, and a symbol. Case-sensitive."
+            textSize = 10.5f; setTextColor(muted); setPadding(dp(2), dp(4), dp(2), 0)
+        })
         val confirmField = authField(card, "CONFIRM NEW PASSWORD", muted, panel, border, isPassword = true)
 
         val error = TextView(this).apply { textSize = 12f; setTextColor(red); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
@@ -654,7 +684,7 @@ class OracleMysticActivity : Activity() {
             val confirm = confirmField.text.toString()
             error.text = when {
                 username.isBlank() -> "Enter your username."
-                newPassword.length < 8 -> "Password needs at least 8 characters."
+                passwordRequirementError(newPassword) != null -> passwordRequirementError(newPassword)!!
                 newPassword != confirm -> "Passwords don't match."
                 answers.isEmpty() && backupCode.isBlank() -> "Answer at least one security question, or provide your backup code."
                 else -> ""
@@ -1069,7 +1099,7 @@ class OracleMysticActivity : Activity() {
             val username = u.optString("username")
             val status = u.optString("status", "approved")
             val isOwner = u.optBoolean("isOwner", false)
-            val statusColor = when (status) { "approved" -> Color.rgb(105, 245, 35); "pending" -> Color.rgb(255, 205, 55); else -> Color.rgb(255, 90, 90) }
+            val statusColor = when { isOwner -> Color.rgb(255, 205, 55); status == "approved" -> Color.rgb(105, 245, 35); status == "pending" -> Color.rgb(255, 205, 55); else -> Color.rgb(255, 90, 90) }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -1077,7 +1107,7 @@ class OracleMysticActivity : Activity() {
             }
             val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             top.addView(TextView(this).apply { text = username; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(0, -2, 1f))
-            top.addView(TextView(this).apply { text = status.uppercase(); textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(statusColor) })
+            top.addView(TextView(this).apply { text = if (isOwner) "ADMIN" else status.uppercase(); textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(statusColor) })
             row.addView(top)
             val email = u.optString("notificationEmail")
             row.addView(TextView(this).apply { text = if (email.isBlank()) "No notification email" else email; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
