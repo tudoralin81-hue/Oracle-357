@@ -62,7 +62,7 @@ class OracleMysticStartViewV2(context: Context, private val onModule: (String) -
         stars(c, w, h, time)
         grid(c, cx, eyeY, S(if (wide) 118f else 112f), S(18f))
         sigil(c, cx, Y(if (wide) 31f else 54f), S(20f), gold)
-        text(c, "ORACLE", cx, Y(if (wide) 72f else 100f), S(if (wide) 34f else 31f), gold, Typeface.SERIF, .18f, true)
+        text(c, "LUX OCULI", cx, Y(if (wide) 72f else 100f), S(if (wide) 34f else 31f), gold, Typeface.SERIF, .18f, true)
         text(c, "STOCK INTELLIGENCE", cx, Y(if (wide) 99f else 127f), S(9f), gold, Typeface.DEFAULT, .25f, true)
         eye(c, cx, eyeY, eyeR, time)
         text(c, "SEE MORE.  KNOW FIRST.", cx, Y(if (wide) 330f else 430f), S(10.5f), white, Typeface.DEFAULT, .25f, true)
@@ -160,7 +160,7 @@ class OracleMysticStartViewV2(context: Context, private val onModule: (String) -
         p.style=Paint.Style.STROKE;p.color=green;p.alpha=(110+115*q).toInt();p.strokeWidth=S(1.1f);c.drawRoundRect(r,S(11f),S(11f),p)
         val eyeX=if(wide)225f else 75f; val leftText=if(wide)285f else 122f; val centerX=if(wide)640f else 360f; val rightText=if(wide)745f else 410f; val shieldX=if(wide)1050f else 650f
         miniEye(c,X(eyeX),Y(top+41f),S(25f),green)
-        textLeft(c,"ORACLE READY",X(leftText),Y(top+36f),S(14f),white,Typeface.DEFAULT_BOLD)
+        textLeft(c,"LUX OCULI READY",X(leftText),Y(top+36f),S(14f),white,Typeface.DEFAULT_BOLD)
         textLeft(c,"Market Intelligence Active",X(leftText),Y(top+59f),S(8.7f),green,Typeface.DEFAULT)
         p.color=gold;p.alpha=(125+120*q).toInt();p.strokeWidth=S(1.2f);c.drawCircle(X(centerX),Y(top+41f),S(24f+3f*q),p)
         for(i in -2..2){val xx=X(centerX+i*6f);val hh=S(8f+abs(i)*3f);c.drawLine(xx,Y(top+41f)-hh,xx,Y(top+41f)+hh,p)}

@@ -135,6 +135,16 @@ object OracleApiClient {
         post("/notify", token, JSONObject().apply { put("subject", subject); put("message", message) })
     }
 
+    /** Minimal authenticated call used only to find out whether this
+     *  session's token is still accepted — the response body is irrelevant,
+     *  a 401 here throws OracleUnauthorizedException exactly like any other
+     *  authenticated endpoint. Reuses the cheapest existing GET rather than
+     *  adding a dedicated server route. */
+    fun checkSession(token: String): Result<Unit> = runCatching {
+        readResponse(connection("/universe-scan/status", "GET", token))
+        Unit
+    }
+
     fun registerDevice(token: String, fcmToken: String): Result<Unit> = runCatching {
         post("/register-device", token, JSONObject().apply { put("fcm_token", fcmToken) })
         Unit

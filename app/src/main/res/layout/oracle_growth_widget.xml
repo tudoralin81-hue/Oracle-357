@@ -35,7 +35,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="ORACLE GROWTH"
+                android:text="LUX OCULI GROWTH"
                 android:textColor="#69F523"
                 android:textSize="15sp"
                 android:textStyle="bold"

@@ -28,9 +28,10 @@ class OracleAuthStore(context: Context) {
     fun hasSession(): Boolean = token().isNotBlank()
     fun token(): String = prefs.getString("api_token", "") ?: ""
     fun username(): String = prefs.getString("username", "") ?: ""
+    fun loginAt(): Long = prefs.getLong("login_at", 0L)
 
     fun saveSession(username: String, token: String) {
-        prefs.edit().putString("username", username).putString("api_token", token).apply()
+        prefs.edit().putString("username", username).putString("api_token", token).putLong("login_at", System.currentTimeMillis()).apply()
     }
 
     fun clearSession() {

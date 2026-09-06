@@ -43,30 +43,38 @@ class OracleMysticActivity : Activity() {
     private val titles = linkedMapOf("portfolio" to "PORTFOLIO", "alerts" to "ALERTS", "news" to "NEWS", "growth" to "GROWTH", "knowledge" to "KNOWLEDGE", "analysis" to "ANALYSIS", "watchlist" to "WATCHLIST", "journal" to "ACTIVITY JOURNAL")
 
     private val termsText = """
-        Oracle is a personal, single-device application. By creating an account you agree to the following:
+        By creating an account you agree to the following:
 
-        1. Local use only
-        This app runs entirely on your own device. There is no server, no cloud account, and nothing is transmitted to the developer. Your username, password, security question answers, and backup code are stored only on this device.
+        1. What this app is
+        Lux Oculi is a personal project, developed and operated by a single independent developer — not a company, and not affiliated with any financial institution, broker, or other software product of a similar name. Your account, and the data described below, are stored on a server operated by the developer (alintudor.ro), not on your device alone.
 
         2. No warranty
-        Oracle is provided "as is," without warranty of any kind. Market data, calculations, scores, and recommendations may be inaccurate, delayed, or incomplete. The developer makes no guarantee of accuracy, availability, or fitness for any particular purpose.
+        Lux Oculi is provided "as is," without warranty of any kind. Market data, calculations, scores, and recommendations may be inaccurate, delayed, or incomplete. The developer makes no guarantee of accuracy, availability, or fitness for any particular purpose, and the service may be modified, interrupted, or discontinued at any time.
 
-        3. Your responsibility
-        You are responsible for keeping your password, security question answers, and backup code safe. If you lose all of them, your account cannot be recovered — there is no server-side reset.
+        3. Your account and data
+        Creating an account stores your username, a hashed (not plaintext) password, hashed answers to your chosen security questions, and a hashed backup recovery code, on the developer's server. If you provide a notification email, it is used only to send you account and alert notifications you've asked for. Your Portfolio, Watchlist, Alerts, and Activity Journal entries are also stored there so they sync across app opens. This data is never sold, and is never shared with third parties except the minimum needed to operate the service itself (e.g. Google Firebase, solely to deliver push notifications to your device).
+        You're responsible for keeping your password, security answers, and backup code safe — they're how you (or the developer) can recover or verify your account.
+        You may ask the developer to delete your account and its stored data at any time; see the contact information the developer has provided you.
 
-        4. No liability
-        The developer is not liable for any loss, financial or otherwise, arising from your use of this app, including decisions made based on information it displays.
+        4. Approval and access
+        New accounts require approval by the developer before use. Access may be suspended or revoked at the developer's discretion, including for suspected misuse, without prior notice.
 
-        5. Changes
-        These terms may be updated at any time without notice, as this is a personal project under active development.
+        5. Trademarks and naming
+        "Lux Oculi" and its logo are the developer's own branding for this app. Any resemblance to the name, branding, or products of other companies is unintentional, and this app claims no affiliation, sponsorship, or endorsement by any such company. Company and ticker names, logos, and data shown within the app (e.g. stock symbols, index names) belong to their respective owners and are used solely for identification and informational purposes.
+
+        6. No liability
+        The developer is not liable for any loss, financial or otherwise, arising from your use of this app, including decisions made based on information it displays, or from any interruption, error, or loss of data in the service.
+
+        7. Changes
+        These terms may be updated at any time, as this is a personal project under active development. Continued use of the app after a change constitutes acceptance of the updated terms.
 
         See also: Disclaimer, for important information about the investment-related content in this app.
     """.trimIndent()
 
     private val disclaimerText = """
-        Oracle is not a financial advisor, broker, or licensed investment service. Nothing shown in this app, including Growth scores, signals (BUY / HOLD / SELL), risk ratings, forecasted potential, Portfolio decisions, or Alerts, constitutes financial, investment, tax, or legal advice.
+        Lux Oculi is not a financial advisor, broker, or licensed investment service. Nothing shown in this app, including Growth scores, signals (BUY / HOLD / SELL), risk ratings, forecasted potential, Portfolio decisions, or Alerts, constitutes financial, investment, tax, or legal advice.
 
-        All figures are generated by automated, local calculations based on market data that may be delayed, incomplete, or inaccurate. Past performance and any forecasted percentage are not guarantees of future results.
+        All figures are generated by automated calculations based on market data that may be delayed, incomplete, or inaccurate. Market data is sourced from third-party providers the developer does not control. Past performance and any forecasted percentage are not guarantees of future results.
 
         Investing involves risk, including the possible loss of principal. Before making any investment decision, consult a licensed financial advisor who can consider your personal circumstances.
 
@@ -132,7 +140,7 @@ class OracleMysticActivity : Activity() {
         runCatching {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Enable fingerprint unlock?")
-                .setMessage("Skip typing your password next time you open Oracle — unlock with your fingerprint instead.")
+                .setMessage("Skip typing your password next time you open Lux Oculi — unlock with your fingerprint instead.")
                 .setPositiveButton("Enable") { _, _ -> store.setBiometricEnabled(true); ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: user enabled"); onDone() }
                 .setNegativeButton("Not now") { _, _ -> ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "biometric-enroll: user declined"); onDone() }
                 .setCancelable(false)
@@ -158,6 +166,22 @@ class OracleMysticActivity : Activity() {
     private fun showTermsDialog() = legalDialog("Terms & Conditions", termsText)
     private fun showDisclaimerDialog() = legalDialog("Disclaimer", disclaimerText)
 
+    /** The background alarm (OracleDailyLogoutReceiver) only clears the
+     *  stored session — it has no way to redirect a screen that's already
+     *  open. This catches that case: if 15:00 has passed today and the
+     *  forced logout hasn't run yet, apply it now and drop straight to
+     *  login, same as a revoked-account 401 does. */
+    override fun onResume() {
+        super.onResume()
+        runCatching {
+            if (ro.alintudor.oracle.core.OracleDailyLogoutReceiver.applyIfDue(this)) {
+                currentModule = null
+                showLogin(OracleAuthStore(this))
+                Toast.makeText(this, "Signed out for the day's 3pm security refresh. Log back in to continue.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = OracleRepository(this)
@@ -171,7 +195,7 @@ class OracleMysticActivity : Activity() {
         if (authPassedThisProcess) {
             proceedPastAuth()
         } else {
-            runCatching { showAuthGate() }.onFailure { showFatalError("Oracle failed to start", it) }
+            runCatching { showAuthGate() }.onFailure { showFatalError("Lux Oculi failed to start", it) }
         }
         // GROWTH warm-up starts at Android app launch, not when the user opens GROWTH —
         // deliberately independent of the auth gate, so data is ready by the time login finishes.
@@ -201,6 +225,7 @@ class OracleMysticActivity : Activity() {
             OracleKnowledgeSync.scheduleNextCheck(this)
             ro.alintudor.oracle.core.OracleAlertCheckReceiver.schedule(this)
             ro.alintudor.oracle.core.OracleGrowthScanReceiver.schedule(this)
+            ro.alintudor.oracle.core.OracleDailyLogoutReceiver.schedule(this)
             // If today's full-universe scan hasn't run yet (fresh install, or
             // the phone was off overnight), start it now in the background.
             ro.alintudor.oracle.core.OracleGrowthScanReceiver.scanNowIfMissing(this)
@@ -215,7 +240,7 @@ class OracleMysticActivity : Activity() {
             ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this)
             ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: showing boot loader")
             showBootLoader()
-        }.onFailure { proceedingPastAuth = false; ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: FAILED: ${it.javaClass.simpleName}: ${it.message}"); showFatalError("Oracle failed to start", it) }
+        }.onFailure { proceedingPastAuth = false; ro.alintudor.oracle.core.OracleGrowthLog.log(this, "AUTH", "proceedPastAuth: FAILED: ${it.javaClass.simpleName}: ${it.message}"); showFatalError("Lux Oculi failed to start", it) }
     }
 
     // ---------------------------------------------------------------------
@@ -246,7 +271,7 @@ class OracleMysticActivity : Activity() {
         if (android.os.Build.VERSION.SDK_INT < 28) return
         val executor = mainExecutor
         val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
-            .setTitle("Unlock Oracle")
+            .setTitle("Unlock Lux Oculi")
             .setSubtitle("Use your fingerprint or face to continue")
             .setNegativeButton("Use password instead", executor) { _, _ -> }
             .build()
@@ -477,7 +502,7 @@ class OracleMysticActivity : Activity() {
             isClickable = true; isFocusable = true
             setOnClickListener {
                 val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Oracle backup code", code))
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Lux Oculi backup code", code))
                 Toast.makeText(this@OracleMysticActivity, "Copied.", Toast.LENGTH_SHORT).show()
             }
         })
@@ -517,10 +542,14 @@ class OracleMysticActivity : Activity() {
                 interpolator = android.view.animation.AccelerateDecelerateInterpolator()
             }.start()
         }, LinearLayout.LayoutParams(dp(72), dp(72)).apply { gravity = Gravity.CENTER; bottomMargin = dp(10) })
-        card.addView(TextView(this).apply { text = "ORACLE"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
+        card.addView(TextView(this).apply { text = "LUX OCULI"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(green) })
+        card.addView(TextView(this).apply {
+            text = "SEE MORE. KNOW FIRST."; textSize = 9.5f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            letterSpacing = 0.16f; setTextColor(muted); setPadding(0, dp(3), 0, 0)
+        })
         card.addView(TextView(this).apply {
             text = if (store.username().isNotBlank()) "Welcome back, ${store.username()}" else "Log in to your account"
-            textSize = 13f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(4), 0, dp(28))
+            textSize = 13f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(10), 0, dp(28))
         })
 
         val usernameField = authField(card, "USERNAME", muted, panel, border).apply { setText(store.username()) }
@@ -740,7 +769,7 @@ class OracleMysticActivity : Activity() {
 
         val spinner = ImageView(this).apply {
             setImageResource(R.drawable.ic_oracle)
-            contentDescription = "Oracle is starting up"
+            contentDescription = "Lux Oculi is starting up"
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             android.animation.ObjectAnimator.ofFloat(this, View.ROTATION, 0f, 360f).apply {
                 duration = 1100L
@@ -750,7 +779,7 @@ class OracleMysticActivity : Activity() {
         }
         card.addView(spinner, LinearLayout.LayoutParams(dp(100), dp(100)).apply { gravity = Gravity.CENTER })
         card.addView(TextView(this).apply {
-            text = "ORACLE"; textSize = 30f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "LUX OCULI"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(green); setPadding(0, dp(18), 0, dp(6))
         })
         card.addView(TextView(this).apply {
@@ -854,6 +883,13 @@ class OracleMysticActivity : Activity() {
         scroll.addView(page)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         checkAlertsStatusSilently(hero)
+        runCatching {
+            val urgent = repository.cachedAlerts()
+                .filter { it.active && (it.kind == "URGENT_SELL" || it.kind == "GROWTH_FADING" || it.kind == "HIGH_VOLATILITY") }
+                .sortedByDescending { it.timestamp }
+                .map { "${it.ticker}: ${it.title}" }
+            hero.setUrgentAlerts(urgent)
+        }
         checkServerConnectionSilently(hero)
     }
 
@@ -945,7 +981,7 @@ class OracleMysticActivity : Activity() {
                 if (!auth.hasSession()) { pushStatus.setTextColor(Color.rgb(255, 90, 90)); pushStatus.text = "Not logged in."; return@setOnClickListener }
                 pushStatus.setTextColor(muted); pushStatus.text = "Sending…"
                 Thread {
-                    val result = OracleApiClient.notify(auth.token(), "Oracle test notification", "If you see this on your phone, push notifications are working correctly.")
+                    val result = OracleApiClient.notify(auth.token(), "Lux Oculi test notification", "If you see this on your phone, push notifications are working correctly.")
                     runOnUiThread {
                         result.onSuccess { response ->
                             val push = response.optJSONObject("push")
@@ -970,11 +1006,11 @@ class OracleMysticActivity : Activity() {
             setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
         })
         card.addView(TextView(this).apply {
-            text = "The Growth widget refreshes itself every 3 minutes via its own alarm. Android's battery-saving mode can still delay that while the screen is off for a while. Exempting Oracle from battery optimization keeps it closer to the 3-minute cadence — one tap, reversible any time from your phone's own Settings."
+            text = "The Growth widget refreshes itself every 3 minutes via its own alarm. Android's battery-saving mode can still delay that while the screen is off for a while. Exempting Lux Oculi from battery optimization keeps it closer to the 3-minute cadence — one tap, reversible any time from your phone's own Settings."
             textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(14))
         })
         card.addView(TextView(this).apply {
-            text = "\uD83D\uDD0B  DISABLE BATTERY OPTIMIZATION FOR ORACLE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "\uD83D\uDD0B  DISABLE BATTERY OPTIMIZATION FOR LUX OCULI"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(105, 245, 35))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(105, 245, 35)) }
             setPadding(0, dp(14), 0, dp(14))
@@ -991,7 +1027,7 @@ class OracleMysticActivity : Activity() {
                         startActivity(intent)
                     }.onFailure {
                         batteryStatus.setTextColor(Color.rgb(255, 90, 90))
-                        batteryStatus.text = "Couldn't open the system dialog. Try Settings > Apps > Oracle > Battery instead."
+                        batteryStatus.text = "Couldn't open the system dialog. Try Settings > Apps > Lux Oculi > Battery instead."
                     }
                 }
             }
@@ -1112,6 +1148,20 @@ class OracleMysticActivity : Activity() {
             val email = u.optString("notificationEmail")
             row.addView(TextView(this).apply { text = if (email.isBlank()) "No notification email" else email; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
             row.addView(TextView(this).apply { text = "Registered ${u.optString("createdAt", "—")}"; textSize = 10f; setTextColor(muted); setPadding(0, dp(2), 0, 0) })
+            val actionLog = u.optJSONArray("actionLog")
+            if (actionLog != null && actionLog.length() > 0) {
+                row.addView(TextView(this).apply {
+                    text = "HISTORY"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(muted); letterSpacing = 0.12f
+                    setPadding(0, dp(8), 0, dp(2))
+                })
+                for (h in 0 until minOf(actionLog.length(), 5)) {
+                    val entry = actionLog.optJSONObject(h) ?: continue
+                    row.addView(TextView(this).apply {
+                        text = "${entry.optString("at", "—")}  \u2014  ${entry.optString("action", "")}"
+                        textSize = 10f; setTextColor(Color.rgb(190, 197, 214)); setPadding(0, dp(1), 0, 0)
+                    })
+                }
+            }
             if (!isOwner) {
                 val actionLabel = if (status == "approved") "REVOKE" else "APPROVE"
                 val actionColor = if (status == "approved") Color.rgb(255, 90, 90) else Color.rgb(105, 245, 35)
@@ -1690,7 +1740,7 @@ class OracleMysticActivity : Activity() {
             setOnClickListener { openModule("growth") }
         })
         box.addView(Button(this).apply {
-            text = "BACK TO ORACLE"
+            text = "BACK TO LUX OCULI"
             setOnClickListener { showHub() }
         })
         root.addView(box, FrameLayout.LayoutParams(-1, -1))
@@ -1699,10 +1749,10 @@ class OracleMysticActivity : Activity() {
     private fun showModuleError(key: String, error: Throwable) {
         root.removeAllViews()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(32), dp(32), dp(32), dp(32)); setBackgroundColor(Color.rgb(3, 5, 12)) }
-        box.addView(TextView(this).apply { text = "ORACLE  •  ${titles[key] ?: key.uppercase()}"; textSize = 22f; gravity = Gravity.CENTER; setTextColor(Color.WHITE) })
+        box.addView(TextView(this).apply { text = "LUX OCULI  •  ${titles[key] ?: key.uppercase()}"; textSize = 22f; gravity = Gravity.CENTER; setTextColor(Color.WHITE) })
         box.addView(TextView(this).apply { text = "The module could not be loaded.\n\n${error.message ?: error.javaClass.simpleName}"; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.LTGRAY); setPadding(0, dp(24), 0, dp(24)) })
         box.addView(Button(this).apply { text = "RETRY"; setOnClickListener { openModule(key) } })
-        box.addView(Button(this).apply { text = "BACK TO ORACLE"; setOnClickListener { showHub() } })
+        box.addView(Button(this).apply { text = "BACK TO LUX OCULI"; setOnClickListener { showHub() } })
         root.addView(box, FrameLayout.LayoutParams(-1, -1))
     }
 

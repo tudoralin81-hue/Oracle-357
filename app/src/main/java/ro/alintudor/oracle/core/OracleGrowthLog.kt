@@ -69,7 +69,7 @@ object OracleGrowthLog {
         val f = file(context)
         val body = if (f.exists()) f.readText() else ""
         if (body.isBlank()) return@runCatching null
-        val header = "ORACLE — GROWTH ENGINE LOG\nExported ${stamp.format(Date())}\n" +
+        val header = "LUX OCULI — GROWTH ENGINE LOG\nExported ${stamp.format(Date())}\n" +
             "Engine factors: ${OracleGrowthEngine.factorCount()}\n" +
             "".padEnd(60, '-') + "\n\n"
         val filename = "Oracle_Growth_Log_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.txt"

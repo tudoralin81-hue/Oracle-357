@@ -19,8 +19,8 @@ object OracleAlertMailer {
     fun buildIntent(email: String, alert: OracleAlert): Intent = Intent(Intent.ACTION_SENDTO).apply {
         data = Uri.parse("mailto:")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-        putExtra(Intent.EXTRA_SUBJECT, "Oracle alert — ${alert.ticker}: ${alert.title}")
-        putExtra(Intent.EXTRA_TEXT, "${alert.message}\n\nSent by Oracle. Informational only — not investment advice.")
+        putExtra(Intent.EXTRA_SUBJECT, "Lux Oculi alert — ${alert.ticker}: ${alert.title}")
+        putExtra(Intent.EXTRA_TEXT, "${alert.message}\n\nSent by Lux Oculi. Informational only — not investment advice.")
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 

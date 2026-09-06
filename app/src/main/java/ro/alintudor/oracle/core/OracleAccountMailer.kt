@@ -18,8 +18,8 @@ object OracleAccountMailer {
     fun open(context: Context, email: String, username: String, token: String) {
         if (email.isBlank()) return
         val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date())
-        val subject = "Oracle — new account created"
-        val body = "A new Oracle account was just created.\n\nUsername: $username\nWhen: $stamp\n\nIf this wasn't you, someone else may have access to this account."
+        val subject = "Lux Oculi — new account created"
+        val body = "A new Lux Oculi account was just created.\n\nUsername: $username\nWhen: $stamp\n\nIf this wasn't you, someone else may have access to this account."
         Thread {
             OracleApiClient.notify(token, subject, body).onFailure {
                 val intent = Intent(Intent.ACTION_SENDTO).apply {

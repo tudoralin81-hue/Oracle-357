@@ -30,6 +30,12 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     var serverStatusText: String = "SERVER \u2026"
     var serverStatusColor: Int = Color.rgb(150, 150, 150)
     fun setServerStatus(text: String, color: Int) { serverStatusText = text; serverStatusColor = color; postInvalidate() }
+    /** Set from the Activity from the cached alert list — only the true
+     *  URGENT/CRITICAL kinds, never Portfolio/Watchlist signals or the
+     *  person's own alerts, so this stays reserved for what actually needs
+     *  their attention right now. Empty list = no ticker drawn at all. */
+    private var urgentAlertTexts: List<String> = emptyList()
+    fun setUrgentAlerts(texts: List<String>) { urgentAlertTexts = texts; postInvalidate() }
     private val modules = listOf(
         M("growth", "GROWTH", "FUTURE SCAN", Color.rgb(120, 255, 45)),
         M("analysis", "ANALYSIS", "CHARTS & TOOLS", Color.rgb(20, 220, 255)),
@@ -70,12 +76,12 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     override fun onDraw(c:Canvas){
         super.onDraw(c); val w=width.toFloat(); val h=height.toFloat(); if(w<=0f||h<=0f)return
         if(introStartNanos==0L) introStartNanos=System.nanoTime()
-        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1170f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
+        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)832f else 1206f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
         eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR
         stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
-        text(c,"ORACLE",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
+        text(c,"LUX OCULI",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
         // A visitor should never be unsure they're in the demo — a small,
         // permanent tag right under the brand, not just a per-module banner.
@@ -97,6 +103,26 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
+        if (urgentAlertTexts.isNotEmpty()) {
+            val tickerY = Y(if (wide) 570f else 850f)
+            val passSeconds = 6.0; val passes = 4; val pauseSeconds = 10.0
+            val cycle = passes * passSeconds + pauseSeconds
+            val withinCycle = time % cycle
+            if (withinCycle < passes * passSeconds) {
+                val passProgress = (withinCycle % passSeconds) / passSeconds
+                val tickerText = "\u26A0  " + urgentAlertTexts.joinToString("    \u2022    ")
+                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(12f)
+                p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.04f
+                val textWidth=p.measureText(tickerText)
+                // Enters fully off-screen right, exits fully off-screen left —
+                // "in and out of view" rather than just sliding within bounds.
+                val startX = w; val endX = -textWidth
+                val x = startX + (endX - startX) * passProgress.toFloat()
+                c.save(); c.clipRect(0f, tickerY - S(14f), w, tickerY + S(6f))
+                c.drawText(tickerText, x, tickerY, p)
+                c.restore()
+            }
+        }
         p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f
         val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
@@ -108,22 +134,23 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
 
         val alertsX=X(if(wide)100f else 60f)
         val dotR=S(3.5f); val dotCx=alertsX+dotR; val dotCy=brandY-S(3f)
-        p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=255
+        val dotBlink=(140+115*((0.5+0.5*sin(time*2.4)).coerceIn(0.0,1.0))).toInt()
+        p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=dotBlink
         c.drawCircle(dotCx,dotCy,dotR,p)
-        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        p.alpha=255;p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText(alertsStatusText,dotCx+dotR+S(6f),brandY,p)
         val alertsTextWidth=p.measureText(alertsStatusText)
         val serverDotCx=dotCx+dotR+S(6f)+alertsTextWidth+S(18f); val serverDotCy=dotCy
-        p.style=Paint.Style.FILL;p.color=serverStatusColor;p.alpha=255
+        p.style=Paint.Style.FILL;p.color=serverStatusColor;p.alpha=dotBlink
         c.drawCircle(serverDotCx,serverDotCy,dotR,p)
-        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        p.alpha=255;p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText(serverStatusText,serverDotCx+dotR+S(6f),brandY,p)
 
         val toolsY=brandY+S(32f)
         val modulesDotCx=alertsX+dotR; val modulesDotCy=toolsY-S(3f)
-        p.style=Paint.Style.FILL;p.color=Color.rgb(105,245,35);p.alpha=255
+        p.style=Paint.Style.FILL;p.color=Color.rgb(105,245,35);p.alpha=dotBlink
         c.drawCircle(modulesDotCx,modulesDotCy,dotR,p)
-        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        p.alpha=255;p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText("ALL MODULES ACTIVE",modulesDotCx+dotR+S(6f),toolsY,p)
         // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS
         // itself is closed to a visitor, so there is no point pointing at it.
@@ -132,6 +159,26 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawText(toolsLabel,brandX,toolsY,p)
         val toolsWidth=p.measureText(toolsLabel)
         hit+=RectF(brandX-toolsWidth-S(10f),toolsY-S(20f),brandX+S(10f),toolsY+S(14f)) to "backup"
+
+        // Session line: who's logged in, since when, and which build of the
+        // app they're running — a quick glance answers "is this really me,
+        // and is this up to date" without opening TOOLS.
+        if (!demoActive) {
+            val sessionY=toolsY+S(30f)
+            val auth = ro.alintudor.oracle.core.OracleAuthStore(context)
+            val username = auth.username()
+            val loginAt = auth.loginAt()
+            val versionName = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+            if (username.isNotBlank()) {
+                val loginText = if (loginAt > 0L) {
+                    val fmt = java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault())
+                    "$username \u2022 ${fmt.format(java.util.Date(loginAt))} \u2022 v$versionName"
+                } else "$username \u2022 v$versionName"
+                p.style=Paint.Style.FILL;p.color=Color.rgb(120,130,155);p.alpha=255;p.textSize=S(9.5f)
+                p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.NORMAL);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.05f
+                c.drawText(loginText,alertsX,sessionY,p)
+            }
+        }
 
         postInvalidateDelayed(32L)
     }

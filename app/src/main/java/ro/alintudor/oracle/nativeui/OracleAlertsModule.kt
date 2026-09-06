@@ -35,7 +35,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             val active = alerts.filter { it.active }
             val high = active.count { it.level.equals("HIGH", true) }
             val medium = active.count { it.level.equals("MEDIUM", true) }
-            host.addCard("ALERT CENTER", "Everything that can notify you, grouped by what it actually is: your own alert rules, urgent conditions Oracle watches automatically, and BUY/SELL/REDUCE signals — split by whether they're on something you own (Portfolio) or just watching (Watchlist).")
+            host.addCard("ALERT CENTER", "Everything that can notify you, grouped by what it actually is: your own alert rules, urgent conditions Lux Oculi watches automatically, and BUY/SELL/REDUCE signals — split by whether they're on something you own (Portfolio) or just watching (Watchlist).")
             addSummary(active.size, high, medium, alerts.size - active.size)
             addMyAlerts()
 

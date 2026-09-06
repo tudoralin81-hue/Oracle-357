@@ -256,7 +256,7 @@ private fun buildComparison(context: Context, dp: (Int) -> Int, accent: Int, con
     row("ADX(14) trend strength", numText(techA?.adx, 0), numText(techB?.adx, 0), better(techA?.adx, techB?.adx).first, better(techA?.adx, techB?.adx).second)
     if (OracleDemo.active(context)) {
         content.addView(TextView(context).apply {
-            text = "${OracleDemo.LOCK}  Oracle scores are for account holders."
+            text = "${OracleDemo.LOCK}  Lux Oculi scores are for account holders."
             textSize = 12f; setTextColor(Color.rgb(205, 213, 228)); setPadding(0, dp(12), 0, dp(4))
         })
     } else {
@@ -343,7 +343,7 @@ private class OracleScoreRow(context: Context, scoreA: Int?, scoreB: Int?, label
                 setPadding(dp(12), dp(12), dp(12), dp(12))
                 background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), dp(13), if (isWinner) color else Color.rgb(40, 48, 68), if (isWinner) dp(2) else dp(1))
             }
-            b.addView(TextView(context).apply { text = "$label · ORACLE SCORE"; textSize = 9.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.04f; setTextColor(Color.rgb(150, 160, 182)) })
+            b.addView(TextView(context).apply { text = "$label · LUX OCULI SCORE"; textSize = 9.5f; typeface = Typeface.DEFAULT_BOLD; letterSpacing = 0.04f; setTextColor(Color.rgb(150, 160, 182)) })
             val number = TextView(context).apply { text = "0"; textSize = 34f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, dp(4), 0, 0) }
             b.addView(number)
             b.addView(TextView(context).apply { text = "/ 100"; textSize = 10f; setTextColor(Color.rgb(150, 160, 182)) })

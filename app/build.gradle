@@ -56,6 +56,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // Name the built APK "LuxOculi<versionName>.apk" (e.g. LuxOculi3.0.apk)
+    // instead of Gradle's default app-release.apk — tied to versionName so
+    // it can never drift from the version actually inside the APK.
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "LuxOculi${variant.versionName}.apk"
+        }
+    }
 }
 
 kotlin { jvmToolchain(17) }

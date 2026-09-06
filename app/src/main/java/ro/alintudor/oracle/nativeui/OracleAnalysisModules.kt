@@ -354,7 +354,7 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         market.add("Beta" to num2(f?.beta))
         collapsible("MARKET", market.size) { box -> addMetricGrid(box, market) }
 
-        collapsible("ORACLE READING", analysisLines(r).size) { box ->
+        collapsible("LUX OCULI READING", analysisLines(r).size) { box ->
             analysisLines(r).forEach { line ->
                 box.addView(TextView(host.root.context).apply {
                     text = "\u2014 $line"; textSize = 13f; setTextColor(Color.rgb(205, 213, 228)); setPadding(host.dp(4), host.dp(4), host.dp(4), host.dp(4))

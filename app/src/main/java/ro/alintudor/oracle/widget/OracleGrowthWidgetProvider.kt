@@ -82,6 +82,37 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             for (id in ids) manager.updateAppWidget(id, views)
         }
 
+        /** The check above only ever looks at the LOCAL cached token — a
+         *  revoked user's widget would otherwise keep serving real, stale
+         *  data forever, since nothing else touches the widget between app
+         *  opens. Called once per alarm tick alongside the synchronous
+         *  redraw above; on a real 401 it clears the session and forces an
+         *  immediate re-render into the logged-out state. Any other failure
+         *  (no network, timeout, server hiccup) does nothing — only an
+         *  actual "this token is no longer valid" answer should ever log
+         *  someone out from here. Blocking — the caller (onReceive, via its
+         *  own background thread) is responsible for staying off the main
+         *  thread; this must NOT spawn its own thread, or the caller's
+         *  goAsync() would finish() before the network call ever completes. */
+        fun validateSessionAsync(context: Context) {
+            val appContext = context.applicationContext
+            val store = ro.alintudor.oracle.core.OracleAuthStore(appContext)
+            if (!store.hasSession() || ro.alintudor.oracle.core.OracleDemo.active(appContext)) return
+            val token = store.token()
+            if (token.isBlank()) return
+            var e: Throwable? = ro.alintudor.oracle.core.OracleApiClient.checkSession(token).exceptionOrNull()
+            var revoked = false
+            while (e != null) {
+                if (e is ro.alintudor.oracle.core.OracleUnauthorizedException) { revoked = true; break }
+                e = e.cause
+            }
+            if (revoked) {
+                store.clearSession()
+                ro.alintudor.oracle.core.OracleAdminAccess.lock()
+                updateAll(appContext)
+            }
+        }
+
         private fun generateBackgroundBitmap(baseColor: Int): android.graphics.Bitmap {
             val width = 320; val height = 200
             val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
@@ -138,9 +169,9 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
         private fun buildViews(context: Context, items: List<OracleGrowthRecommendation>): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.oracle_growth_widget)
             views.setImageViewBitmap(R.id.widget_bg_image, generateBackgroundBitmap(OracleWidgetSettingsStore.color(context)))
-            val gold = Color.rgb(255, 205, 55) // matches the START screen's ORACLE title color
+            val gold = Color.rgb(255, 205, 55) // matches the START screen's brand title color
             val titleGreen = Color.rgb(105, 245, 35)
-            val titleText = "ORACLE GROWTH"
+            val titleText = "LUX OCULI GROWTH"
             val titleSpanned = android.text.SpannableString(titleText).apply {
                 setSpan(android.text.style.ForegroundColorSpan(gold), 0, 6, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 setSpan(android.text.style.ForegroundColorSpan(titleGreen), 6, titleText.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -190,7 +221,7 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             val stamp = if (newestTimestamp > 0L) {
                 val fmt = SimpleDateFormat("dd.MM HH:mm", Locale.US)
                 "Snapshot ${fmt.format(Date(newestTimestamp))}"
-            } else "No snapshot yet — open Oracle"
+            } else "No snapshot yet — open Lux Oculi"
             views.setTextViewText(R.id.widget_updated, stamp)
 
             val marketStatus = runCatching { ro.alintudor.oracle.core.OracleMarketCalendar.status() }.getOrNull()
@@ -229,6 +260,21 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
         if (intent.action == ACTION_REFRESH) {
             updateAll(context)
             scheduleNext(context)
+            // goAsync(): a BroadcastReceiver's onReceive must return quickly,
+            // but validating the session needs a real network round-trip.
+            // This extends the execution window; finish() is guaranteed to
+            // run exactly once, either when the check completes or after
+            // the timeout, whichever comes first — never left dangling.
+            val pending = goAsync()
+            val appContext = context.applicationContext
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+            val finish = { if (finished.compareAndSet(false, true)) runCatching { pending.finish() } }
+            handler.postDelayed({ finish() }, 9_000L)
+            Thread {
+                runCatching { validateSessionAsync(appContext) }
+                finish()
+            }.start()
         }
     }
 

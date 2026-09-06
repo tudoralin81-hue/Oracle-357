@@ -6,7 +6,7 @@
     <application
         android:name=".core.OracleApp"
         android:theme="@style/AppTheme"
-        android:label="Oracle3.0"
+        android:label="LuxOculi3.0"
         android:icon="@drawable/ic_oracle"
         android:roundIcon="@drawable/ic_oracle"
         android:allowBackup="false"
@@ -19,6 +19,11 @@
             </intent-filter>
         </activity>
         <receiver android:name=".core.OracleGrowthScanReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".core.OracleDailyLogoutReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

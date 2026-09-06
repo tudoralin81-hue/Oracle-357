@@ -49,7 +49,7 @@ class OracleFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val title = message.notification?.title ?: message.data["title"] ?: "Oracle"
+        val title = message.notification?.title ?: message.data["title"] ?: "Lux Oculi"
         val body = message.notification?.body ?: message.data["body"] ?: return
         showNotification(title, body)
     }
@@ -57,8 +57,8 @@ class OracleFirebaseMessagingService : FirebaseMessagingService() {
     private fun ensureChannel() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            val channel = NotificationChannel(CHANNEL_ID, "Oracle", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Alerts and notifications sent from the Oracle server."
+            val channel = NotificationChannel(CHANNEL_ID, "Lux Oculi", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Alerts and notifications sent from the Lux Oculi server."
                 enableVibration(true)
             }
             manager.createNotificationChannel(channel)

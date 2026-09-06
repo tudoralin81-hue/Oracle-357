@@ -97,7 +97,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
         card.gravity = Gravity.CENTER
         val spinner = ImageView(host.root.context).apply {
             setImageResource(ro.alintudor.oracle.R.drawable.ic_oracle)
-            contentDescription = "Oracle is calculating"
+            contentDescription = "Lux Oculi is calculating"
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             val rotation = ObjectAnimator.ofFloat(this, View.ROTATION, 0f, 360f).apply {
                 duration = 1100L
@@ -250,7 +250,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
     private fun addSummary(items: List<OracleGrowthRecommendation>) {
         val card = card(14)
         card.addView(text("GROWTH RECOMMENDATIONS", 18f, Typeface.DEFAULT_BOLD, green, 0, 0))
-        card.addView(text("Oracle Growth • daily snapshot 16:00", 13f, Typeface.DEFAULT, muted, 0, 5))
+        card.addView(text("Lux Oculi Growth • daily snapshot 16:00", 13f, Typeface.DEFAULT, muted, 0, 5))
         val line = LinearLayout(host.root.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

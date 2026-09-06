@@ -25,7 +25,7 @@ class OracleJournalModule(private val host: OracleNativeModule) {
     fun render(journal: List<OracleJournalEntry>, history: List<OracleHistoryPoint>, alerts: List<OracleAlert>) {
         host.content.rebuildWithoutFlicker {
             host.content.removeAllViews()
-            host.addCard("ACTIVITY JOURNAL", "Complete history of Oracle actions, alerts and movements")
+            host.addCard("ACTIVITY JOURNAL", "Complete history of Lux Oculi actions, alerts and movements")
             addPerformance()
             val actions = journal.map { OracleAction(it.ticker, it.action, it.score, it.reason, it.timestamp) }
             val timeline = OracleLocalTimeline.build(history, actions, alerts)
@@ -44,7 +44,7 @@ class OracleJournalModule(private val host: OracleNativeModule) {
     private fun addPerformance() {
         val ctx = host.root.context
         val perf = runCatching { OraclePerformanceStore(ctx).summary() }.getOrNull() ?: return
-        host.addSectionLabel("PERFORMANCE \u2022 ORACLE SIGNALS")
+        host.addSectionLabel("PERFORMANCE \u2022 LUX OCULI SIGNALS")
         if (perf.settled == 0) {
             host.addCard("NOT ENOUGH HISTORY YET", "Tracking ${perf.tracked} signal${if (perf.tracked == 1) "" else "s"}. Realized returns appear 5 sessions after a SHORT signal, 20 after MEDIUM, 60 after LONG.")
             return
@@ -117,7 +117,7 @@ class OracleJournalModule(private val host: OracleNativeModule) {
 
     private fun exportJournal(journal: List<OracleJournalEntry>, timeline: List<OracleTimelineItem>) {
         val stamp = fileDate.format(Date())
-        val filename = "oracle_activity_journal_$stamp.csv"
+        val filename = "lux_oculi_activity_journal_$stamp.csv"
         val csv = buildString {
             append("Date/Time,Ticker,Type,Severity,Title,Details\n")
             timeline.take(250).forEach { item ->
@@ -150,11 +150,11 @@ class OracleJournalModule(private val host: OracleNativeModule) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                     put(MediaStore.Downloads.MIME_TYPE, mime)
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Oracle")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/LuxOculi")
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val uri = host.root.context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: error("Could not create the file in Downloads/Oracle")
+                    ?: error("Could not create the file in Downloads/LuxOculi")
                 try {
                     host.root.context.contentResolver.openOutputStream(uri)?.use(writer)
                         ?: error("Could not write the file")
@@ -168,7 +168,7 @@ class OracleJournalModule(private val host: OracleNativeModule) {
                 dir.mkdirs()
                 File(dir, fileName).outputStream().use(writer)
             }
-            Toast.makeText(host.root.context, "Journal downloaded: Downloads/Oracle/$fileName", Toast.LENGTH_LONG).show()
+            Toast.makeText(host.root.context, "Journal downloaded: Downloads/LuxOculi/$fileName", Toast.LENGTH_LONG).show()
         }.onFailure {
             Toast.makeText(host.root.context, "Journal export failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show()
         }

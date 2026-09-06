@@ -1,4 +1,4 @@
-name: Oracle Build APK
+name: Lux Oculi Build APK
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Oracle-APK
+          name: LuxOculi-APK
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30

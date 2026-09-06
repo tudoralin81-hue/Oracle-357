@@ -56,7 +56,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
             techViewsByTicker.clear()
             val data = repo.snapshot()
             val items = OracleAnalytics.normalize(positions)
-            host.addCard("PORTFOLIO", "Positions, value, shares, Oracle forecast, real return and indicators")
+            host.addCard("PORTFOLIO", "Positions, value, shares, Lux Oculi forecast, real return and indicators")
             if (items.isEmpty()) { host.addCard("NO POSITIONS", "There are no active positions in local memory."); addManagementRow(); return@rebuildWithoutFlicker }
             val value = items.sumOf { it.marketValue }
             val invested = items.sumOf { it.shares * it.avgCost }
@@ -189,7 +189,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); "REDUCE" -> Color.rgb(255, 170, 40); else -> Color.rgb(50, 220, 190) }
         val urgentSell = t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }
         // The engine's reason IS the reason — it names the rule that fired.
-        val reason = when { demo -> "Oracle's decision and the rule behind it are for account holders. The indicators below are live."; urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
+        val reason = when { demo -> "Lux Oculi's decision and the rule behind it are for account holders. The indicators below are live."; urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
         val cardBg = OracleNativeModule.rounded(Color.rgb(6, 10, 20), host.dp(15), accent, host.dp(1))
         val c = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(13), host.dp(12), host.dp(13)); background = cardBg }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -201,7 +201,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         val topAction = TextView(context).apply { text = action; textSize = if (action.length > 4) 10.5f else 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); gravity = Gravity.CENTER; maxLines = 1 }; top.addView(topAction, LinearLayout.LayoutParams(host.dp(72), host.dp(30))); if (!silent) pulseSignal(topAction, action); c.addView(top)
         c.addView(TextView(context).apply { text = "${money(p.marketValue)} ${p.currency}   •   ${pct(p.weight)} WEIGHT   •   ${shares(p.shares)} SHARES"; textSize = 13f; setTextColor(Color.rgb(175, 183, 201)); setPadding(host.dp(34), host.dp(5), 0, 0) })
         val forecasts = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(host.dp(34), host.dp(10), 0, 0) }
-        forecasts.addView(valueBox("ORACLE FORECAST", signedPct(forecast), Color.rgb(55, 215, 255)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) }); forecasts.addView(valueBox("ACTUAL NOW", signedPct(p.pnlPercent), if (p.pnlPercent >= 0) Color.rgb(65, 225, 135) else Color.rgb(255, 85, 105)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(forecasts)
+        forecasts.addView(valueBox("LUX OCULI FORECAST", signedPct(forecast), Color.rgb(55, 215, 255)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(0, 0, host.dp(4), 0) }); forecasts.addView(valueBox("ACTUAL NOW", signedPct(p.pnlPercent), if (p.pnlPercent >= 0) Color.rgb(65, 225, 135) else Color.rgb(255, 85, 105)), LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(4), 0, 0, 0) }); c.addView(forecasts)
         val decision = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(15), host.dp(9), host.dp(15), host.dp(9)); background = OracleNativeModule.rounded(Color.rgb(8, 16, 25), host.dp(11), accent, host.dp(1)) }
         val decisionSignal = TextView(context).apply { text = action; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent) }; decision.addView(decisionSignal); if (!silent) pulseSignal(decisionSignal, action); decision.addView(TextView(context).apply { text = reason; textSize = 12f; setTextColor(Color.rgb(190, 198, 215)); setPadding(0, host.dp(4), 0, 0) }); c.addView(decision, LinearLayout.LayoutParams(-1, -2).apply { setMargins(host.dp(34), host.dp(8), 0, 0) })
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(34), host.dp(8), 0, 0) }
@@ -299,7 +299,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
             }.start()
         }
 
-        AlertDialog.Builder(context).setTitle("ADD POSITION").setMessage("Synced to your Oracle account — company name and current price fill in automatically once you type a ticker.").setView(panel).setNegativeButton("CANCEL", null).setPositiveButton("ADD") { _, _ ->
+        AlertDialog.Builder(context).setTitle("ADD POSITION").setMessage("Synced to your Lux Oculi account — company name and current price fill in automatically once you type a ticker.").setView(panel).setNegativeButton("CANCEL", null).setPositiveButton("ADD") { _, _ ->
             val t = ticker.second.text.toString().trim().uppercase(Locale.US)
             val c = company.second.text.toString().trim().ifEmpty { t }
             val q = shares.second.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
@@ -342,7 +342,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
             }.show()
     }
 
-    private fun partialSell(p: OraclePosition, forecast: Double) { val input = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText(shares(p.shares / 2)) }; AlertDialog.Builder(context).setTitle("SELL SHARES • ${p.ticker}").setMessage("This action is local to Oracle; it does not execute broker trades.\n\nQuantity:").setView(input).setNegativeButton("CANCEL", null).setPositiveButton("CONFIRM") { _, _ -> val q = input.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0; if (q <= 0 || q > p.shares) { toast("Invalid quantity"); return@setPositiveButton }; sell(p, q, false, forecast) }.show() }
+    private fun partialSell(p: OraclePosition, forecast: Double) { val input = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText(shares(p.shares / 2)) }; AlertDialog.Builder(context).setTitle("SELL SHARES • ${p.ticker}").setMessage("This action is local to Lux Oculi; it does not execute broker trades.\n\nQuantity:").setView(input).setNegativeButton("CANCEL", null).setPositiveButton("CONFIRM") { _, _ -> val q = input.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0; if (q <= 0 || q > p.shares) { toast("Invalid quantity"); return@setPositiveButton }; sell(p, q, false, forecast) }.show() }
     private fun fullSell(p: OraclePosition, forecast: Double) { AlertDialog.Builder(context).setTitle("FULL SELL • ${p.ticker}").setMessage("Closes the local position at ${money(p.currentPrice)}. Not sent to the broker.").setNegativeButton("CANCEL", null).setPositiveButton("FULL SELL") { _, _ -> sell(p, p.shares, true, forecast) }.show() }
     private fun sell(p: OraclePosition, q: Double, full: Boolean, forecast: Double) { val now = System.currentTimeMillis(); val old = repo.cachedPositions().filterNot { it.ticker.equals(p.ticker, true) }.toMutableList(); val remain = p.shares - q; if (!full && remain > 0) old += p.copy(shares = remain); repo.savePositions(OracleCalculations.withWeights(old)); val j = repo.cachedJournal().toMutableList(); j += OracleJournalEntry(now, p.ticker, if (full) "SELL (FULL)" else "SELL (PARTIAL)", forecast, if (full) "Local position closed" else "Local partial sale", if (full) "CLOSED" else "ACTIVE", q, p.avgCost, p.currentPrice, if (p.shares <= 0.0) 100.0 else q / p.shares * 100.0, q * p.avgCost, q * p.currentPrice, q * (p.currentPrice - p.avgCost), "sell_$now"); repo.saveJournal(j); toast(if (full) "${p.ticker}: position closed locally" else "${p.ticker}: sale recorded"); render(repo.cachedPositions()) }
 
@@ -378,12 +378,12 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     private fun saveExcel(p: List<OraclePosition>, journal: List<OracleJournalEntry>) {
         val total = totalReturn(p, journal)
         val rows = exportRows(p, journal)
-        saveDownload("oracle_portfolio_${stamp()}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") { out ->
+        saveDownload("lux_oculi_portfolio_${stamp()}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") { out ->
             val headers = listOf("TICKER", "COMPANY", "SHARES", "ENTRY", "CURRENT / SALE", "VALUE", "P/L", "RETURN", "WEIGHT", "STATUS")
             val sheet = buildString {
                 append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>")
                 append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetViews><sheetView workbookViewId=\"0\" showGridLines=\"1\"/></sheetViews><sheetData>")
-                append("<row r=\"1\"><c r=\"A1\" t=\"inlineStr\" s=\"1\"><is><t>AI STOCK ORACLE — PORTFOLIO</t></is></c></row>")
+                append("<row r=\"1\"><c r=\"A1\" t=\"inlineStr\" s=\"1\"><is><t>LUX OCULI — PORTFOLIO</t></is></c></row>")
                 append("<row r=\"2\"><c r=\"A2\" t=\"inlineStr\" s=\"2\"><is><t>TOTAL PORTFOLIO RETURN: ${xmlCell(signedPct(total))}</t></is></c></row>")
                 append("<row r=\"3\"><c r=\"A3\" t=\"inlineStr\" s=\"0\"><is><t>Generated ${xmlCell(date.format(Date()))}</t></is></c></row>")
                 append("<row r=\"5\">")
@@ -415,12 +415,12 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
 
     private fun savePdf(p: List<OraclePosition>, journal: List<OracleJournalEntry>) {
         val total = totalReturn(p, journal); val rows = exportRows(p, journal)
-        saveDownload("oracle_portfolio_${stamp()}.pdf", "application/pdf") { out ->
+        saveDownload("lux_oculi_portfolio_${stamp()}.pdf", "application/pdf") { out ->
             val doc = PdfDocument(); val pageW = 595f; val pageH = 842f; val margin = 22f
             val widths = floatArrayOf(46f, 82f, 45f, 58f, 62f, 62f, 52f, 52f, 48f, 52f)
             val rp = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(15, 23, 42); textSize = 7f; typeface = Typeface.DEFAULT }
             var pageNo = 1; var page = doc.startPage(PdfDocument.PageInfo.Builder(pageW.toInt(), pageH.toInt(), pageNo).create()); var canvas = page.canvas
-            fun header() { rp.typeface = Typeface.DEFAULT_BOLD; rp.textSize = 15f; canvas.drawText("AI STOCK ORACLE — PORTFOLIO", margin, 27f, rp); rp.textSize = 19f; rp.color = if (total >= 0) Color.rgb(30, 150, 80) else Color.rgb(210, 55, 70); canvas.drawText("TOTAL RETURN: ${signedPct(total)}", margin, 50f, rp); rp.color = Color.rgb(15, 23, 42); rp.typeface = Typeface.DEFAULT; rp.textSize = 7f; canvas.drawText("Generated ${date.format(Date())}", margin, 64f, rp) }
+            fun header() { rp.typeface = Typeface.DEFAULT_BOLD; rp.textSize = 15f; canvas.drawText("LUX OCULI — PORTFOLIO", margin, 27f, rp); rp.textSize = 19f; rp.color = if (total >= 0) Color.rgb(30, 150, 80) else Color.rgb(210, 55, 70); canvas.drawText("TOTAL RETURN: ${signedPct(total)}", margin, 50f, rp); rp.color = Color.rgb(15, 23, 42); rp.typeface = Typeface.DEFAULT; rp.textSize = 7f; canvas.drawText("Generated ${date.format(Date())}", margin, 64f, rp) }
             header(); var y = 80f; val headers = listOf("TICKER", "COMPANY", "SHARES", "ENTRY", "CURRENT/SALE", "VALUE", "P/L", "RET.", "WT.", "STATUS")
             fun drawRow(row: List<String>, headerRow: Boolean) { var x = margin; val h = if (headerRow) 24f else 21f; val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = if (headerRow) Color.rgb(210, 220, 235) else Color.rgb(246, 248, 251); style = android.graphics.Paint.Style.FILL }; rp.typeface = if (headerRow) Typeface.DEFAULT_BOLD else Typeface.DEFAULT; rp.textSize = if (headerRow) 6.3f else 6.8f; rp.color = Color.rgb(15,23,42); row.forEachIndexed { i, v -> canvas.drawRect(x, y, x + widths[i], y + h, bg); canvas.drawText(v.take(if (headerRow) 13 else 18), x + 2f, y + if (headerRow) 15f else 14f, rp); x += widths[i] }; y += h }
             drawRow(headers, true)
@@ -431,7 +431,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
 
     private fun saveDownload(fileName: String, mime: String, writer: (OutputStream) -> Unit): Boolean = runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, fileName); put(MediaStore.Downloads.MIME_TYPE, mime); put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Oracle"); put(MediaStore.Downloads.IS_PENDING, 1) }
+            val values = ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, fileName); put(MediaStore.Downloads.MIME_TYPE, mime); put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/LuxOculi"); put(MediaStore.Downloads.IS_PENDING, 1) }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("Could not create the file in Downloads")
             try { context.contentResolver.openOutputStream(uri)?.use(writer) ?: error("Could not write the file"); context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
         } else { val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir; dir.mkdirs(); File(dir, fileName).outputStream().use(writer) }

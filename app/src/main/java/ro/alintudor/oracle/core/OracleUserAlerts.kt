@@ -172,8 +172,8 @@ object OracleAlertCenter {
             val notifyKey = "${alert.ticker}|${alert.kind}|${alert.title}|$dayKey"
             if (settings.alreadyNotified(notifyKey)) continue
             if (auth.hasSession()) {
-                OracleApiClient.notify(auth.token(), "Oracle alert \u2014 ${alert.ticker}: ${alert.title}",
-                    "Dear investor,\n\nOracle has an alert for you.\n\n${alert.ticker} \u2014 ${alert.title}\n${alert.message}\n\n\u2014 Oracle")
+                OracleApiClient.notify(auth.token(), "Lux Oculi alert \u2014 ${alert.ticker}: ${alert.title}",
+                    "Dear investor,\n\nLux Oculi has an alert for you.\n\n${alert.ticker} \u2014 ${alert.title}\n${alert.message}\n\n\u2014 Lux Oculi")
             } else {
                 OracleNotifier.notify(context, alert, settings.email())
             }

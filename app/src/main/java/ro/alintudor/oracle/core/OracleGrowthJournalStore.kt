@@ -62,11 +62,11 @@ class OracleGrowthJournalStore(private val context: Context) {
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             canvas = page.canvas
             y = margin
-            canvas.drawText("ORACLE GROWTH • FULL JOURNAL", margin, y, titlePaint)
+            canvas.drawText("LUX OCULI GROWTH • FULL JOURNAL", margin, y, titlePaint)
             y += 28f
         }
 
-        canvas.drawText("ORACLE GROWTH • FULL JOURNAL", margin, y, titlePaint)
+        canvas.drawText("LUX OCULI GROWTH • FULL JOURNAL", margin, y, titlePaint)
         y += 18f
         canvas.drawText("Export PDF • ${dateFormat.format(Date())}", margin, y, mutedPaint)
         y += 24f
