@@ -9,4 +9,4 @@
     android:previewLayout="@layout/oracle_growth_widget"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:configure="ro.alintudor.oracle.widget.OracleWidgetConfigActivity" />
+    android:configure="ro.alintudor.luxoculi.widget.OracleWidgetConfigActivity" />

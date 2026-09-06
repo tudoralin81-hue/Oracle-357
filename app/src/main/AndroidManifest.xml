@@ -46,7 +46,7 @@
         <receiver android:name=".widget.OracleGrowthWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="ro.alintudor.oracle.widget.ACTION_REFRESH_GROWTH" />
+                <action android:name="ro.alintudor.luxoculi.widget.ACTION_REFRESH_GROWTH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace 'ro.alintudor.oracle'
+    namespace 'ro.alintudor.luxoculi'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'ro.alintudor.oracle'
+        applicationId 'ro.alintudor.luxoculi'
         minSdk 26
         targetSdk 36
         versionCode 32

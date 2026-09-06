@@ -10,7 +10,7 @@
 # OracleAnalysisWatchlistEyeOverlay finds this method via reflection by its
 # literal string name ("openModule") to jump from Watchlist into Analysis.
 # Without this rule, R8 renames the method and that lookup throws at runtime.
--keepclassmembers class ro.alintudor.oracle.OracleMysticActivity {
+-keepclassmembers class ro.alintudor.luxoculi.OracleMysticActivity {
     private void openModule(java.lang.String);
 }
 

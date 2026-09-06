@@ -7,6 +7,28 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:1050559955927:android:60a4924db7856d977d4192",
+        "android_client_info": {
+          "package_name": "ro.alintudor.luxoculi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6-SKBuVkxpugx1vAdIGs-XxzgoXPwqpY"
+        },
+        {
+          "current_key": "AIzaSyAjH3XhNRfbNNLIjr3qoobqRziVTQlsfR4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:1050559955927:android:f6b6093a0529ff8e7d4192",
         "android_client_info": {
           "package_name": "ro.alintudor.oracle"
@@ -14,6 +36,9 @@
       },
       "oauth_client": [],
       "api_key": [
+        {
+          "current_key": "AIzaSyB6-SKBuVkxpugx1vAdIGs-XxzgoXPwqpY"
+        },
         {
           "current_key": "AIzaSyAjH3XhNRfbNNLIjr3qoobqRziVTQlsfR4"
         }
