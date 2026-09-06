@@ -72,7 +72,7 @@ object OracleGrowthLog {
         val header = "LUX OCULI — GROWTH ENGINE LOG\nExported ${stamp.format(Date())}\n" +
             "Engine factors: ${OracleGrowthEngine.factorCount()}\n" +
             "".padEnd(60, '-') + "\n\n"
-        val filename = "Oracle_Growth_Log_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.txt"
+        val filename = "LuxOculi_Growth_Log_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.txt"
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, filename)

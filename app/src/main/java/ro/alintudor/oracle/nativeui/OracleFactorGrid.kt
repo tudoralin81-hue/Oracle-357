@@ -27,8 +27,6 @@ object OracleFactorGrid {
     private val muted = Color.rgb(165, 174, 195)
     private val white = Color.WHITE
     private val green = Color.rgb(105, 245, 35)
-    private val orange = Color.rgb(255, 160, 25)
-    private val red = Color.rgb(255, 80, 90)
     private val loadingColor = Color.rgb(90, 205, 255)
 
     private fun label(host: OracleNativeModule, value: String, size: Float, face: Typeface, color: Int, bottom: Int): TextView =
@@ -104,14 +102,26 @@ object OracleFactorGrid {
         }
     }
 
-    /** 5-segment bar filled proportionally to value/maxValue; colored by that
-     *  same proportion (green = high, orange = middling, red = low). The
-     *  real, final segments are computed up front — the sweep never guesses,
-     *  it just delays revealing them behind three accelerating light-chases. */
+    /** 5-segment bar filled proportionally to value/maxValue; colored by 5
+     *  shades of green (see greenShades below — dim for a weak factor,
+     *  vivid for a strong one). The real, final segments are computed up
+     *  front — the sweep never guesses, it just delays revealing them
+     *  behind three accelerating light-chases. */
+    // 5 shades of green, indexed by how many of the bar's 5 segments are lit
+    // — a weak factor is a dim, muted green, a strong one the same vivid
+    // green used everywhere else in the app. No red/orange at all: a low
+    // factor score isn't a warning the way a critical alert is, it's just
+    // one input among 17, and the red/orange heat-map read as more alarming
+    // than that.
+    private val greenShades = listOf(
+        Color.rgb(40, 82, 38), Color.rgb(60, 130, 48), Color.rgb(80, 175, 55),
+        Color.rgb(95, 210, 48), Color.rgb(105, 245, 35)
+    )
+
     private fun bar(host: OracleNativeModule, parent: LinearLayout, value: Int, maxValue: Int, silent: Boolean = false) {
         val pct = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
         val filledSegments = kotlin.math.round(pct * 5f).toInt().coerceIn(if (value > 0) 1 else 0, 5)
-        val finalColor = when { pct >= 0.6f -> green; pct >= 0.3f -> orange; else -> red }
+        val finalColor = greenShades[(filledSegments - 1).coerceIn(0, 4)]
         val bar = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(3), 0, 0) }
         val segments = (0 until 5).map { seg ->
             View(host.root.context).also { bar.addView(it, LinearLayout.LayoutParams(host.dp(7), host.dp(9)).apply { if (seg < 4) marginEnd = host.dp(2) }) }

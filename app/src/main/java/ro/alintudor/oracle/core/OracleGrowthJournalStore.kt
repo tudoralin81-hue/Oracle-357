@@ -93,7 +93,7 @@ class OracleGrowthJournalStore(private val context: Context) {
 
         document.finishPage(page)
         return runCatching {
-            val filename = "Oracle_Growth_Journal_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.pdf"
+            val filename = "LuxOculi_Growth_Journal_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.pdf"
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, filename)

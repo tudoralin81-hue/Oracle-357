@@ -81,7 +81,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
         eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR
         stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
-        text(c,"LUX OCULI",cx,Y(if(wide)72f else 100f),S(if(wide)34f else 31f),gold,Typeface.SERIF,.18f,true)
+        val titleY = Y(if(wide)72f else 100f); val titleSize = S(if(wide)44f else 40f)
+        text(c,"LUX OCULI",cx,titleY,titleSize,gold,Typeface.SERIF,.18f,true)
+        p.textSize = titleSize; p.typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD); p.letterSpacing = .18f
+        titleGlitter(c, cx, titleY, p.measureText("LUX OCULI"), titleSize, time)
         text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
         // A visitor should never be unsure they're in the demo — a small,
         // permanent tag right under the brand, not just a per-module banner.
@@ -182,6 +185,32 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
 
         postInvalidateDelayed(32L)
     }
+    /** A handful of fixed sparkle points scattered across the title text's
+     *  own width/height, each twinkling on its own phase — distinct from
+     *  the background stars() below (denser, brighter, gold-tinted, and
+     *  confined to right over the letters) so it reads as glitter ON the
+     *  title, not more sky behind it. */
+    private fun titleGlitter(c: Canvas, cx: Float, titleY: Float, titleWidth: Float, titleSize: Float, time: Double) {
+        val left = cx - titleWidth / 2f; val top = titleY - titleSize * 0.85f
+        val n = 14
+        for (i in 0 until n) {
+            val nx = ((i * 137 + 53) % 997) / 997f
+            val ny = ((i * 71 + 19) % 613) / 613f
+            val x = left + nx * titleWidth; val y = top + ny * titleSize
+            val phase = i * 0.9
+            val q = (0.5 + 0.5 * sin(time * 3.1 + phase)).toFloat()
+            if (q < 0.55f) continue // most frames, most points are dark — sparse, not a solid glow
+            val r = S(0.6f + 1.6f * q)
+            p.style = Paint.Style.FILL; p.color = Color.argb((90 + 165 * q).toInt(), 255, 250, 225)
+            c.drawCircle(x, y, r, p)
+            if (q > 0.85f) {
+                p.strokeWidth = S(0.6f); p.style = Paint.Style.STROKE
+                c.drawLine(x - r * 2.2f, y, x + r * 2.2f, y, p)
+                c.drawLine(x, y - r * 2.2f, x, y + r * 2.2f, p)
+            }
+        }
+    }
+
     private fun stars(c:Canvas,w:Float,h:Float,time:Double){
         p.style=Paint.Style.FILL
         for(i in 0 until 110){

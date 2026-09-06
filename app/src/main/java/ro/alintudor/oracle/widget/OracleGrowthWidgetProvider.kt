@@ -171,10 +171,11 @@ class OracleGrowthWidgetProvider : AppWidgetProvider() {
             views.setImageViewBitmap(R.id.widget_bg_image, generateBackgroundBitmap(OracleWidgetSettingsStore.color(context)))
             val gold = Color.rgb(255, 205, 55) // matches the START screen's brand title color
             val titleGreen = Color.rgb(105, 245, 35)
-            val titleText = "LUX OCULI GROWTH"
+            val brandName = "LUX OCULI"
+            val titleText = "$brandName GROWTH"
             val titleSpanned = android.text.SpannableString(titleText).apply {
-                setSpan(android.text.style.ForegroundColorSpan(gold), 0, 6, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                setSpan(android.text.style.ForegroundColorSpan(titleGreen), 6, titleText.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                setSpan(android.text.style.ForegroundColorSpan(gold), 0, brandName.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                setSpan(android.text.style.ForegroundColorSpan(titleGreen), brandName.length, titleText.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             views.setTextViewText(R.id.widget_title, titleSpanned)
             val cyan = Color.rgb(75, 225, 255)
