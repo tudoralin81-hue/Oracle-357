@@ -565,8 +565,8 @@ class OracleMysticActivity : Activity() {
                         loginButton.isEnabled = true; loginButton.text = "LOG IN"
                         val msg = it.message ?: ""
                         error.text = when {
-                            msg.contains("pending", true) || msg.contains("approv", true) -> "Your account is awaiting approval by the owner. You'll be notified when it's ready."
-                            msg.contains("rejected", true) || msg.contains("declined", true) -> "This account was not approved."
+                            msg.contains("awaiting", true) -> "Your account is awaiting approval by the owner. You'll be notified when it's ready."
+                            msg.contains("not approved", true) || msg.contains("rejected", true) || msg.contains("declined", true) -> "This account's access was not approved. Contact the owner if you believe this is a mistake."
                             msg.isNotBlank() -> msg
                             else -> "Wrong username or password."
                         }
@@ -1113,14 +1113,14 @@ class OracleMysticActivity : Activity() {
             row.addView(TextView(this).apply { text = if (email.isBlank()) "No notification email" else email; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
             row.addView(TextView(this).apply { text = "Registered ${u.optString("createdAt", "—")}"; textSize = 10f; setTextColor(muted); setPadding(0, dp(2), 0, 0) })
             if (!isOwner) {
-                val actionLabel = if (status == "pending") "APPROVE" else "REVOKE"
-                val actionColor = if (status == "pending") Color.rgb(105, 245, 35) else Color.rgb(255, 90, 90)
+                val actionLabel = if (status == "approved") "REVOKE" else "APPROVE"
+                val actionColor = if (status == "approved") Color.rgb(255, 90, 90) else Color.rgb(105, 245, 35)
                 row.addView(TextView(this).apply {
                     text = actionLabel; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(actionColor)
                     background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(9).toFloat(); setStroke(dp(1), actionColor) }
                     setPadding(0, dp(8), 0, dp(8)); isClickable = true; isFocusable = true
                     setOnClickListener {
-                        val decision = if (status == "pending") "approve" else "reject"
+                        val decision = if (status == "approved") "reject" else "approve"
                         val confirmMessage = if (decision == "reject") "Revoke access for $username? They'll be signed out on their next sync." else "Approve $username?"
                         android.app.AlertDialog.Builder(this@OracleMysticActivity)
                             .setTitle(if (decision == "reject") "Revoke access?" else "Approve account?")
