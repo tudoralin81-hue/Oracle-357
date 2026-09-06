@@ -1272,8 +1272,12 @@ class OracleMysticActivity : Activity() {
             }
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
         } else {
+            val weightsLoaded = ro.alintudor.luxoculi.core.OracleGrowthEmergency.activeWeights("ULTRA_SHORT", null) != null
             list.addView(TextView(this).apply {
-                text = "Nothing today \u2014 either no ULTRA_SHORT weights loaded, or nothing beat the real SHORT pick."
+                text = if (weightsLoaded)
+                    "Nothing today \u2014 ULTRA_SHORT weights are loaded, but nothing beat the real SHORT pick under them."
+                else
+                    "Nothing today \u2014 no ULTRA_SHORT weights are loaded (add the key to your emergency file and load it)."
                 textSize = 12f; setTextColor(muted); setPadding(0, 0, 0, dp(16))
             })
         }
