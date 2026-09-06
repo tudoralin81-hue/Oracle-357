@@ -26,8 +26,8 @@ object OracleBuildInfo {
     private data class Version(val major: Int, val minor: Int)
 
     private val VERSIONS = mapOf(
-        "PORTFOLIO" to Version(1, 28),
-        "ALERTS" to Version(1, 27),
+        "PORTFOLIO" to Version(1, 29),
+        "ALERTS" to Version(1, 28),
         "NEWS" to Version(1, 23),
         "GROWTH" to Version(1, 56),
         "KNOWLEDGE" to Version(1, 26),

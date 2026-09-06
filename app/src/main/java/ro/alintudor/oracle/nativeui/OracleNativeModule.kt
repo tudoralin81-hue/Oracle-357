@@ -1,7 +1,9 @@
 package ro.alintudor.oracle.nativeui
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -12,6 +14,50 @@ import android.view.WindowInsets
 import android.widget.*
 import android.widget.FrameLayout
 import ro.alintudor.oracle.core.OracleMarketCalendar
+
+/** A narrow strip of flickering "0"/"1" characters, Matrix-style — two of
+ *  these flank the module header's centered title, one on each side. Self-
+ *  contained: starts its own tick loop on attach, stops it on detach, so a
+ *  header that gets torn down (back navigation, module switch) never leaves
+ *  a stray Handler running. Deliberately subtle (low alpha, slow flicker,
+ *  small monospace glyphs) — decoration around the title, not competing
+ *  with it for attention. */
+class OracleMatrixRainView(context: Context) : View(context) {
+    private val paint = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.MONOSPACE }
+    private val columns = 2
+    private val rows = 4
+    private val chars = Array(columns) { CharArray(rows) { if (Math.random() < 0.5) '0' else '1' } }
+    private val phase = Array(columns) { FloatArray(rows) { (Math.random() * 6.28).toFloat() } }
+    private val startNanos = System.nanoTime()
+    private val handler = Handler(Looper.getMainLooper())
+    private val tick = object : Runnable {
+        override fun run() {
+            if (Math.random() < 0.35) {
+                val col = (Math.random() * columns).toInt(); val row = (Math.random() * rows).toInt()
+                chars[col][row] = if (chars[col][row] == '0') '1' else '0'
+            }
+            invalidate()
+            handler.postDelayed(this, 260L)
+        }
+    }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.removeCallbacks(tick); handler.post(tick) }
+    override fun onDetachedFromWindow() { super.onDetachedFromWindow(); handler.removeCallbacks(tick) }
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val cellH = h / rows
+        paint.textSize = cellH * 0.6f
+        val t = (System.nanoTime() - startNanos) / 1_000_000_000.0
+        for (col in 0 until columns) {
+            val cx = w * (col + 0.5f) / columns
+            for (row in 0 until rows) {
+                val flicker = (0.30 + 0.55 * (0.5 + 0.5 * kotlin.math.sin(t * 1.5 + phase[col][row]))).toFloat()
+                paint.color = Color.argb((flicker * 190).toInt(), 70, 255, 120)
+                canvas.drawText(chars[col][row].toString(), cx, cellH * (row + 0.78f), paint)
+            }
+        }
+    }
+}
 
 /**
  * Wraps a full content rebuild (removeAllViews() + re-adding everything) so
@@ -93,7 +139,11 @@ class OracleNativeModule(
         buildRow.addView(ImageView(context).apply { setImageResource(ro.alintudor.oracle.R.drawable.ic_oracle); scaleType=ImageView.ScaleType.CENTER_INSIDE }, LinearLayout.LayoutParams(dp(17),dp(17)).apply{ setMargins(0,dp(3),dp(5),0) })
         buildRow.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
         center.addView(buildRow)
-        header.addView(center,LinearLayout.LayoutParams(0,dp(76),1f))
+        val centerRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(dp(20), dp(50)))
+        centerRow.addView(center, LinearLayout.LayoutParams(0, dp(76), 1f))
+        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(dp(20), dp(50)))
+        header.addView(centerRow, LinearLayout.LayoutParams(0, dp(76), 1f))
         header.addView(button("↻","Refresh",Color.rgb(255,205,45)) { onRefresh() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
         root.addView(View(context).apply{setBackgroundColor(accent)},LinearLayout.LayoutParams(-1,dp(1)).apply{setMargins(dp(6),0,dp(6),dp(5))})

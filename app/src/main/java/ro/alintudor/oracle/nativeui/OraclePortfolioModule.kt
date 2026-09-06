@@ -186,7 +186,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
             ?: t?.atr14?.takeIf { it > 0.0 && p.currentPrice > 0.0 }?.let { (2.0 * it / p.currentPrice * 100.0).coerceAtMost(30.0) } ?: 0.0
         val demo = OracleDemo.active(context)
         val action = if (demo) OracleDemo.LOCK else decision(a?.action ?: "HOLD", t, p)
-        val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); "REDUCE" -> Color.rgb(255, 170, 40); else -> Color.rgb(50, 220, 190) }
+        val accent = when (action) { "BUY" -> Color.rgb(145, 245, 35); "SELL" -> Color.rgb(255, 80, 95); "REDUCE" -> Color.rgb(255, 170, 40); "WARNING" -> Color.rgb(255, 120, 60); else -> Color.rgb(50, 220, 190) }
         val urgentSell = t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }
         // The engine's reason IS the reason — it names the rule that fired.
         val reason = when { demo -> "Lux Oculi's decision and the rule behind it are for account holders. The indicators below are live."; urgentSell -> "Sustained loss with no 20-day recovery in sight — see Alerts"; a != null && a.reason.isNotBlank() -> a.reason; t == null -> "Insufficient market data yet — holding, monitoring"; else -> "No exit rule triggered" }
@@ -237,7 +237,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
         }.start()
     }
 
-    private fun pulseSignal(view: TextView, action: String) { if (action != "SELL" && action != "HOLD" && action != "REDUCE") return; ObjectAnimator.ofFloat(view, "alpha", 1f, 0.38f, 1f).apply { duration = 1150L; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.RESTART; start() } }
+    private fun pulseSignal(view: TextView, action: String) { if (action != "SELL" && action != "HOLD" && action != "REDUCE" && action != "WARNING") return; ObjectAnimator.ofFloat(view, "alpha", 1f, 0.38f, 1f).apply { duration = 1150L; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.RESTART; start() } }
     private fun valueBox(label: String, value: String, color: Int) = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(9), host.dp(8), host.dp(9), host.dp(8)); background = OracleNativeModule.rounded(Color.rgb(8, 13, 27), host.dp(10), color, host.dp(1)); addView(TextView(context).apply { text = label; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 166, 188)) }); addView(TextView(context).apply { text = value; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); setPadding(0, host.dp(2), 0, 0) }) }
     private fun two(g: LinearLayout, a: String, av: String, b: String, bv: String): Pair<TextView, TextView> { val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }; val va = metric(r, a, av); val vb = metric(r, b, bv); g.addView(r); return va to vb }
     private fun metric(row: LinearLayout, label: String, value: String): TextView { val b = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(13), host.dp(10), host.dp(13), host.dp(10)); background = OracleNativeModule.rounded(Color.rgb(7, 11, 22), host.dp(11), Color.rgb(35, 44, 66), host.dp(1)) }; b.addView(TextView(context).apply { text = label; textSize = 9f; setTextColor(Color.rgb(145, 155, 176)) }); val valueView = TextView(context).apply { text = value; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, host.dp(3), 0, 0) }; b.addView(valueView); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(host.dp(2), host.dp(4), host.dp(2), host.dp(5)) }); return valueView }
@@ -443,7 +443,7 @@ class OraclePortfolioModule(private val host: OracleNativeModule) {
     // URGENT_SELL — that would look like the app disagreeing with itself.
     private fun decision(action: String, t: OracleTechnicalSnapshot?, p: OraclePosition): String {
         if (t != null && OracleAlertRules.evaluate(p, t, System.currentTimeMillis()).any { it.kind == "URGENT_SELL" }) return "SELL"
-        return when (action) { "BUY", "SELL", "REDUCE" -> action; else -> "HOLD" }
+        return when (action) { "BUY", "SELL", "REDUCE", "WARNING" -> action; else -> "HOLD" }
     }
     private fun stamp() = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     private fun money(v: Double) = String.format(Locale.US, "%,.2f", v)

@@ -67,6 +67,7 @@ object OracleAnalytics {
      * reason shown in Portfolio is the actual reason. Order matters — the
      * first rule that fires wins:
      *   1. Stop-loss: price below entry − 2×ATR (or −10% when ATR unknown)
+     *   1b. Warning: price within 1×ATR above the stop-loss (not yet triggered) → WARNING, with a $/% distance and an ATR-paced day estimate
      *   2. Trailing stop: after ≥ +8% at peak, price gives back 2×ATR from that peak
      *   3. Trend break: below SMA50 with a weak technical score → SELL (in loss) / REDUCE (in profit)
      *   4. Concentration: weight ≥ 35% → REDUCE
@@ -100,6 +101,18 @@ object OracleAnalytics {
             if (atr != null) {
                 val stop = entry - 2.0 * atr
                 if (p <= stop) return OracleAction(position.ticker, "SELL", -85.0, "Stop-loss: price ${money(p)} is below entry \u2212 2\u00d7ATR (${money(stop)})", now)
+                // 1b. Approaching stop-loss — a heads-up BEFORE the actual
+                // trigger, not after. Warning zone: within 1x ATR above the
+                // stop (which itself sits at entry \u2212 2x ATR). The day
+                // estimate is explicitly a pace projection ("if this
+                // continues"), not a prediction the stop WILL be hit.
+                val warningZone = entry - 1.0 * atr
+                if (p <= warningZone) {
+                    val distanceToStop = p - stop
+                    val distancePct = (distanceToStop / p) * 100.0
+                    val daysEstimate = kotlin.math.ceil(distanceToStop / atr).toInt().coerceAtLeast(1)
+                    return OracleAction(position.ticker, "WARNING", -30.0, "Approaching stop-loss: ${money(distanceToStop)} (${String.format(java.util.Locale.US, "%.1f", distancePct)}%) above the ${money(stop)} trigger \u2014 at the recent daily pace (ATR ${money(atr)}), roughly ${daysEstimate}d away if the decline continues", now)
+                }
             } else if (position.pnlPercent <= -10.0) {
                 return OracleAction(position.ticker, "SELL", -80.0, "Stop-loss: P/L ${pct(position.pnlPercent)} (no ATR available, \u221210% rule)", now)
             }
@@ -124,8 +137,11 @@ object OracleAnalytics {
         // 5. overextension
         if (position.pnlPercent >= 25.0 && (rsi ?: 50.0) >= 75.0) return OracleAction(position.ticker, "REDUCE", -40.0, "Overextended: ${pct(position.pnlPercent)} with RSI ${String.format(java.util.Locale.US, "%.0f", rsi!!)} \u2014 take partial profit", now)
         // 6. add
-        if (score != null && score >= 80 && sma50 != null && p > sma50 && (rsi ?: 50.0) < 70.0 && position.weight < 15.0)
-            return OracleAction(position.ticker, "BUY", 75.0, "Strong signal (score $score), above SMA50, RSI ${String.format(java.util.Locale.US, "%.0f", rsi ?: 50.0)} \u2014 room to add", now)
+        if (score != null && score >= 80 && sma50 != null && p > sma50 && (rsi ?: 50.0) < 70.0 && position.weight < 15.0) {
+            val roomToAdd = (concentrationBar - position.weight).coerceAtLeast(0.0)
+            val suggestedAddPct = minOf(roomToAdd, 5.0)
+            return OracleAction(position.ticker, "BUY", 75.0, "Strong signal (score $score), above SMA50, RSI ${String.format(java.util.Locale.US, "%.0f", rsi ?: 50.0)} \u2014 room to add up to ${String.format(java.util.Locale.US, "%.0f", suggestedAddPct)}% more of the portfolio (cap ${String.format(java.util.Locale.US, "%.0f", concentrationBar)}% at $positionCount positions); revisit if RSI crosses 70 or price closes below SMA50", now)
+        }
         // 7. hold
         return if (tech == null) OracleAction(position.ticker, "HOLD", 0.0, "Insufficient market data yet \u2014 holding, monitoring", now)
         else if ((score ?: 50) >= 65) OracleAction(position.ticker, "HOLD", 20.0, "Trend and momentum intact (score ${score ?: "n/a"}${sma50?.let { if (p > it) ", above SMA50" else ", below SMA50" } ?: ""})", now)

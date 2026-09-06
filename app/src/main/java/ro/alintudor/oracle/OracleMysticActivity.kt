@@ -1112,6 +1112,31 @@ class OracleMysticActivity : Activity() {
      *  pick) with its full argumentation, then the journal — newest-first,
      *  same rule as every other journal — with the hidden performance
      *  check against the +10% / 1\u20133-day target. */
+    /** Manual-recovery distribution: if the server is down, email sent FROM
+     *  that same server won't go out either — this builds a plain-text
+     *  summary of today's cached Growth snapshot and opens Android's native
+     *  share sheet, so it reaches people through WhatsApp/Telegram/SMS/a
+     *  personal mail app instead, none of it routed through alintudor.ro. */
+    private fun shareGrowthSnapshot() {
+        val items = runCatching { OracleRepository(this).cachedGrowth() }.getOrDefault(emptyList())
+        if (items.isEmpty()) { Toast.makeText(this, "No cached Growth snapshot to share yet.", Toast.LENGTH_SHORT).show(); return }
+        val stamp = items.firstOrNull { it.referenceTimestamp > 0L }?.referenceTimestamp
+        val stampText = stamp?.let { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(it)) } ?: "unknown time"
+        val body = buildString {
+            appendLine("LUX OCULI \u2014 Growth Snapshot (manual share)")
+            appendLine(stampText)
+            appendLine()
+            items.sortedWith(compareBy { when (it.horizon) { "SHORT" -> 0; "MEDIUM" -> 1; "LONG" -> 2; else -> 3 } }).forEach { r ->
+                appendLine("${r.horizon}: ${r.ticker} \u2014 ${r.signal} (${r.score}/100)")
+                appendLine("  Forecast +${String.format(Locale.US, "%.1f", r.forecastPct)}% | Risk: ${r.risk}")
+                appendLine()
+            }
+            append("Not financial advice \u2014 see Lux Oculi's Disclaimer for details.")
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "Lux Oculi Growth \u2014 $stampText"); putExtra(Intent.EXTRA_TEXT, body) }
+        startActivity(Intent.createChooser(intent, "Share recommendations"))
+    }
+
     private fun showUltraShortDialog() {
         val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55)
         val store = ro.alintudor.oracle.core.OracleUltraShortJournalStore(this)
@@ -1551,6 +1576,11 @@ class OracleMysticActivity : Activity() {
             Toast.makeText(this, if (turningOn) "Forced local — today's Growth snapshot cleared, next open recomputes on-device." else "Back to normal — Growth will try the server again.", Toast.LENGTH_LONG).show()
             showAdminScreen()
         }, LinearLayout.LayoutParams(-1, -2))
+        card.addView(TextView(this).apply {
+            text = "If the server itself is down, email sent from alintudor.ro won't go out either — this shares the same recommendations through whatever's on this phone instead (WhatsApp, Telegram, SMS, a personal email app)."
+            textSize = 10.5f; setTextColor(muted); setPadding(dp(6), dp(8), dp(6), dp(6))
+        })
+        card.addView(toolButton("SHARE RECOMMENDATIONS", Color.rgb(105, 245, 35)) { shareGrowthSnapshot() }, LinearLayout.LayoutParams(-1, -2))
 
         // --- User management (list, approve, revoke — mirrors the WP admin page) ---
         card.addView(TextView(this).apply {

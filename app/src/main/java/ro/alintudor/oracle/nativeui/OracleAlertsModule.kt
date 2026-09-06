@@ -1,9 +1,14 @@
 package ro.alintudor.oracle.nativeui
 
+import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.app.AlertDialog
@@ -36,18 +41,28 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             val high = active.count { it.level.equals("HIGH", true) }
             val medium = active.count { it.level.equals("MEDIUM", true) }
             host.addCard("ALERT CENTER", "Everything that can notify you, grouped by what it actually is: your own alert rules, urgent conditions Lux Oculi watches automatically, and BUY/SELL/REDUCE signals — split by whether they're on something you own (Portfolio) or just watching (Watchlist).")
-            addSummary(active.size, high, medium, alerts.size - active.size)
-            addMyAlerts()
 
             // Five clearly separate groups instead of two vague ones — a
             // personal rule firing isn't the same thing as an urgent
             // condition Oracle detected on its own, and a Watchlist signal
             // isn't the same thing as a signal on money you actually hold.
+            // Computed here (not further down) because the donut below
+            // needs the FULL counts too — including inactive/closed ones,
+            // not just what's currently active.
             val trueCritical = alerts.filter { it.kind == "URGENT_SELL" || it.kind == "GROWTH_FADING" || it.kind == "HIGH_VOLATILITY" }
             val userFired = alerts.filter { it.kind == "USER" }
             val signalAll = alerts.filter { it.kind == "SIGNAL" }
             val watchlistSignals = signalAll.filter { it.title.endsWith("(Watchlist)") }
             val portfolioSignals = signalAll - watchlistSignals.toSet()
+
+            addAlertDonut(alerts.size, listOf(
+                Triple("URGENT", Color.rgb(255, 90, 90), trueCritical.size),
+                Triple("YOUR ALERTS", Color.rgb(80, 200, 255), userFired.size),
+                Triple("PORTFOLIO", host.accent, portfolioSignals.size),
+                Triple("WATCHLIST", Color.rgb(255, 170, 40), watchlistSignals.size),
+            ))
+            addSummary(active.size, high, medium, alerts.size - active.size)
+            addMyAlerts()
 
             if (alerts.isEmpty()) { host.addCard("NO ALERTS", "Nothing has fired yet."); return@rebuildWithoutFlicker }
 
@@ -134,6 +149,24 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             .setNegativeButton("Cancel", null).show()
     }
 
+    /** The segmented ring: proportion of ALL alerts (active or not) by
+     *  category, with the true grand total in the middle — this is the
+     *  "show literally everything, including inactive" view; the 5
+     *  sections further down are where you act on any one of them. */
+    private fun addAlertDonut(total: Int, segments: List<Triple<String, Int, Int>>) {
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        row.addView(OracleAlertDonutView(context, segments.map { it.second to it.third }, total), LinearLayout.LayoutParams(host.dp(96), host.dp(96)))
+        val legend = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(host.dp(14), 0, 0, 0) }
+        segments.forEach { (label, color, count) ->
+            val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(3), 0, host.dp(3)) }
+            line.addView(TextView(context).apply { text = "\u25CF"; textSize = 11f; setTextColor(color) }, LinearLayout.LayoutParams(host.dp(16), -2))
+            line.addView(TextView(context).apply { text = "$label  \u00b7  $count"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(210, 216, 230)) })
+            legend.addView(line)
+        }
+        row.addView(legend, LinearLayout.LayoutParams(0, -2, 1f))
+        host.content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(14)) })
+    }
+
     private fun addSummary(active:Int,high:Int,medium:Int,closed:Int){
         val row=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL}
         stat(row,"ACTIVE",active.toString(),Color.rgb(145,245,35));stat(row,"HIGH",high.toString(),Color.rgb(255,75,60));stat(row,"MEDIUM",medium.toString(),Color.rgb(255,205,45));stat(row,"CLOSED",closed.toString(),Color.rgb(140,150,170))
@@ -170,6 +203,26 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             setPadding(host.dp(15), host.dp(13), host.dp(13), host.dp(13))
             background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = host.dp(14).toFloat(); setStroke(host.dp(if (critical) 2 else 1), if (active) accent else Color.rgb(38, 46, 66)) }
         }
+        // Only the truly urgent kinds, and only while still active — a
+        // closed alert or a personal/signal one shouldn't compete for
+        // attention the way a real URGENT_SELL/GROWTH_FADING/HIGH_VOLATILITY
+        // one should.
+        val pulseUrgent = active && (a.kind == "URGENT_SELL" || a.kind == "GROWTH_FADING" || a.kind == "HIGH_VOLATILITY")
+        if (pulseUrgent) {
+            val animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 850L; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE
+                addUpdateListener { anim ->
+                    val f = anim.animatedValue as Float
+                    val strokeWidth = host.dp(2) + kotlin.math.round(host.dp(3) * f).toInt()
+                    val bg = Color.rgb((6 + 22 * f).toInt(), (10 + 14 * f).toInt(), (20 + 8 * f).toInt())
+                    card.background = GradientDrawable().apply { setColor(bg); cornerRadius = host.dp(14).toFloat(); setStroke(strokeWidth, accent) }
+                }
+            }
+            card.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: android.view.View) { animator.start() }
+                override fun onViewDetachedFromWindow(v: android.view.View) { animator.cancel() }
+            })
+        }
         if (critical) {
             card.addView(TextView(context).apply {
                 text = kindLabel(a.kind); textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(accent); letterSpacing = .04f
@@ -187,4 +240,43 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
     }
     private fun severityRank(level:String)=when(level.uppercase(Locale.getDefault())){"HIGH"->3;"MEDIUM"->2;else->1}
+}
+
+/** Segmented ring chart — proportion of each (color, count) segment out of
+ *  total, drawn as arcs, with the total shown as a number in the middle.
+ *  Zero total draws a flat neutral-gray ring instead of doing 0/0 math. */
+class OracleAlertDonutView(context: Context, private val segments: List<Pair<Int, Int>>, private val total: Int) : View(context) {
+    private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.BUTT }
+    private val totalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.WHITE; typeface = Typeface.DEFAULT_BOLD }
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.rgb(150, 160, 182); typeface = Typeface.DEFAULT_BOLD }
+    private fun dp(v: Float) = v * resources.displayMetrics.density
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val cx = w / 2f; val cy = h / 2f
+        val radius = minOf(w, h) / 2f - dp(4f)
+        val strokeW = radius * 0.34f
+        arcPaint.strokeWidth = strokeW
+        val rect = RectF(cx - radius + strokeW / 2f, cy - radius + strokeW / 2f, cx + radius - strokeW / 2f, cy + radius - strokeW / 2f)
+        if (total <= 0) {
+            arcPaint.color = Color.rgb(40, 46, 62)
+            canvas.drawArc(rect, 0f, 360f, false, arcPaint)
+        } else {
+            var startAngle = -90f
+            val gapDeg = 2.5f
+            for ((color, count) in segments) {
+                if (count <= 0) continue
+                val sweep = (360f * count / total) - gapDeg
+                if (sweep <= 0f) { startAngle += 360f * count / total; continue }
+                arcPaint.color = color
+                canvas.drawArc(rect, startAngle, sweep, false, arcPaint)
+                startAngle += 360f * count / total
+            }
+        }
+        totalPaint.textSize = radius * 0.52f
+        canvas.drawText(total.toString(), cx, cy + totalPaint.textSize * 0.34f, totalPaint)
+        labelPaint.textSize = radius * 0.19f
+        canvas.drawText("ALERTS", cx, cy + totalPaint.textSize * 0.34f + labelPaint.textSize * 1.5f, labelPaint)
+    }
 }

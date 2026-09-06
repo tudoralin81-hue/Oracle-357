@@ -118,8 +118,8 @@ object OracleTickerScoreCache {
  */
 object OracleAlertCenter {
     fun signalAlerts(actions: List<OracleAction>, now: Long): List<OracleAlert> =
-        actions.filter { it.action == "BUY" || it.action == "SELL" || it.action == "REDUCE" }
-            .map { OracleAlert(it.ticker, when (it.action) { "SELL" -> "HIGH"; "REDUCE" -> "MEDIUM"; else -> "INFO" }, "${it.action} signal", it.reason, now, true, "SIGNAL") }
+        actions.filter { it.action == "BUY" || it.action == "SELL" || it.action == "REDUCE" || it.action == "WARNING" }
+            .map { OracleAlert(it.ticker, when (it.action) { "SELL" -> "HIGH"; "REDUCE", "WARNING" -> "MEDIUM"; else -> "INFO" }, if (it.action == "WARNING") "Approaching stop-loss" else "${it.action} signal", it.reason, now, true, "SIGNAL") }
 
     /** Same idea as signalAlerts() above, for Watchlist tickers — there's no
      *  position/cost-basis to compute a SELL or REDUCE against, so only a
