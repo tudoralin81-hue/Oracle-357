@@ -57,7 +57,7 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
 
             addAlertDonut(listOf(
                 Triple("URGENT", Color.rgb(255, 90, 90), trueCritical.size),
-                Triple("YOUR ALERTS", Color.rgb(80, 200, 255), userFired.size),
+                Triple("YOUR ALERTS FIRED", Color.rgb(80, 200, 255), userFired.size),
                 Triple("PORTFOLIO", host.accent, portfolioSignals.size),
                 Triple("WATCHLIST", Color.rgb(255, 170, 40), watchlistSignals.size),
             ))

@@ -14,6 +14,7 @@ import android.view.View
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import java.util.Locale
 
 /** Native Start B515: vector-only, responsive, seven-module composition. */
 class OracleMysticStartView(context: Context, private val onModule: (String) -> Unit) : View(context) {
@@ -36,6 +37,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
      *  their attention right now. Empty list = no ticker drawn at all. */
     private var urgentAlertTexts: List<String> = emptyList()
     fun setUrgentAlerts(texts: List<String>) { urgentAlertTexts = texts; postInvalidate() }
+    /** Second ticker row: (ticker, pnlPercent) pairs from Portfolio — a
+     *  plain LED-tape readout, not tied to alerts at all. */
+    private var marketPulseItems: List<Pair<String, Double>> = emptyList()
+    fun setMarketPulse(items: List<Pair<String, Double>>) { marketPulseItems = items; postInvalidate() }
     private val modules = listOf(
         M("growth", "GROWTH", "FUTURE SCAN", Color.rgb(120, 255, 45)),
         M("analysis", "ANALYSIS", "CHARTS & TOOLS", Color.rgb(20, 220, 255)),
@@ -116,15 +121,47 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             if (withinCycle < passes * passSeconds) {
                 val passProgress = (withinCycle % passSeconds) / passSeconds
                 val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
-                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(12f)
-                p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.04f
+                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(15f)
+                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
                 val textWidth=p.measureText(tickerText)
                 // Enters fully off-screen right, exits fully off-screen left —
                 // "in and out of view" rather than just sliding within bounds.
                 val startX = w; val endX = -textWidth
                 val x = startX + (endX - startX) * passProgress.toFloat()
-                c.save(); c.clipRect(0f, tickerY - S(14f), w, tickerY + S(6f))
+                c.save(); c.clipRect(0f, tickerY - S(17f), w, tickerY + S(7f))
                 c.drawText(tickerText, x, tickerY, p)
+                c.restore()
+            }
+        }
+        // Second row: an LED-style market-pulse tape, tickers from Portfolio
+        // with their live P/L%, green for a gain, red for a loss — a plain
+        // "which way is it moving" readout, distinct from the alert row
+        // above (that one is about what NEEDS attention; this one is just
+        // the raw board).
+        if (marketPulseItems.isNotEmpty()) {
+            val pulseY = Y(if (wide) 780f else 1042f)
+            val pulseCycle = 22.0
+            val pulseProgress = (time % pulseCycle) / pulseCycle
+            p.style=Paint.Style.FILL;p.textSize=S(15f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+            var totalWidth = 0f
+            val gap = "     "
+            val segmentWidths = marketPulseItems.map { (ticker, pct) -> p.measureText("$ticker ${String.format(Locale.US,"%+.1f",pct)}%$gap") }
+            totalWidth = segmentWidths.sum()
+            if (totalWidth > 0f) {
+                val startX = w - (totalWidth + w) * pulseProgress.toFloat()
+                var x = startX
+                c.save(); c.clipRect(0f, pulseY - S(17f), w, pulseY + S(7f))
+                for (i in marketPulseItems.indices) {
+                    val (ticker, pct) = marketPulseItems[i]
+                    val segText = "$ticker "
+                    p.color = Color.WHITE
+                    c.drawText(segText, x, pulseY, p)
+                    x += p.measureText(segText)
+                    val valText = "${String.format(Locale.US,"%+.1f",pct)}%"
+                    p.color = if (pct >= 0.0) Color.rgb(105,245,35) else Color.rgb(255,90,90)
+                    c.drawText(valText, x, pulseY, p)
+                    x += p.measureText(valText) + p.measureText(gap)
+                }
                 c.restore()
             }
         }

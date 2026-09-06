@@ -890,6 +890,12 @@ class OracleMysticActivity : Activity() {
                 .map { "${it.ticker}: ${it.title}" }
             hero.setUrgentAlerts(urgent)
         }
+        runCatching {
+            val pulse = repository.cachedPositions()
+                .filter { it.status.equals("ACTIVE", true) }
+                .map { it.ticker to it.pnlPercent }
+            hero.setMarketPulse(pulse)
+        }
         checkServerConnectionSilently(hero)
     }
 
