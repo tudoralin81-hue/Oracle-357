@@ -81,11 +81,13 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
         eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR
         stars(c,w,h,time); shootingStar(c,w,h,time); satellites(c,w,h,time); grid(c,cx,eyeY,S(if(wide)118f else 112f),S(18f)); sigil(c,cx,Y(if(wide)31f else 54f),S(20f),gold)
-        val titleY = Y(if(wide)72f else 100f); val titleSize = S(if(wide)44f else 40f)
+        val titleY = Y(if(wide)87f else 120f); val titleSize = S(if(wide)44f else 40f)
         text(c,"LUX OCULI",cx,titleY,titleSize,gold,Typeface.SERIF,.18f,true)
         p.textSize = titleSize; p.typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD); p.letterSpacing = .18f
-        titleGlitter(c, cx, titleY, p.measureText("LUX OCULI"), titleSize, time)
-        text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)99f else 127f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
+        val titleWidth = p.measureText("LUX OCULI")
+        titleGlitter(c, cx, titleY, titleWidth, titleSize, time)
+        titleShine(c, cx, titleY, titleWidth, titleSize, time)
+        text(c,"STOCK INTELLIGENCE",cx,Y(if(wide)114f else 147f),S(9f),gold,Typeface.DEFAULT,.25f,true); eye(c,cx,eyeY,eyeR,time)
         // A visitor should never be unsure they're in the demo — a small,
         // permanent tag right under the brand, not just a per-module banner.
         val demoActive = ro.alintudor.oracle.core.OracleDemo.active(context)
@@ -107,13 +109,13 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
         if (urgentAlertTexts.isNotEmpty()) {
-            val tickerY = Y(if (wide) 570f else 850f)
+            val tickerY = Y(if (wide) 755f else 1015f)
             val passSeconds = 6.0; val passes = 4; val pauseSeconds = 10.0
             val cycle = passes * passSeconds + pauseSeconds
             val withinCycle = time % cycle
             if (withinCycle < passes * passSeconds) {
                 val passProgress = (withinCycle % passSeconds) / passSeconds
-                val tickerText = "\u26A0  " + urgentAlertTexts.joinToString("    \u2022    ")
+                val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
                 p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(12f)
                 p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.04f
                 val textWidth=p.measureText(tickerText)
@@ -185,6 +187,27 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
 
         postInvalidateDelayed(32L)
     }
+    /** A bright band sweeps left-to-right across the title once every 3.5s,
+     *  drawn as a second text pass whose Paint shader is a soft gradient —
+     *  it only shows where the letters themselves are, reading as light
+     *  passing over engraved metal rather than a static glow. */
+    private fun titleShine(c: Canvas, cx: Float, titleY: Float, titleWidth: Float, titleSize: Float, time: Double) {
+        val cycle = 3.5
+        val t = ((time % cycle) / cycle).toFloat()
+        val left = cx - titleWidth / 2f
+        val sweepX = left - titleWidth * 0.25f + titleWidth * 1.5f * t
+        val band = titleWidth * 0.22f
+        val savedShader = p.shader
+        p.shader = LinearGradient(
+            sweepX - band, 0f, sweepX + band, 0f,
+            intArrayOf(Color.TRANSPARENT, Color.argb(235, 255, 255, 235), Color.TRANSPARENT),
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+        )
+        p.style = Paint.Style.FILL; p.alpha = 255
+        c.drawText("LUX OCULI", cx, titleY, p)
+        p.shader = savedShader
+    }
+
     /** A handful of fixed sparkle points scattered across the title text's
      *  own width/height, each twinkling on its own phase — distinct from
      *  the background stars() below (denser, brighter, gold-tinted, and
