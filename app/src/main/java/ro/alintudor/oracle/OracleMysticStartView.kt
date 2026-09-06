@@ -114,21 +114,21 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
         if (urgentAlertTexts.isNotEmpty()) {
-            val tickerY = Y(if (wide) 755f else 1015f)
-            val passSeconds = 6.0; val passes = 4; val pauseSeconds = 10.0
+            val tickerY = Y(if (wide) 741f else 995f)
+            val passSeconds = 8.5; val passes = 4; val pauseSeconds = 10.0
             val cycle = passes * passSeconds + pauseSeconds
             val withinCycle = time % cycle
             if (withinCycle < passes * passSeconds) {
                 val passProgress = (withinCycle % passSeconds) / passSeconds
                 val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
-                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(15f)
+                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(18f)
                 p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
                 val textWidth=p.measureText(tickerText)
                 // Enters fully off-screen right, exits fully off-screen left —
                 // "in and out of view" rather than just sliding within bounds.
                 val startX = w; val endX = -textWidth
                 val x = startX + (endX - startX) * passProgress.toFloat()
-                c.save(); c.clipRect(0f, tickerY - S(17f), w, tickerY + S(7f))
+                c.save(); c.clipRect(0f, tickerY - S(20f), w, tickerY + S(8f))
                 c.drawText(tickerText, x, tickerY, p)
                 c.restore()
             }
@@ -139,10 +139,10 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         // above (that one is about what NEEDS attention; this one is just
         // the raw board).
         if (marketPulseItems.isNotEmpty()) {
-            val pulseY = Y(if (wide) 780f else 1042f)
+            val pulseY = Y(if (wide) 766f else 1022f)
             val pulseCycle = 22.0
             val pulseProgress = (time % pulseCycle) / pulseCycle
-            p.style=Paint.Style.FILL;p.textSize=S(15f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+            p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
             var totalWidth = 0f
             val gap = "     "
             val segmentWidths = marketPulseItems.map { (ticker, pct) -> p.measureText("$ticker ${String.format(Locale.US,"%+.1f",pct)}%$gap") }
@@ -150,7 +150,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             if (totalWidth > 0f) {
                 val startX = w - (totalWidth + w) * pulseProgress.toFloat()
                 var x = startX
-                c.save(); c.clipRect(0f, pulseY - S(17f), w, pulseY + S(7f))
+                c.save(); c.clipRect(0f, pulseY - S(20f), w, pulseY + S(8f))
                 for (i in marketPulseItems.indices) {
                     val (ticker, pct) = marketPulseItems[i]
                     val segText = "$ticker "

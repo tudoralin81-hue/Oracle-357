@@ -75,4 +75,6 @@ dependencies {
     // library versions; only firebase-messaging is actually used.
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-messaging'
+    // Pull-to-refresh gesture, replacing the header's refresh button.
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 }

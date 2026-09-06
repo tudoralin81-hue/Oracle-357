@@ -22,22 +22,33 @@ import ro.alintudor.oracle.core.OracleMarketCalendar
  *  a stray Handler running. Deliberately subtle (low alpha, slow flicker,
  *  small monospace glyphs) — decoration around the title, not competing
  *  with it for attention. */
+/** A narrow strip of falling "0"/"1" characters, Matrix-style — two of
+ *  these flank the module header's centered title, one on each side. Each
+ *  column has one leading character continuously scrolling downward
+ *  (wrapping from the top when it passes the bottom), drawn with a
+ *  fading 3-character trail behind it — genuine falling rain rather than
+ *  a static grid of flickering digits, and spaced wide enough to read as
+ *  a clean accent instead of visual noise. Self-contained: starts its own
+ *  tick loop on attach, stops it on detach, so a header that gets torn
+ *  down (back navigation, module switch) never leaves a stray Handler
+ *  running. */
 class OracleMatrixRainView(context: Context) : View(context) {
     private val paint = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.MONOSPACE }
-    private val maxColumns = 8
-    private val rows = 4
-    private val chars = Array(maxColumns) { CharArray(rows) { if (Math.random() < 0.5) '0' else '1' } }
-    private val phase = Array(maxColumns) { FloatArray(rows) { (Math.random() * 6.28).toFloat() } }
-    private val startNanos = System.nanoTime()
+    private val maxColumns = 4
+    private data class Column(var chars: MutableList<Char> = MutableList(4) { randChar() }, var headRow: Float = (Math.random() * -6).toFloat(), var speed: Float = 0.22f + (Math.random() * 0.14f).toFloat())
+    private val columns = Array(maxColumns) { Column() }
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
-            if (Math.random() < 0.35) {
-                val col = (Math.random() * maxColumns).toInt(); val row = (Math.random() * rows).toInt()
-                chars[col][row] = if (chars[col][row] == '0') '1' else '0'
+            for (col in columns) {
+                col.headRow += col.speed
+                if (col.headRow > 10f) {
+                    col.headRow = (Math.random() * -4 - 2).toFloat()
+                    col.chars = MutableList(4) { randChar() }
+                }
             }
             invalidate()
-            handler.postDelayed(this, 260L)
+            handler.postDelayed(this, 90L)
         }
     }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.removeCallbacks(tick); handler.post(tick) }
@@ -46,21 +57,24 @@ class OracleMatrixRainView(context: Context) : View(context) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
         val density = resources.displayMetrics.density
-        val targetColumnWidth = 16f * density
-        val columns = (w / targetColumnWidth).toInt().coerceIn(0, maxColumns)
-        if (columns == 0) return
-        val cellH = h / rows
-        paint.textSize = cellH * 0.6f
-        val t = (System.nanoTime() - startNanos) / 1_000_000_000.0
-        for (col in 0 until columns) {
-            val cx = w * (col + 0.5f) / columns
-            for (row in 0 until rows) {
-                val flicker = (0.30 + 0.55 * (0.5 + 0.5 * kotlin.math.sin(t * 1.5 + phase[col][row]))).toFloat()
-                paint.color = Color.argb((flicker * 190).toInt(), 70, 255, 120)
-                canvas.drawText(chars[col][row].toString(), cx, cellH * (row + 0.78f), paint)
+        val targetColumnWidth = 20f * density
+        val visibleColumns = (w / targetColumnWidth).toInt().coerceIn(0, maxColumns)
+        if (visibleColumns == 0) return
+        val rowH = h / 6f
+        paint.textSize = rowH * 0.62f
+        for (col in 0 until visibleColumns) {
+            val cx = w * (col + 0.5f) / visibleColumns
+            val c = columns[col]
+            for (t in 0 until c.chars.size) {
+                val rowPos = c.headRow - t
+                if (rowPos < -1f || rowPos > 7f) continue
+                val fade = (1f - t / c.chars.size.toFloat()).coerceIn(0f, 1f)
+                paint.color = Color.argb((fade * 190).toInt(), 70, 255, 120)
+                canvas.drawText(c.chars[t].toString(), cx, rowH * (rowPos + 0.8f), paint)
             }
         }
     }
+    companion object { private fun randChar() = if (Math.random() < 0.5) '0' else '1' }
 }
 
 /**
@@ -98,6 +112,7 @@ class OracleNativeModule(
     val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(2),dp(10),dp(2),dp(24)) }
     val accent = when(title.uppercase()) { "ALERTS" -> Color.rgb(255,75,40); "NEWS","ANALYSIS" -> Color.rgb(25,205,255); "GROWTH" -> Color.rgb(145,245,35); "PORTFOLIO" -> Color.rgb(190,65,255); else -> Color.rgb(255,210,45) }
     private lateinit var scrollView: ScrollView
+    private lateinit var swipeRefresh: androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     private var marketStatusView: TextView? = null
     private val marketStatusHandler = Handler(Looper.getMainLooper())
     private val marketStatusUpdater = object : Runnable {
@@ -113,7 +128,7 @@ class OracleNativeModule(
 
     init {
         val header = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(2),dp(5),dp(2),dp(5)) }
-        header.addView(button("‹","Back",Color.rgb(255,205,45)) { onBack() }, LinearLayout.LayoutParams(dp(46),dp(46)))
+        header.addView(plainButton("‹","Back") { onBack() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         val center = LinearLayout(context).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER }
         center.addView(TextView(context).apply { text="LUX OCULI";textSize=17f;typeface=Typeface.create(Typeface.SERIF,Typeface.BOLD);setTextColor(Color.WHITE);gravity=Gravity.CENTER;includeFontPadding=true })
         // Module name gets the same hand-drawn glyph this module shows as its
@@ -148,7 +163,6 @@ class OracleNativeModule(
         centerRow.addView(center, LinearLayout.LayoutParams(-2, dp(76)))
         centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(0, dp(50), 1f))
         header.addView(centerRow, LinearLayout.LayoutParams(0, dp(76), 1f))
-        header.addView(button("↻","Refresh",Color.rgb(255,205,45)) { onRefresh() }, LinearLayout.LayoutParams(dp(46),dp(46)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
         root.addView(View(context).apply{setBackgroundColor(accent)},LinearLayout.LayoutParams(-1,dp(1)).apply{setMargins(dp(6),0,dp(6),dp(5))})
         if (title.equals("GROWTH", true)) {
@@ -183,7 +197,20 @@ class OracleNativeModule(
                 setPadding(dp(10), dp(7), dp(10), dp(7)); background = rounded(Color.rgb(20, 16, 6), dp(10), Color.rgb(255, 205, 45), dp(1))
             }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(2), 0, dp(8)) })
         }
-        root.addView(scrollView, LinearLayout.LayoutParams(-1,0,1f))
+        swipeRefresh = androidx.swiperefreshlayout.widget.SwipeRefreshLayout(context).apply {
+            setColorSchemeColors(accent)
+            setProgressBackgroundColorSchemeColor(Color.rgb(7, 11, 22))
+            setOnRefreshListener {
+                onRefresh()
+                // No visibility into when the caller's async refresh actually
+                // finishes from in here — a brief spinner flash is the honest
+                // signal "the gesture registered", not a claim about data
+                // having arrived yet.
+                postDelayed({ isRefreshing = false }, 600L)
+            }
+            addView(scrollView)
+        }
+        root.addView(swipeRefresh, LinearLayout.LayoutParams(-1,0,1f))
         root.setOnApplyWindowInsetsListener { _, insets ->
             val top = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.statusBars()).top else 0
             val bottom = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom else 0
@@ -199,7 +226,7 @@ class OracleNativeModule(
     fun getScrollY(): Int = if (::scrollView.isInitialized) scrollView.scrollY else 0
     fun restoreScrollY(value: Int) { if (!::scrollView.isInitialized) return; scrollPositions[title] = value.coerceAtLeast(0); scrollView.post { scrollView.scrollTo(0, value.coerceAtLeast(0)) } }
 
-    private fun button(symbol:String,desc:String,color:Int,click:()->Unit)=TextView(context).apply{ text=symbol;textSize=30f;gravity=Gravity.CENTER;contentDescription=desc;typeface=Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);background=rounded(Color.rgb(5,8,17),dp(13),color,dp(1));isClickable=true;isFocusable=true;setOnClickListener{click()} }
+    private fun plainButton(symbol:String,desc:String,click:()->Unit)=TextView(context).apply{ text=symbol;textSize=32f;gravity=Gravity.CENTER;contentDescription=desc;typeface=Typeface.DEFAULT_BOLD;setTextColor(Color.rgb(255,205,45));isClickable=true;isFocusable=true;setOnClickListener{click()} }
     private fun connectionDot(context: Context, on: Boolean, label: String) = TextView(context).apply {
         text = "\u25CF"; textSize = 9f; setTextColor(if (on) Color.rgb(80, 235, 130) else Color.rgb(255, 120, 90))
         contentDescription = label; gravity = Gravity.CENTER; setPadding(dp(5), 0, 0, 0)
