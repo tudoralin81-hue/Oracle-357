@@ -1341,7 +1341,7 @@ class OracleMysticActivity : Activity() {
                         runCatching { renderModule("growth", silent = true, reuseHost = true) }
                             .onFailure { showModuleError("growth", it) }
                     }.onFailure { error ->
-                        showGrowthCalculationError(error)
+                        if (!handleUnauthorizedIfNeeded(error)) showGrowthCalculationError(error)
                     }
                 }
             }.start()
@@ -1373,7 +1373,7 @@ class OracleMysticActivity : Activity() {
                 // exactly the "hidden refresh" flicker, on every one of those
                 // modules, and only those, since Analysis has no such step at all.
                 result.onSuccess { runCatching { renderModule(key, silent = true, reuseHost = true) }.onFailure { showModuleError(key, it) } }
-                    .onFailure { Toast.makeText(this, "Local refresh failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+                    .onFailure { error -> if (!handleUnauthorizedIfNeeded(error)) Toast.makeText(this, "Local refresh failed: ${error.message ?: error.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
@@ -1417,6 +1417,32 @@ class OracleMysticActivity : Activity() {
         if (normalized.isBlank()) return
         OracleSimpleModule.setTickerDraft(normalized)
         openModule("analysis")
+    }
+
+    /** Checks whether `error` is (or wraps) a server 401 — the account behind
+     *  this session's token is no longer "approved" (revoked by the owner,
+     *  or never approved). If so, clears the stale session and routes to
+     *  login with a clear reason instead of leaving the caller's own normal
+     *  error handling to show a generic, repeatedly-failing sync error.
+     *  Returns true if it handled the error (caller should skip its own
+     *  failure handling in that case). */
+    private fun handleUnauthorizedIfNeeded(error: Throwable): Boolean {
+        var e: Throwable? = error
+        while (e != null) {
+            if (e is ro.alintudor.oracle.core.OracleUnauthorizedException) {
+                val store = OracleAuthStore(this)
+                store.clearSession()
+                ro.alintudor.oracle.core.OracleAdminAccess.lock()
+                ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(this)
+                authPassedThisProcess = false
+                currentModule = null
+                showLogin(store)
+                Toast.makeText(this, "This account no longer has access. Please contact the owner if you believe this is a mistake.", Toast.LENGTH_LONG).show()
+                return true
+            }
+            e = e.cause
+        }
+        return false
     }
 
     private var lastBackHandledAtMs = 0L

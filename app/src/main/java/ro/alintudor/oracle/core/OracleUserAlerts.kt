@@ -108,8 +108,10 @@ object OracleTickerScoreCache {
 }
 
 /**
- * The one place alerts come from. Three sources, one list:
- *   SIGNAL   — the BUY / SELL / REDUCE decisions on held positions
+ * The one place alerts come from. Four sources, one list:
+ *   SIGNAL   — the BUY / SELL / REDUCE decisions on held positions, AND
+ *              the same bullish-signal notification for Watchlist tickers
+ *              (no position to sell/reduce, so only BUY-side fires)
  *   CRITICAL — urgent sell, fading growth, high volatility (OracleAlertRules)
  *   USER     — the person's own price / score / signal-change alerts
  * Both the in-app refresh and the background check call this.
@@ -118,6 +120,17 @@ object OracleAlertCenter {
     fun signalAlerts(actions: List<OracleAction>, now: Long): List<OracleAlert> =
         actions.filter { it.action == "BUY" || it.action == "SELL" || it.action == "REDUCE" }
             .map { OracleAlert(it.ticker, when (it.action) { "SELL" -> "HIGH"; "REDUCE" -> "MEDIUM"; else -> "INFO" }, "${it.action} signal", it.reason, now, true, "SIGNAL") }
+
+    /** Same idea as signalAlerts() above, for Watchlist tickers — there's no
+     *  position/cost-basis to compute a SELL or REDUCE against, so only a
+     *  bullish rating is actionable here ("worth considering entering").
+     *  Held tickers are skipped: they already get the fuller, position-aware
+     *  signalAlerts() above, and would otherwise double up. */
+    fun watchlistSignalAlerts(watchlist: List<String>, heldTickers: Set<String>, scores: Map<String, OracleTickerScore>, now: Long): List<OracleAlert> =
+        watchlist.map { it.trim().uppercase(Locale.US) }.filter { it.isNotBlank() && it !in heldTickers }.distinct()
+            .mapNotNull { t -> scores[t]?.takeIf { it.signal == "STRONG BUY" || it.signal == "BUY" }?.let { s ->
+                OracleAlert(t, "INFO", "${s.signal} signal (Watchlist)", "Score ${s.score}/100", now, true, "SIGNAL")
+            } }
 
     fun criticalAlerts(positions: List<OraclePosition>, technicalByTicker: Map<String, OracleTechnicalSnapshot>, now: Long): List<OracleAlert> =
         positions.flatMap { p -> OracleAlertRules.evaluate(p, technicalByTicker[p.ticker.uppercase(Locale.US)], now) }

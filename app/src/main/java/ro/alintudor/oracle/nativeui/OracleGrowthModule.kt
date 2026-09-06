@@ -538,7 +538,6 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                 identity.addView(text(item.company.ifBlank { "—" }, 11f, Typeface.DEFAULT_BOLD, white, 0, 0))
                 identity.addView(text(item.sector.ifBlank { "—" }, 9f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 2))
                 top.addView(identity, LinearLayout.LayoutParams(0, -2, 1f))
-                top.addView(text(item.horizon, 9f, Typeface.DEFAULT_BOLD, accent, 0, 0))
                 val srcColor = if (item.computedLocally) orange else cyan
                 top.addView(TextView(host.root.context).apply {
                     text = if (item.computedLocally) "L" else "S"
@@ -547,10 +546,11 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                     setTextColor(srcColor)
                     gravity = Gravity.CENTER
                     background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(6, 10, 20)); setStroke(host.dp(1), srcColor) }
-                }, LinearLayout.LayoutParams(host.dp(16), host.dp(16)).apply { setMargins(host.dp(6), 0, 0, 0) })
+                }, LinearLayout.LayoutParams(host.dp(16), host.dp(16)))
                 addView(top)
                 val demo = OracleDemo.active(host.root.context)
                 val details = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, 0) }
+                details.addView(text(item.horizon, 9f, Typeface.DEFAULT_BOLD, accent, 0, 0), LinearLayout.LayoutParams(0, -2, .7f))
                 details.addView(text(formatT0(item.referenceTimestamp), 9f, Typeface.DEFAULT, muted, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
                 details.addView(text(if (demo) "Forecast ${OracleDemo.LOCK}" else "Forecast ${signedPct(item.forecastPct)}", 9f, Typeface.DEFAULT_BOLD, green, 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
                 details.addView(text(if (demo) "Score ${OracleDemo.LOCK}" else "Score ${item.score}/100", 9f, Typeface.DEFAULT_BOLD, cyan, 0, 0), LinearLayout.LayoutParams(0, -2, .8f))

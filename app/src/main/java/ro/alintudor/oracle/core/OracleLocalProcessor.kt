@@ -138,6 +138,14 @@ object OracleLocalProcessor {
         // Every alert comes out of OracleAlertCenter — one implementation for
         // the in-app refresh and the background check alike.
         val signalAlerts=OracleAlertCenter.signalAlerts(actions, now)
+        val watchlistSignalAlerts = runCatching {
+            OracleAlertCenter.watchlistSignalAlerts(
+                OracleWatchlistStore(repository.context).load(),
+                normalized.map { it.ticker.uppercase(Locale.US) }.toSet(),
+                OracleTickerScoreCache.all(repository.context),
+                now
+            )
+        }.getOrDefault(emptyList())
         val technicalByTicker = technical.associateBy { it.ticker.uppercase(Locale.US) }
         val criticalAlerts = OracleAlertCenter.criticalAlerts(normalized, technicalByTicker, now)
         val userAlerts = runCatching {
@@ -145,7 +153,7 @@ object OracleLocalProcessor {
             OracleAlertCenter.userAlerts(repository.context, quotes, OracleTickerScoreCache.all(repository.context), now)
         }.getOrDefault(emptyList())
 
-        val alertsByKey=(oldAlerts+signalAlerts+criticalAlerts+userAlerts).groupBy{"${it.ticker}|${it.kind}|${if(it.kind=="USER") it.title else ""}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
+        val alertsByKey=(oldAlerts+signalAlerts+watchlistSignalAlerts+criticalAlerts+userAlerts).groupBy{"${it.ticker}|${it.kind}|${if(it.kind=="USER") it.title else ""}"}.mapValues{(_,v)->v.maxByOrNull{it.timestamp}!!}.values.sortedByDescending{it.timestamp}.take(150)
 
         // Push-notify critical + user alerts (once per ticker+kind+day), only
         // while the market is open — nothing meaningfully new happens to a

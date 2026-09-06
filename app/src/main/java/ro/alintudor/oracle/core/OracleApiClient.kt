@@ -11,6 +11,13 @@ import java.net.URL
  * Every call here does blocking network I/O — always run from a background
  * thread, never the main thread.
  */
+/** Thrown specifically for HTTP 401 from the real backend — the server's own
+ *  oracle_authenticate() returns this whenever the account behind this token
+ *  isn't "approved" anymore (the owner revoked access, or it was never
+ *  approved). Callers should treat this as "log this session out," not as a
+ *  transient network failure to retry. */
+class OracleUnauthorizedException(message: String) : Exception(message)
+
 object OracleApiClient {
     private const val TIMEOUT = 15000
     private const val BASE_URL = "https://alintudor.ro/wp-json/oracle/v1"
@@ -45,6 +52,7 @@ object OracleApiClient {
         OracleNetworkLog.log(method, path, code, text.length)
         if (code !in 200..299) {
             val message = runCatching { JSONObject(text).optString("message", "HTTP $code") }.getOrDefault("HTTP $code")
+            if (code == 401) throw OracleUnauthorizedException(message)
             throw IllegalStateException(message)
         }
         return runCatching { JSONObject(text) }.getOrDefault(JSONObject())
