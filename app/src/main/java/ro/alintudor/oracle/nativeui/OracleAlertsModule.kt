@@ -35,26 +35,38 @@ class OracleAlertsModule(private val host: OracleNativeModule) {
             val active = alerts.filter { it.active }
             val high = active.count { it.level.equals("HIGH", true) }
             val medium = active.count { it.level.equals("MEDIUM", true) }
-            host.addCard("ALERT CENTER", "Three sources, one list: Oracle's own BUY / SELL / REDUCE decisions on your positions, the critical conditions (urgent sell, fading growth, high volatility), and the alerts you define below. Critical and personal alerts push-notify and email.")
+            host.addCard("ALERT CENTER", "Everything that can notify you, grouped by what it actually is: your own alert rules, urgent conditions Oracle watches automatically, and BUY/SELL/REDUCE signals — split by whether they're on something you own (Portfolio) or just watching (Watchlist).")
             addSummary(active.size, high, medium, alerts.size - active.size)
             addMyAlerts()
+
+            // Five clearly separate groups instead of two vague ones — a
+            // personal rule firing isn't the same thing as an urgent
+            // condition Oracle detected on its own, and a Watchlist signal
+            // isn't the same thing as a signal on money you actually hold.
+            val trueCritical = alerts.filter { it.kind == "URGENT_SELL" || it.kind == "GROWTH_FADING" || it.kind == "HIGH_VOLATILITY" }
+            val userFired = alerts.filter { it.kind == "USER" }
+            val signalAll = alerts.filter { it.kind == "SIGNAL" }
+            val watchlistSignals = signalAll.filter { it.title.endsWith("(Watchlist)") }
+            val portfolioSignals = signalAll - watchlistSignals.toSet()
+
             if (alerts.isEmpty()) { host.addCard("NO ALERTS", "Nothing has fired yet."); return@rebuildWithoutFlicker }
 
-            val critical = alerts.filter { it.kind != "SIGNAL" }
-            val plain = alerts.filter { it.kind == "SIGNAL" }
-            if (critical.isNotEmpty()) {
-                host.addSectionLabel("CRITICAL — PUSH + EMAIL", Color.rgb(255, 90, 90))
-                critical.sortedWith(compareByDescending<OracleAlert> { it.active }.thenByDescending { it.timestamp }).forEach { addAlert(it, critical = true) }
-                host.addSectionLabel("SIGNAL ALERTS", host.accent)
+            fun section(label: String, color: Int, list: List<OracleAlert>, critical: Boolean) {
+                if (list.isEmpty()) return
+                host.addSectionLabel(label, color)
+                list.sortedWith(compareByDescending<OracleAlert> { it.active }.thenByDescending { severityRank(it.level) }.thenByDescending { it.timestamp }).forEach { addAlert(it, critical = critical) }
             }
-            plain.sortedWith(compareByDescending<OracleAlert>{it.active}.thenByDescending{severityRank(it.level)}.thenByDescending{it.timestamp}).take(100).forEach { addAlert(it, critical = false) }
+            section("URGENT — PUSH + EMAIL", Color.rgb(255, 90, 90), trueCritical, critical = true)
+            section("YOUR ALERTS \u2014 FIRED", Color.rgb(80, 200, 255), userFired, critical = true)
+            section("PORTFOLIO SIGNALS", host.accent, portfolioSignals, critical = false)
+            section("WATCHLIST SIGNALS", Color.rgb(255, 170, 40), watchlistSignals, critical = false)
         }
     }
 
     private fun addMyAlerts() {
         val store = OracleUserAlertStore(context)
         val mine = store.load()
-        host.addSectionLabel("MY ALERTS \u2022 ${mine.size}", host.accent)
+        host.addSectionLabel("YOUR ALERT RULES \u2022 ${mine.size}", host.accent)
         mine.sortedWith(compareByDescending<OracleUserAlert> { it.enabled }.thenByDescending { it.createdAt }).forEach { a ->
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(host.dp(14), host.dp(10), host.dp(10), host.dp(10))
