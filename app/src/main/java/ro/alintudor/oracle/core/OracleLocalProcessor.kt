@@ -105,14 +105,15 @@ object OracleLocalProcessor {
         // P/L from whatever currentPrice was last stored (initial seed or manual
         // entry), so gains looked frozen. Pull the latest close for each held
         // ticker before recalculating, same OHLCV source used elsewhere.
-        // One real 1y daily-candle fetch per held ticker feeds everything below:
-        // the live close, the technical snapshot (RSI/SMA/ATR/ADX/score) and
-        // the peak price for the trailing stop. Nothing is hardcoded and
-        // nothing is derived from the handful of quotes the app happened to
-        // capture on previous opens.
-        val candlesByTicker = current.positions.map { it.ticker.uppercase(Locale.US) }.distinct().associateWith { t ->
-            runCatching { OracleMarketData.fetchDaily(t, "1y") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
-        }
+        // One BATCHED 1y daily-candle fetch for every held ticker at once (via
+        // fetchDailyBatch's multi-symbol endpoint) feeds everything below: the
+        // live close, the technical snapshot (RSI/SMA/ATR/ADX/score) and the
+        // peak price for the trailing stop — not N sequential single-ticker
+        // fetches, which is what made this scale with position count before.
+        // Nothing is hardcoded and nothing is derived from the handful of
+        // quotes the app happened to capture on previous opens.
+        val candlesByTicker = OracleMarketData.fetchDailyBatch(current.positions.map { it.ticker.uppercase(Locale.US) }.distinct(), "1y")
+            .mapValues { (_, candles) -> candles.sortedBy { it.timestamp } }
         val livePositions = current.positions.map { p ->
             val latestClose = candlesByTicker[p.ticker.uppercase(Locale.US)]?.lastOrNull()?.close
             if (latestClose != null && latestClose > 0.0) p.copy(currentPrice = latestClose) else p

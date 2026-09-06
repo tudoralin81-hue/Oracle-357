@@ -52,6 +52,9 @@ class OracleFirebaseMessagingService : FirebaseMessagingService() {
         val title = message.data["title"] ?: message.notification?.title ?: "Lux Oculi"
         val body = message.data["body"] ?: message.notification?.body ?: return
         runCatching { OracleInboxStore(this).add(title, body) }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            ro.alintudor.oracle.OracleMysticActivity.onMessageReceivedWhileOpen?.invoke()
+        }
         showNotification(title, body)
     }
 

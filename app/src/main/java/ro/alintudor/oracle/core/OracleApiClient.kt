@@ -176,4 +176,9 @@ object OracleApiClient {
     fun notifyUser(token: String, userId: Int, title: String, message: String): Result<JSONObject> = runCatching {
         post("/users/notify", token, JSONObject().apply { put("userId", userId); put("title", title); put("message", message) })
     }
+
+    /** Owner-only: same as notifyUser(), but to every approved account at once. */
+    fun notifyAllUsers(token: String, title: String, message: String): Result<JSONObject> = runCatching {
+        post("/users/notify-all", token, JSONObject().apply { put("title", title); put("message", message) })
+    }
 }

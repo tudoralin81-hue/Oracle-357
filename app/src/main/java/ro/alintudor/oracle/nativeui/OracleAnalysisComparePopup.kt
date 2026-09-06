@@ -129,8 +129,9 @@ private fun showComparePopup(context: Context, accent: Int, tickerA: String, tic
     // Fixed 3-month daily window for both — independent of any chart
     // timeframe, so the two series are always genuinely aligned by date.
     Thread {
-        val a = runCatching { OracleMarketData.fetchDaily(tickerA, "3mo") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
-        val b = runCatching { OracleMarketData.fetchDaily(tickerB, "3mo") }.getOrDefault(emptyList()).sortedBy { it.timestamp }
+        val batch = OracleMarketData.fetchDailyBatch(listOf(tickerA, tickerB), "3mo")
+        val a = (batch[tickerA.uppercase()] ?: emptyList()).sortedBy { it.timestamp }
+        val b = (batch[tickerB.uppercase()] ?: emptyList()).sortedBy { it.timestamp }
         val fundA = runCatching { OracleRealData.fundamentals(tickerA) }.getOrNull()
         val fundB = runCatching { OracleRealData.fundamentals(tickerB) }.getOrNull()
         Handler(Looper.getMainLooper()).post {

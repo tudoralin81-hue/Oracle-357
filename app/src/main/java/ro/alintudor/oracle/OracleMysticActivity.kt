@@ -35,6 +35,14 @@ class OracleMysticActivity : Activity() {
         // re-locking only on a genuine fresh process start).
         @Volatile private var authPassedThisProcess = false
         private const val EMERGENCY_IMPORT_REQUEST = 4243
+        /** Set while this Activity is actually on screen (onResume..onPause),
+         *  cleared otherwise. OracleFirebaseMessagingService calls this — if
+         *  it's non-null — right when a message is saved to the inbox, so an
+         *  already-open app reacts immediately instead of only picking the
+         *  new message up the next time showHub() happens to run (cold
+         *  start, or navigating back to START). Always invoked on the main
+         *  thread by the caller, never assumed here. */
+        @Volatile var onMessageReceivedWhileOpen: (() -> Unit)? = null
     }
     private lateinit var root: FrameLayout
     private lateinit var repository: OracleRepository
@@ -206,6 +214,9 @@ class OracleMysticActivity : Activity() {
      *  login, same as a revoked-account 401 does. */
     override fun onResume() {
         super.onResume()
+        onMessageReceivedWhileOpen = {
+            if (currentModule == null && currentNonModuleScreen == NonModuleScreen.HUB) runCatching { showHub() }
+        }
         runCatching {
             if (ro.alintudor.oracle.core.OracleDailyLogoutReceiver.applyIfDue(this)) {
                 currentModule = null
@@ -213,6 +224,11 @@ class OracleMysticActivity : Activity() {
                 Toast.makeText(this, "Signed out for the day's 3pm security refresh. Log back in to continue.", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        onMessageReceivedWhileOpen = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1304,9 +1320,40 @@ class OracleMysticActivity : Activity() {
     }
 
     private fun renderUserManagementDialog(users: org.json.JSONArray) {
-        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195)
+        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55)
         val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)) }
+        list.addView(TextView(this).apply {
+            text = "SEND GROUP MESSAGE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(gold)
+            background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(10).toFloat(); setStroke(dp(1), gold) }
+            setPadding(0, dp(10), 0, dp(10)); isClickable = true; isFocusable = true
+            setOnClickListener {
+                val messageField = EditText(this@OracleMysticActivity).apply {
+                    hint = "Message for every approved user"; setPadding(dp(16), dp(12), dp(16), dp(12)); minLines = 2
+                }
+                android.app.AlertDialog.Builder(this@OracleMysticActivity)
+                    .setTitle("Message everyone")
+                    .setMessage("Sent as a push notification, and by email where set, to every approved account.")
+                    .setView(messageField)
+                    .setPositiveButton("Send") { _, _ ->
+                        val text = messageField.text.toString().trim()
+                        if (text.isBlank()) { Toast.makeText(this@OracleMysticActivity, "Enter a message.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                        val token = OracleAuthStore(this@OracleMysticActivity).token()
+                        Thread {
+                            val result = OracleApiClient.notifyAllUsers(token, "Message from Lux Oculi", text)
+                            runOnUiThread {
+                                if (isFinishing) return@runOnUiThread
+                                result.onSuccess { r ->
+                                    Toast.makeText(this@OracleMysticActivity, "Sent to ${r.optInt("recipients")} users.", Toast.LENGTH_SHORT).show()
+                                    showUserManagementDialog()
+                                }.onFailure { Toast.makeText(this@OracleMysticActivity, "Failed: ${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+                            }
+                        }.start()
+                    }
+                    .setNegativeButton("Cancel", null).show()
+                messageField.requestFocus()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
         if (users.length() == 0) {
             list.addView(TextView(this).apply { text = "No accounts registered yet."; setTextColor(muted); textSize = 13f })
         }
