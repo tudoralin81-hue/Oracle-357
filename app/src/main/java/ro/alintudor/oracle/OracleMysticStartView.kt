@@ -39,8 +39,11 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     fun setUrgentAlerts(texts: List<String>) { urgentAlertTexts = texts; postInvalidate() }
     /** Second ticker row: (ticker, pnlPercent) pairs from Portfolio — a
      *  plain LED-tape readout, not tied to alerts at all. */
-    private var marketPulseItems: List<Pair<String, Double>> = emptyList()
-    fun setMarketPulse(items: List<Pair<String, Double>>) { marketPulseItems = items; postInvalidate() }
+    private var marketPulseItems: List<Triple<String, String, Boolean>> = emptyList()
+    fun setMarketPulse(items: List<Triple<String, String, Boolean>>) { marketPulseItems = items; postInvalidate() }
+    /** Unread push-message count, shown as a badge on the new MESSAGES row. */
+    private var unreadMessages: Int = 0
+    fun setUnreadMessages(count: Int) { unreadMessages = count; postInvalidate() }
     private val modules = listOf(
         M("growth", "GROWTH", "FUTURE SCAN", Color.rgb(120, 255, 45)),
         M("analysis", "ANALYSIS", "CHARTS & TOOLS", Color.rgb(20, 220, 255)),
@@ -81,7 +84,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     override fun onDraw(c:Canvas){
         super.onDraw(c); val w=width.toFloat(); val h=height.toFloat(); if(w<=0f||h<=0f)return
         if(introStartNanos==0L) introStartNanos=System.nanoTime()
-        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)832f else 1206f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
+        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)864f else 1238f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
         eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR
@@ -113,54 +116,64 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
         hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
-        if (urgentAlertTexts.isNotEmpty()) {
+        // Shared background band under both ticker rows — reads as one
+        // "ticker board" rather than text floating loose on the starfield.
+        run {
+            val bandTop = Y(if (wide) 724f else 973f); val bandBottom = Y(if (wide) 780f else 1036f)
+            p.style=Paint.Style.FILL;p.color=Color.argb(38,210,214,222)
+            c.drawRect(0f, bandTop, w, bandBottom, p)
+        }
+        run {
             val tickerY = Y(if (wide) 741f else 995f)
-            val passSeconds = 8.5; val passes = 4; val pauseSeconds = 10.0
-            val cycle = passes * passSeconds + pauseSeconds
-            val withinCycle = time % cycle
-            if (withinCycle < passes * passSeconds) {
-                val passProgress = (withinCycle % passSeconds) / passSeconds
-                val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
-                p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(18f)
-                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
-                val textWidth=p.measureText(tickerText)
-                // Enters fully off-screen right, exits fully off-screen left —
-                // "in and out of view" rather than just sliding within bounds.
-                val startX = w; val endX = -textWidth
-                val x = startX + (endX - startX) * passProgress.toFloat()
-                c.save(); c.clipRect(0f, tickerY - S(20f), w, tickerY + S(8f))
-                c.drawText(tickerText, x, tickerY, p)
-                c.restore()
+            if (urgentAlertTexts.isEmpty()) {
+                p.style=Paint.Style.FILL;p.color=Color.rgb(150,160,182);p.alpha=255;p.textSize=S(18f)
+                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.CENTER;p.letterSpacing=.02f
+                c.drawText("No active alerts",cx,tickerY,p)
+            } else {
+                val passSeconds = 8.5; val passes = 4; val pauseSeconds = 10.0
+                val cycle = passes * passSeconds + pauseSeconds
+                val withinCycle = time % cycle
+                if (withinCycle < passes * passSeconds) {
+                    val passProgress = (withinCycle % passSeconds) / passSeconds
+                    val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
+                    p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(18f)
+                    p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+                    val textWidth=p.measureText(tickerText)
+                    // Enters fully off-screen right, exits fully off-screen left —
+                    // "in and out of view" rather than just sliding within bounds.
+                    val startX = w; val endX = -textWidth
+                    val x = startX + (endX - startX) * passProgress.toFloat()
+                    c.save(); c.clipRect(0f, tickerY - S(20f), w, tickerY + S(8f))
+                    c.drawText(tickerText, x, tickerY, p)
+                    c.restore()
+                }
             }
         }
-        // Second row: an LED-style market-pulse tape, tickers from Portfolio
-        // with their live P/L%, green for a gain, red for a loss — a plain
-        // "which way is it moving" readout, distinct from the alert row
-        // above (that one is about what NEEDS attention; this one is just
-        // the raw board).
+        // Second row: an LED-style tape of today's top-scoring tickers
+        // (universe-wide, not tied to Portfolio or Alerts) — green for
+        // score \u2265 50, red below — a plain "how's the board looking today"
+        // readout, distinct from the alert row above.
         if (marketPulseItems.isNotEmpty()) {
             val pulseY = Y(if (wide) 766f else 1022f)
-            val pulseCycle = 22.0
+            val pulseCycle = 30.0
             val pulseProgress = (time % pulseCycle) / pulseCycle
             p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
-            var totalWidth = 0f
             val gap = "     "
-            val segmentWidths = marketPulseItems.map { (ticker, pct) -> p.measureText("$ticker ${String.format(Locale.US,"%+.1f",pct)}%$gap") }
-            totalWidth = segmentWidths.sum()
+            val segmentWidths = marketPulseItems.map { (ticker, value, _) -> p.measureText("$ticker $value$gap") }
+            val totalWidth = segmentWidths.sum()
             if (totalWidth > 0f) {
                 val startX = w - (totalWidth + w) * pulseProgress.toFloat()
                 var x = startX
                 c.save(); c.clipRect(0f, pulseY - S(20f), w, pulseY + S(8f))
                 for (i in marketPulseItems.indices) {
-                    val (ticker, pct) = marketPulseItems[i]
+                    val (ticker, value, positive) = marketPulseItems[i]
                     val segText = "$ticker "
                     p.color = Color.WHITE
                     c.drawText(segText, x, pulseY, p)
                     x += p.measureText(segText)
-                    val valText = "${String.format(Locale.US,"%+.1f",pct)}%"
-                    p.color = if (pct >= 0.0) Color.rgb(105,245,35) else Color.rgb(255,90,90)
-                    c.drawText(valText, x, pulseY, p)
-                    x += p.measureText(valText) + p.measureText(gap)
+                    p.color = if (positive) Color.rgb(105,245,35) else Color.rgb(255,90,90)
+                    c.drawText(value, x, pulseY, p)
+                    x += p.measureText(value) + p.measureText(gap)
                 }
                 c.restore()
             }
@@ -194,19 +207,31 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         c.drawCircle(modulesDotCx,modulesDotCy,dotR,p)
         p.alpha=255;p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText("ALL MODULES ACTIVE",modulesDotCx+dotR+S(6f),toolsY,p)
+        // MESSAGES: where TOOLS used to sit — a received push is otherwise
+        // unreadable the moment its system notification is dismissed, so
+        // this is the one place to actually read it again. Hidden entirely
+        // in demo (no account, nothing could ever have arrived).
+        if (!demoActive) {
+            p.color=if(unreadMessages>0) Color.rgb(255,205,45) else Color.rgb(150,160,182);p.textSize=S(14f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.14f
+            val messagesLabel=if(unreadMessages>0) "\u2709\uFE0F  MESSAGES ($unreadMessages)" else "\u2709\uFE0F  MESSAGES"
+            c.drawText(messagesLabel,brandX,toolsY,p)
+            val messagesWidth=p.measureText(messagesLabel)
+            hit+=RectF(brandX-messagesWidth-S(10f),toolsY-S(20f),brandX+S(10f),toolsY+S(14f)) to "messages"
+        }
+        val toolsRowY=toolsY+S(if(demoActive) 0f else 32f)
         // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS
         // itself is closed to a visitor, so there is no point pointing at it.
         p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(14f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.14f
         val toolsLabel=if(demoActive) "\uD83D\uDD13  EXIT DEMO" else "\uD83D\uDD27  TOOLS"
-        c.drawText(toolsLabel,brandX,toolsY,p)
+        c.drawText(toolsLabel,brandX,toolsRowY,p)
         val toolsWidth=p.measureText(toolsLabel)
-        hit+=RectF(brandX-toolsWidth-S(10f),toolsY-S(20f),brandX+S(10f),toolsY+S(14f)) to "backup"
+        hit+=RectF(brandX-toolsWidth-S(10f),toolsRowY-S(20f),brandX+S(10f),toolsRowY+S(14f)) to "backup"
 
         // Session line: who's logged in, since when, and which build of the
         // app they're running — a quick glance answers "is this really me,
         // and is this up to date" without opening TOOLS.
         if (!demoActive) {
-            val sessionY=toolsY+S(30f)
+            val sessionY=toolsRowY+S(30f)
             val auth = ro.alintudor.oracle.core.OracleAuthStore(context)
             val username = auth.username()
             val loginAt = auth.loginAt()

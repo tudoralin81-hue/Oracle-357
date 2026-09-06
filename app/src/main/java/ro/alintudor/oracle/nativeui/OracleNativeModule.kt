@@ -32,10 +32,10 @@ import ro.alintudor.oracle.core.OracleMarketCalendar
  *  tick loop on attach, stops it on detach, so a header that gets torn
  *  down (back navigation, module switch) never leaves a stray Handler
  *  running. */
-class OracleMatrixRainView(context: Context) : View(context) {
+class OracleMatrixRainView(context: Context, private val accentColor: Int) : View(context) {
     private val paint = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.MONOSPACE }
-    private val maxColumns = 4
-    private data class Column(var chars: MutableList<Char> = MutableList(4) { randChar() }, var headRow: Float = (Math.random() * -6).toFloat(), var speed: Float = 0.22f + (Math.random() * 0.14f).toFloat())
+    private val maxColumns = 6
+    private data class Column(var chars: MutableList<Char> = MutableList(4) { randChar() }, var headRow: Float = (Math.random() * -6).toFloat(), var speed: Float = 0.28f + (Math.random() * 0.16f).toFloat())
     private val columns = Array(maxColumns) { Column() }
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
@@ -43,12 +43,12 @@ class OracleMatrixRainView(context: Context) : View(context) {
             for (col in columns) {
                 col.headRow += col.speed
                 if (col.headRow > 10f) {
-                    col.headRow = (Math.random() * -4 - 2).toFloat()
+                    col.headRow = (Math.random() * -3 - 1).toFloat()
                     col.chars = MutableList(4) { randChar() }
                 }
             }
             invalidate()
-            handler.postDelayed(this, 90L)
+            handler.postDelayed(this, 70L)
         }
     }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); handler.removeCallbacks(tick); handler.post(tick) }
@@ -57,11 +57,12 @@ class OracleMatrixRainView(context: Context) : View(context) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
         val density = resources.displayMetrics.density
-        val targetColumnWidth = 20f * density
+        val targetColumnWidth = 14f * density
         val visibleColumns = (w / targetColumnWidth).toInt().coerceIn(0, maxColumns)
         if (visibleColumns == 0) return
         val rowH = h / 6f
         paint.textSize = rowH * 0.62f
+        val r = Color.red(accentColor); val g = Color.green(accentColor); val b = Color.blue(accentColor)
         for (col in 0 until visibleColumns) {
             val cx = w * (col + 0.5f) / visibleColumns
             val c = columns[col]
@@ -69,7 +70,7 @@ class OracleMatrixRainView(context: Context) : View(context) {
                 val rowPos = c.headRow - t
                 if (rowPos < -1f || rowPos > 7f) continue
                 val fade = (1f - t / c.chars.size.toFloat()).coerceIn(0f, 1f)
-                paint.color = Color.argb((fade * 190).toInt(), 70, 255, 120)
+                paint.color = Color.argb((fade * 200).toInt(), r, g, b)
                 canvas.drawText(c.chars[t].toString(), cx, rowH * (rowPos + 0.8f), paint)
             }
         }
@@ -159,9 +160,9 @@ class OracleNativeModule(
         buildRow.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
         center.addView(buildRow)
         val centerRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(0, dp(50), 1f))
+        centerRow.addView(OracleMatrixRainView(context, accent), LinearLayout.LayoutParams(0, dp(50), 1f))
         centerRow.addView(center, LinearLayout.LayoutParams(-2, dp(76)))
-        centerRow.addView(OracleMatrixRainView(context), LinearLayout.LayoutParams(0, dp(50), 1f))
+        centerRow.addView(OracleMatrixRainView(context, accent), LinearLayout.LayoutParams(0, dp(50), 1f))
         header.addView(centerRow, LinearLayout.LayoutParams(0, dp(76), 1f))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
         root.addView(View(context).apply{setBackgroundColor(accent)},LinearLayout.LayoutParams(-1,dp(1)).apply{setMargins(dp(6),0,dp(6),dp(5))})

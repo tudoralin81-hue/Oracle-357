@@ -26,14 +26,14 @@ object OracleBuildInfo {
     private data class Version(val major: Int, val minor: Int)
 
     private val VERSIONS = mapOf(
-        "PORTFOLIO" to Version(1, 30),
-        "ALERTS" to Version(1, 31),
-        "NEWS" to Version(1, 24),
-        "GROWTH" to Version(1, 57),
-        "KNOWLEDGE" to Version(1, 27),
-        "ANALYSIS" to Version(1, 44),
-        "WATCHLIST" to Version(1, 29),
-        "ACTIVITY JOURNAL" to Version(1, 23)
+        "PORTFOLIO" to Version(1, 31),
+        "ALERTS" to Version(1, 32),
+        "NEWS" to Version(1, 25),
+        "GROWTH" to Version(1, 58),
+        "KNOWLEDGE" to Version(1, 28),
+        "ANALYSIS" to Version(1, 45),
+        "WATCHLIST" to Version(1, 30),
+        "ACTIVITY JOURNAL" to Version(1, 24)
     )
 
     private val MODULE_CODES = mapOf(

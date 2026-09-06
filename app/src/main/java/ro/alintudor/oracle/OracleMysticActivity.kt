@@ -891,10 +891,14 @@ class OracleMysticActivity : Activity() {
             hero.setUrgentAlerts(urgent)
         }
         runCatching {
-            val pulse = repository.cachedPositions()
-                .filter { it.status.equals("ACTIVE", true) }
-                .map { it.ticker to it.pnlPercent }
+            val pulse = ro.alintudor.oracle.core.OracleTickerScoreCache.all(this).values
+                .sortedByDescending { it.score }
+                .take(30)
+                .map { Triple(it.ticker, it.score.toString(), it.score >= 50) }
             hero.setMarketPulse(pulse)
+        }
+        runCatching {
+            hero.setUnreadMessages(ro.alintudor.oracle.core.OracleInboxStore(this).unreadCount())
         }
         checkServerConnectionSilently(hero)
     }
@@ -1141,6 +1145,38 @@ class OracleMysticActivity : Activity() {
         }
         val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "Lux Oculi Growth \u2014 $stampText"); putExtra(Intent.EXTRA_TEXT, body) }
         startActivity(Intent.createChooser(intent, "Share recommendations"))
+    }
+
+    /** The whole point of this screen: a push message stops existing the
+     *  moment its system notification is dismissed unless it's saved
+     *  somewhere — this is that somewhere. Marks everything read on open. */
+    private fun showMessagesDialog() {
+        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55)
+        val store = ro.alintudor.oracle.core.OracleInboxStore(this)
+        val messages = store.load()
+        val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(14), dp(20), dp(6)) }
+        if (messages.isEmpty()) {
+            list.addView(TextView(this).apply { text = "No messages yet."; textSize = 13f; setTextColor(muted) })
+        } else {
+            messages.forEach { m ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = dp(12).toFloat(); setStroke(dp(1), if (!m.read) gold else Color.rgb(38, 46, 66)) }
+                }
+                row.addView(TextView(this).apply { text = m.title; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
+                row.addView(TextView(this).apply { text = m.body; textSize = 13f; setTextColor(Color.rgb(200, 208, 222)); setPadding(0, dp(5), 0, 0) })
+                row.addView(TextView(this).apply {
+                    text = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(m.receivedAt))
+                    textSize = 10f; setTextColor(muted); setPadding(0, dp(6), 0, 0)
+                })
+                list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+            }
+        }
+        scroll.addView(list)
+        android.app.AlertDialog.Builder(this).setTitle("Messages").setView(scroll).setPositiveButton("Close", null)
+            .setOnDismissListener { store.markAllRead(); showHub() }
+            .show()
     }
 
     private fun showUltraShortDialog() {
@@ -1706,6 +1742,7 @@ class OracleMysticActivity : Activity() {
 
     private fun openModule(key: String) {
         if (key == "disclaimer") { showDisclaimerDialog(); return }
+        if (key == "messages") { showMessagesDialog(); return }
         if (key == "backup") {
             if (ro.alintudor.oracle.core.OracleDemo.active(this)) { confirmExitDemo(); return }
             currentModule = "backup"; showBackupScreen(); return

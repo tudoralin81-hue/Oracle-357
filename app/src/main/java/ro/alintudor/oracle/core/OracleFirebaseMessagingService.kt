@@ -51,6 +51,7 @@ class OracleFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         val title = message.notification?.title ?: message.data["title"] ?: "Lux Oculi"
         val body = message.notification?.body ?: message.data["body"] ?: return
+        runCatching { OracleInboxStore(this).add(title, body) }
         showNotification(title, body)
     }
 
