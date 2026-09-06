@@ -1166,7 +1166,7 @@ class OracleMysticActivity : Activity() {
         if (!ro.alintudor.oracle.core.OracleAdminAccess.hasPin(this)) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Set an Admin PIN")
-                .setMessage("This PIN protects the Admin Only screen on this device. Choose one you'll remember — it isn't recoverable if forgotten, only resettable by reinstalling.")
+                .setMessage("This PIN protects the Admin Only screen on this device. Choose one you'll remember.")
                 .setView(pinField)
                 .setPositiveButton("Set PIN") { _, _ ->
                     val pin = pinField.text.toString().trim()
@@ -1187,8 +1187,52 @@ class OracleMysticActivity : Activity() {
                         showAdminScreen()
                     } else Toast.makeText(this, "Wrong PIN.", Toast.LENGTH_SHORT).show()
                 }
+                .setNeutralButton("Forgot PIN?") { _, _ -> showForgotPinDialog() }
                 .setNegativeButton("Cancel", null).show()
             focusAndShowKeyboard(pinField)
+        }
+    }
+
+    /** Forgot-PIN recovery: since the PIN itself is only reachable to change
+     *  from inside the screen it protects, forgetting it would otherwise be
+     *  a dead end short of reinstalling. Instead, re-verifying the account
+     *  password (which only the real owner knows, and which is checked by
+     *  the real server, not just locally) is accepted as proof of identity
+     *  — on success the PIN is cleared and the "set a new PIN" flow runs
+     *  immediately, same as the very first time. */
+    private fun showForgotPinDialog() {
+        val passwordField = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Account password"
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Reset Admin PIN")
+            .setMessage("Enter your account password to verify it's you — the PIN is cleared and you'll set a new one right after.")
+            .setView(passwordField)
+            .setPositiveButton("Verify") { _, _ ->
+                val password = passwordField.text.toString()
+                val username = OracleAuthStore(this).username()
+                if (password.isBlank()) { Toast.makeText(this, "Enter your password.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                Thread {
+                    val result = OracleApiClient.login(username, password)
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        result.onSuccess {
+                            ro.alintudor.oracle.core.OracleAdminAccess.clearPin(this)
+                            Toast.makeText(this, "Verified — set a new PIN.", Toast.LENGTH_SHORT).show()
+                            promptAdminAccess()
+                        }.onFailure {
+                            Toast.makeText(this, "Wrong password.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }.start()
+            }
+            .setNegativeButton("Cancel", null).show()
+        passwordField.requestFocus()
+        passwordField.post {
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(passwordField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
     }
 

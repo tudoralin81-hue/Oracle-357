@@ -788,6 +788,31 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         host.content.rebuildWithoutFlicker {
         host.content.removeAllViews()
         host.addSectionLabel("WATCHLIST • SAVED TICKERS")
+
+        val store0 = OracleWatchlistStore(host.root.context)
+        val alertsOn = store0.alertsEnabled()
+        val alertsColor = if (alertsOn) Color.rgb(105, 245, 35) else Color.rgb(150, 160, 182)
+        val alertsCard = LinearLayout(host.root.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(host.dp(14), host.dp(12), host.dp(14), host.dp(12))
+            background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = host.dp(12).toFloat(); setStroke(host.dp(1), alertsColor) }
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                store0.setAlertsEnabled(!alertsOn)
+                renderWatchlist(store0.load())
+            }
+        }
+        alertsCard.addView(TextView(host.root.context).apply {
+            text = if (alertsOn) "\uD83D\uDD14  WATCHLIST ALERTS: ON" else "\uD83D\uDD15  WATCHLIST ALERTS: OFF"
+            textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(alertsColor)
+        })
+        alertsCard.addView(TextView(host.root.context).apply {
+            text = if (alertsOn) "You'll get a SIGNAL alert when a saved ticker's rating turns STRONG BUY or BUY. Tap to turn off."
+                   else "Off by default — tap to also get a SIGNAL alert when a saved ticker's rating turns STRONG BUY or BUY."
+            textSize = 10.5f; setTextColor(Color.rgb(165, 174, 195)); setPadding(0, host.dp(4), 0, 0)
+        })
+        host.content.addView(alertsCard, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(14)) })
+
         if (items.isEmpty()) {
             host.addCard("WATCHLIST EMPTY", "Add a ticker from Analysis. This list is separate from the Portfolio.")
             return@rebuildWithoutFlicker

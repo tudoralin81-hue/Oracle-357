@@ -139,6 +139,7 @@ object OracleLocalProcessor {
         // the in-app refresh and the background check alike.
         val signalAlerts=OracleAlertCenter.signalAlerts(actions, now)
         val watchlistSignalAlerts = runCatching {
+            if (!OracleWatchlistStore(repository.context).alertsEnabled()) return@runCatching emptyList()
             OracleAlertCenter.watchlistSignalAlerts(
                 OracleWatchlistStore(repository.context).load(),
                 normalized.map { it.ticker.uppercase(Locale.US) }.toSet(),

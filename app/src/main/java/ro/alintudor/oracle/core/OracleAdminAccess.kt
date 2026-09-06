@@ -31,6 +31,14 @@ object OracleAdminAccess {
         prefs(context).edit().putString(KEY_HASH, hash(pin)).apply()
     }
 
+    /** Forgot-PIN recovery: clears the stored PIN entirely, so the next
+     *  Admin Only entry goes through the "set a new PIN" first-time flow
+     *  again. Reachable only after re-verifying the account password —
+     *  see OracleMysticActivity.showForgotPinDialog(). */
+    fun clearPin(context: Context) {
+        prefs(context).edit().remove(KEY_HASH).apply()
+    }
+
     fun verifyPin(context: Context, pin: String): Boolean =
         prefs(context).getString(KEY_HASH, null) == hash(pin)
 
