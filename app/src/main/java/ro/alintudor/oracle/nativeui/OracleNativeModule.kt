@@ -164,6 +164,7 @@ class OracleNativeModule(
         centerRow.addView(center, LinearLayout.LayoutParams(-2, dp(76)))
         centerRow.addView(OracleMatrixRainView(context, accent), LinearLayout.LayoutParams(0, dp(50), 1f))
         header.addView(centerRow, LinearLayout.LayoutParams(0, dp(76), 1f))
+        header.addView(View(context), LinearLayout.LayoutParams(dp(46),dp(46)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(84)))
         root.addView(View(context).apply{setBackgroundColor(accent)},LinearLayout.LayoutParams(-1,dp(1)).apply{setMargins(dp(6),0,dp(6),dp(5))})
         if (title.equals("GROWTH", true)) {

@@ -190,8 +190,15 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
         val logo = ImageView(host.root.context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "${r.ticker} logo"
         }
-        headline.addView(logo, LinearLayout.LayoutParams(host.dp(40), host.dp(40)).apply { setMargins(0, 0, host.dp(10), 0) })
+        headline.addView(logo, LinearLayout.LayoutParams(host.dp(40), host.dp(40)))
         OracleLogoLoader.load(host.root.context, r.ticker, logo)
+        top.addView(headline)
+        // Actions row is separate from the ticker/price/logo line above —
+        // packed together on one row, this plus a large ticker+price text
+        // size doesn't fit a real phone width, squeezing the ticker/price
+        // text down to nothing while the icons still fit; giving it its
+        // own row fixes that regardless of screen width.
+        val actionsRow = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val watchStore = OracleWatchlistStore(host.root.context)
         val watchTicker = r.ticker.trim().uppercase(Locale.US)
         var watchButtonRef: Button? = null
@@ -236,11 +243,11 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
             isClickable = true; isFocusable = true; contentDescription = "Compare ${watchTicker} with another ticker"
             setOnClickListener { showCompareDialog(host, watchTicker) }
         }
-        headline.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
-        headline.addView(labelledIcon(patternButton(host, watchTicker), "PATTERNS"), LinearLayout.LayoutParams(-2, -2))
-        top.addView(headline)
+        actionsRow.addView(labelledIcon(watchEye, "WATCH"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(host.dp(4), 0, host.dp(10), 0) })
+        actionsRow.addView(labelledIcon(compareIcon, "COMPARE"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
+        actionsRow.addView(labelledIcon(companyInfoButton(host, watchTicker), "INFO"), LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, host.dp(10), 0) })
+        actionsRow.addView(labelledIcon(patternButton(host, watchTicker), "PATTERNS"), LinearLayout.LayoutParams(-2, -2))
+        top.addView(actionsRow, LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, host.dp(10), 0, 0) })
         // Extended-hours line — shown only while it's actually live. Yahoo only
         // ever populates preMarketPrice during the pre-market window and
         // postMarketPrice during after-hours, so marketState here only picks
@@ -858,6 +865,10 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     isAllCaps = false
                     minHeight = 0
                     minimumHeight = 0
+                    minWidth = 0
+                    minimumWidth = 0
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                     contentDescription = "Open $ticker in Analysis"
                     setOnClickListener {
                         onWatchlistTickerClick(ticker)

@@ -16,7 +16,7 @@ object OracleLocalTimeline {
         actions: List<OracleAction>,
         alerts: List<OracleAlert>
     ): List<OracleTimelineItem> {
-        val h = history.map { OracleTimelineItem(it.timestamp,it.ticker,"HISTORY","Price ${it.price}","Value ${it.value} / P&L ${it.pnl}") }
+        val h = history.map { OracleTimelineItem(it.timestamp,it.ticker,"HISTORY","Price ${"%.2f".format(java.util.Locale.US, it.price)}","Value ${"%.2f".format(java.util.Locale.US, it.value)} / P&L ${"%.2f".format(java.util.Locale.US, it.pnl)}") }
         val a = actions.map { OracleTimelineItem(it.timestamp,it.ticker,"ACTION",it.action,it.reason,if(it.action=="SELL")"HIGH" else "INFO") }
         val al = alerts.map { OracleTimelineItem(it.timestamp,it.ticker,"ALERT",it.title,it.message,it.level) }
         return (h + a + al).sortedByDescending { it.timestamp }
