@@ -41,6 +41,12 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
      *  plain LED-tape readout, not tied to alerts at all. */
     private var marketPulseItems: List<Triple<String, String, Boolean>> = emptyList()
     fun setMarketPulse(items: List<Triple<String, String, Boolean>>) { marketPulseItems = items; postInvalidate() }
+    /** Set alongside setMarketPulse() whenever the data is a genuinely new
+     *  fetch (not just re-showing what was already cached) — drives a
+     *  brief "just updated" flash so a live refresh is actually visible,
+     *  not just silently swapped in. */
+    private var marketPulseUpdatedAtNanos: Long = 0L
+    fun markMarketPulseJustUpdated() { marketPulseUpdatedAtNanos = System.nanoTime(); postInvalidate() }
     /** Unread push-message count, shown as a badge on the new MESSAGES row. */
     private var unreadMessages: Int = 0
     fun setUnreadMessages(count: Int) { unreadMessages = count; postInvalidate() }
@@ -130,7 +136,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                 p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.CENTER;p.letterSpacing=.02f
                 c.drawText("No active alerts",cx,tickerY,p)
             } else {
-                val passSeconds = 11.0; val passes = 4; val pauseSeconds = 10.0
+                val passSeconds = 14.0; val passes = 4; val pauseSeconds = 10.0
                 val cycle = passes * passSeconds + pauseSeconds
                 val withinCycle = time % cycle
                 if (withinCycle < passes * passSeconds) {
@@ -157,6 +163,16 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         if (marketPulseItems.isNotEmpty()) {
             val pulseY = Y(if (wide) 766f else 1022f)
             val speed = 70f // px/sec, raw canvas pixels
+            if (marketPulseUpdatedAtNanos > 0L) {
+                val sinceUpdate = (System.nanoTime() - marketPulseUpdatedAtNanos) / 1_000_000_000.0
+                val flashDuration = 2.5
+                if (sinceUpdate in 0.0..flashDuration) {
+                    val flashAlpha = (255 * (1.0 - sinceUpdate / flashDuration)).toInt().coerceIn(0, 255)
+                    p.style=Paint.Style.FILL;p.color=Color.rgb(105,245,35);p.alpha=flashAlpha;p.textSize=S(9f)
+                    p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.1f
+                    c.drawText("\u25CF UPDATED",w-S(8f),pulseY-S(16f),p)
+                }
+            }
             p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
             val gap = "     "
             val segmentWidths = marketPulseItems.map { (ticker, value, _) -> p.measureText("$ticker $value$gap") }

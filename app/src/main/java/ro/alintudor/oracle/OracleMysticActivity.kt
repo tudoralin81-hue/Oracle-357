@@ -40,6 +40,39 @@ class OracleMysticActivity : Activity() {
     private lateinit var repository: OracleRepository
     private var currentModule: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var currentHeroView: OracleMysticStartView? = null
+    /** Refreshes the top-tickers tape more often while the market's open
+     *  (a live session is what "real time" means here — the server's own
+     *  scan is still only from the last close, so this can't outrun that,
+     *  but it does mean the app catches a fresh scan as soon as one lands)
+     *  and much less often once it's shut, since nothing on the server
+     *  would have changed anyway. A single stable Runnable instance (not
+     *  recreated each call) so removeCallbacks() in showHub()/openModule()
+     *  can actually find and cancel the one that's pending. */
+    private val tickerRefreshRunnable: Runnable = Runnable {
+        val hero = currentHeroView
+        if (hero != null) {
+            val marketOpen = runCatching { ro.alintudor.oracle.core.OracleMarketCalendar.status().open }.getOrDefault(false)
+            val maxAgeMs = if (marketOpen) 3L * 60L * 1000L else 30L * 60L * 1000L
+            if (ro.alintudor.oracle.core.OracleTopTickersCache.isStale(this, maxAgeMs)) {
+                Thread {
+                    ro.alintudor.oracle.core.OracleTopTickersCache.refresh(this)
+                    val refreshed = ro.alintudor.oracle.core.OracleTopTickersCache.cached(this)
+                    if (refreshed.isNotEmpty()) {
+                        runOnUiThread {
+                            if (!isFinishing && currentHeroView === hero) {
+                                hero.setMarketPulse(topTickersToDisplay(refreshed))
+                                hero.markMarketPulseJustUpdated()
+                            }
+                        }
+                    }
+                }.start()
+            }
+        }
+        mainHandler.postDelayed(tickerRefreshRunnable, 60_000L)
+    }
+    private fun topTickersToDisplay(items: List<ro.alintudor.oracle.core.OracleTopTickersCache.Item>) =
+        items.map { Triple(it.ticker, "\$${String.format(java.util.Locale.US, "%.2f", it.price)} USD", it.momentum5D >= 0.0) }
     private val titles = linkedMapOf("portfolio" to "PORTFOLIO", "alerts" to "ALERTS", "news" to "NEWS", "growth" to "GROWTH", "knowledge" to "KNOWLEDGE", "analysis" to "ANALYSIS", "watchlist" to "WATCHLIST", "journal" to "ACTIVITY JOURNAL")
 
     private val termsText = """
@@ -891,24 +924,19 @@ class OracleMysticActivity : Activity() {
             hero.setUrgentAlerts(urgent)
         }
         runCatching {
+            currentHeroView = hero
             val cachedTop = ro.alintudor.oracle.core.OracleTopTickersCache.cached(this)
-            hero.setMarketPulse(cachedTop.map { (ticker, score) -> Triple(ticker, score.toString(), score >= 50) })
-            if (ro.alintudor.oracle.core.OracleTopTickersCache.isStale(this)) {
-                Thread {
-                    ro.alintudor.oracle.core.OracleTopTickersCache.refresh(this)
-                    val refreshed = ro.alintudor.oracle.core.OracleTopTickersCache.cached(this)
-                    if (refreshed.isNotEmpty()) {
-                        runOnUiThread {
-                            if (!isFinishing) hero.setMarketPulse(refreshed.map { (ticker, score) -> Triple(ticker, score.toString(), score >= 50) })
-                        }
-                    }
-                }.start()
-            }
+            hero.setMarketPulse(topTickersToDisplay(cachedTop))
+            mainHandler.removeCallbacks(tickerRefreshRunnable)
+            mainHandler.post(tickerRefreshRunnable)
         }
         runCatching {
             hero.setUnreadMessages(ro.alintudor.oracle.core.OracleInboxStore(this).unreadCount())
         }
         checkServerConnectionSilently(hero)
+        runCatching {
+            if (ro.alintudor.oracle.core.OracleInboxStore(this).unreadCount() > 0) showMessagesDialog()
+        }
     }
 
     /** No-auth /ping, on a background thread — works identically whether or
@@ -1753,6 +1781,7 @@ class OracleMysticActivity : Activity() {
         if (key == "messages") { showMessagesDialog(); return }
         if (key == "backup") {
             if (ro.alintudor.oracle.core.OracleDemo.active(this)) { confirmExitDemo(); return }
+            mainHandler.removeCallbacks(tickerRefreshRunnable); currentHeroView = null
             currentModule = "backup"; showBackupScreen(); return
         }
         // A press on the refresh button re-enters this same function with the
@@ -1761,6 +1790,7 @@ class OracleMysticActivity : Activity() {
         // (with cached data) so it isn't blank while the background refresh runs.
         val isRefreshOfOpenScreen = currentModule == key
         currentModule = key
+        mainHandler.removeCallbacks(tickerRefreshRunnable); currentHeroView = null
         if (key == "alerts" && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 357)
