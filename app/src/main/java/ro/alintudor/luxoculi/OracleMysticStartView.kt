@@ -216,7 +216,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val brandX=X(if(wide)1250f else 705f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
 
-        val discY=brandY+S(32f)
+        val discY=brandY+S(32f)+S(if(demoActive) 0f else 32f)
         text(c,"DISCLAIMER",cx,discY,S(13f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
         p.textAlign=Paint.Align.CENTER;p.textSize=S(13f);p.letterSpacing=.18f
         val discWidth=p.measureText("DISCLAIMER")
