@@ -370,15 +370,7 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             card.addView(text("▣  ${if (source.isBlank()) "NEWS" else source}", 10f, Typeface.DEFAULT_BOLD, cyan, 0, 5))
             card.addView(text(newsTitle, 11f, Typeface.DEFAULT, white, 0, 4))
         }
-        val footer = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, 0) }
-        footer.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
-        // Small, deliberately unobtrusive provenance marker: which path
-        // actually produced this specific card — S(erver) or L(ocal
-        // fallback) — not a general Growth-screen banner, a per-card fact
-        // that stays true to how *this* recommendation was computed even
-        // if the overall mode changes later.
-        footer.addView(text(if (item.computedLocally) "L" else "S", 11f, Typeface.DEFAULT_BOLD, if (item.computedLocally) orange else cyan, 6, 0))
-        card.addView(footer)
+        card.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 8))
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
 
         // Entrance: fade + rise in, staggered per card so they don't all pop at
@@ -547,6 +539,15 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
                 identity.addView(text(item.sector.ifBlank { "—" }, 9f, Typeface.DEFAULT_BOLD, Color.rgb(150, 170, 205), 0, 2))
                 top.addView(identity, LinearLayout.LayoutParams(0, -2, 1f))
                 top.addView(text(item.horizon, 9f, Typeface.DEFAULT_BOLD, accent, 0, 0))
+                val srcColor = if (item.computedLocally) orange else cyan
+                top.addView(TextView(host.root.context).apply {
+                    text = if (item.computedLocally) "L" else "S"
+                    textSize = 8f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(srcColor)
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(6, 10, 20)); setStroke(host.dp(1), srcColor) }
+                }, LinearLayout.LayoutParams(host.dp(16), host.dp(16)).apply { setMargins(host.dp(6), 0, 0, 0) })
                 addView(top)
                 val demo = OracleDemo.active(host.root.context)
                 val details = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(5), 0, 0) }

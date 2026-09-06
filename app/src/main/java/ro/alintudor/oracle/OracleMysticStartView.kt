@@ -70,7 +70,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
     override fun onDraw(c:Canvas){
         super.onDraw(c); val w=width.toFloat(); val h=height.toFloat(); if(w<=0f||h<=0f)return
         if(introStartNanos==0L) introStartNanos=System.nanoTime()
-        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1120f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
+        val wide=w/h>1.18f; val dw=if(wide)1280f else 720f; val dh=if(wide)800f else 1170f; sx=w/dw; sy=h/dh; ox=0f; oy=0f
         p.style=Paint.Style.FILL;p.alpha=255;p.shader=LinearGradient(0f,0f,0f,h,Color.rgb(4,9,32),Color.rgb(2,4,14),Shader.TileMode.CLAMP);c.drawRect(0f,0f,w,h,p);p.shader=null
         val time=System.nanoTime()/1_000_000_000.0; val cx=X(dw*.5f); val eyeY=Y(if(wide)185f else 255f); val eyeR=S(if(wide)135f else 126f)
         eyeCx=cx; eyeCy=eyeY; eyeRadius=eyeR

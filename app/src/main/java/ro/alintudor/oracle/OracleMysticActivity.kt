@@ -1419,7 +1419,11 @@ class OracleMysticActivity : Activity() {
         openModule("analysis")
     }
 
+    private var lastBackHandledAtMs = 0L
     private fun handleBack() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackHandledAtMs < 400L) return
+        lastBackHandledAtMs = now
         when {
             currentModule != null -> showHub()
             currentNonModuleScreen == NonModuleScreen.ADMIN -> showBackupScreen()
