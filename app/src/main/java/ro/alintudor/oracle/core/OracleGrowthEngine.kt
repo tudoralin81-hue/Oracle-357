@@ -12,6 +12,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -50,7 +52,7 @@ object OracleGrowthEngine {
     /** Read-only progress used by the Growth loader UI. Never blocks. */
     fun growthProgress(): OracleGrowthProgress = progressState
 
-    private data class C(val ticker:String,val price:Double,val score:Int,val rsi:Double?,val mom5:Double,val mom20:Double,val vr:Double,val macdHist:Double?,val ichi:Boolean,val sma200:Double?,val sma50:Double?,val adx:Double?,val atrPct:Double,val components:Map<String,Double>,val forecast:Map<String,Double>,val risk:String,val allocation:Double,val news:Int)
+    private data class C(val ticker:String,val price:Double,val score:Int,val rsi:Double?,val mom5:Double,val mom20:Double,val vr:Double,val macdHist:Double?,val ichi:Boolean,val sma200:Double?,val sma50:Double?,val adx:Double?,val atrPct:Double,val components:Map<String,Double>,val forecast:Map<String,Double>,val risk:String,val allocation:Double,val news:Int,val hazard:Int=0)
 
     // V6.0 raw profiles, normalized at score time.
     // Order: News, Breakout, Trend, Momentum, Volume, S/R, Fundamentals,
@@ -112,7 +114,7 @@ object OracleGrowthEngine {
         put("t",c.ticker); put("p",c.price); put("s",c.score); c.rsi?.let{put("rsi",it)}
         put("m5",c.mom5); put("m20",c.mom20); put("vr",c.vr); c.macdHist?.let{put("mh",it)}
         put("ich",c.ichi); c.sma200?.let{put("s200",it)}; c.sma50?.let{put("s50",it)}; c.adx?.let{put("adx",it)}
-        put("atr",c.atrPct); put("risk",c.risk); put("alloc",c.allocation)
+        put("atr",c.atrPct); put("risk",c.risk); put("alloc",c.allocation); put("hz",c.hazard)
         put("comp",JSONObject().apply{ c.components.forEach{(k,v)->put(k,v)} })
         put("fc",JSONObject().apply{ c.forecast.forEach{(k,v)->put(k,v)} })
     }
@@ -129,7 +131,7 @@ object OracleGrowthEngine {
             if(o.has("mh")) o.optDouble("mh") else null,o.optBoolean("ich",false),
             if(o.has("s200")) o.optDouble("s200") else null,if(o.has("s50")) o.optDouble("s50") else null,
             if(o.has("adx")) o.optDouble("adx") else null,o.optDouble("atr",1.0),comp,map("fc"),
-            o.optString("risk","MEDIUM"),o.optDouble("alloc",1.0),0)
+            o.optString("risk","MEDIUM"),o.optDouble("alloc",1.0),0,o.optInt("hz",0))
     }
 
     private fun readScanCache(context: Context, anchor: Long):List<C>{
@@ -287,10 +289,46 @@ object OracleGrowthEngine {
      * engine would say later. Change the seed line to Random.nextInt if a
      * true per-run redraw is ever wanted.
      */
-    fun hazardFor(ticker:String, dayMillis:Long=System.currentTimeMillis()):Int{
-        val day=dayMillis/86_400_000L
-        val seed=(ticker.uppercase(Locale.US).hashCode().toLong()*31L+day)
-        return (kotlin.random.Random(seed).nextInt(7))-3
+    /** Error function approximation (Abramowitz & Stegun 7.1.26) — same one
+     *  the server uses (oracle_erf in PHP), since Kotlin/Java has no erf()
+     *  in the standard math library either. */
+    private fun erf(x: Double): Double {
+        val sign = if (x < 0) -1.0 else 1.0
+        val ax = abs(x)
+        val a1=0.254829592; val a2=-0.284496736; val a3=1.421413741; val a4=-1.453152027; val a5=1.061405429; val p=0.3275911
+        val t = 1.0 / (1.0 + p * ax)
+        val y = 1.0 - ((((a5*t+a4)*t+a3)*t+a2)*t+a1) * t * exp(-ax*ax)
+        return sign * y
+    }
+    private fun normalCdf(x: Double) = 0.5 * (1.0 + erf(x / sqrt(2.0)))
+
+    /** LO's real value \u2014 a closed-form GBM probability-of-positive-return
+     *  over a 5-day horizon from the ticker's own daily log-returns, exactly
+     *  mirroring the server's oracle_lo_from_volatility() (PHP), so Force
+     *  Local Mode and the true offline-server-down fallback show a genuine,
+     *  ticker-specific value instead of the old per-day random hash.
+     *  $close is newest-first, same convention evaluate() already uses.
+     *  Returns 0 (neutral) if there isn't enough history to estimate
+     *  drift/volatility safely. */
+    private fun hazardFromVolatility(close: List<Double>): Int {
+        val n = close.size
+        if (n < 30) return 0
+        val window = minOf(n - 1, 60)
+        val logReturns = ArrayList<Double>(window)
+        for (i in 0 until window) {
+            if (close[i] > 0 && close[i + 1] > 0) logReturns += ln(close[i] / close[i + 1])
+        }
+        if (logReturns.size < 20) return 0
+        val mu = logReturns.average()
+        val variance = logReturns.sumOf { (it - mu) * (it - mu) } / logReturns.size
+        val sigma = sqrt(variance)
+        if (sigma <= 0.0) return 0
+        val t = 5.0
+        val drift = (mu - variance / 2.0) * t
+        val z = drift / (sigma * sqrt(t))
+        val pUp = normalCdf(z)
+        val lo = Math.round((pUp - 0.5) * 6.0).toInt()
+        return lo.coerceIn(-3, 3)
     }
 
     /** SHORT technical base score (0..100) for any ticker from its daily candles —
@@ -596,7 +634,7 @@ object OracleGrowthEngine {
             val pick=ranked.firstOrNull{ it.ticker !in used && !(h!="LONG" && (earningsInDays[it.ticker] ?: 99) <= 7) }?:continue
             used+=pick.ticker
             val baseScore=horizonScore(pick.components,h,resolveSector(context,pick.ticker,fundamentals[pick.ticker]?.sector))
-            val hazard=hazardFor(pick.ticker)
+            val hazard=pick.hazard
             val score=(baseScore+hazard).coerceIn(0,100)
             val meta=byTicker[pick.ticker]
             val cachedTitle=meta?.newsTitle?.takeIf { it.isNotBlank() && !it.contains("Google News",true) && !it.contains(" when:",true) }
@@ -694,7 +732,7 @@ object OracleGrowthEngine {
         val base=horizonScore(comps,"SHORT",null)
         val f=mapOf("short" to min(30.0,max(0.0,((p+2*atr)/p-1)*100)),"medium" to min(45.0,max(0.0,((p+4.5*atr)/p-1)*100)),"long" to min(70.0,max(0.0,((p+8*atr)/p-1)*100)))
         val alloc=when{risk=="HIGH"->max(1.0,base*.04);risk=="MEDIUM"->max(1.0,base*.06);else->max(1.0,base*.08)}.coerceAtMost(8.0).let{ kotlin.math.round(it*10.0)/10.0 }
-        return C(t,p,base,rsi,m5,m20,vr,macd,ichi,s200,s50,adx,atrPct,comps,f,risk,alloc,0)
+        return C(t,p,base,rsi,m5,m20,vr,macd,ichi,s200,s50,adx,atrPct,comps,f,risk,alloc,0,hazardFromVolatility(close))
     }
 
     /** V5.9.7: sector correction is applied only to allocation, never to score.

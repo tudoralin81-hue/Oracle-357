@@ -134,8 +134,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             if (urgentAlertTexts.isEmpty()) {
                 val emptySpeed = 55f // px/sec, slower than the pulse row — this is a calm state, not something to watch
                 p.style=Paint.Style.FILL;p.color=Color.rgb(150,160,182);p.alpha=255;p.textSize=S(18f)
-                p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
-                val segment = "No active alerts          "
+                p.typeface=Typeface.DEFAULT;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
                 val segmentWidth = p.measureText(segment)
                 if (segmentWidth > 0f) {
                     val scrollX = (time.toFloat() * emptySpeed) % segmentWidth
@@ -156,7 +155,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                     val passProgress = (withinCycle % passSeconds) / passSeconds
                     val tickerText = "\u26A0 ALERT:  " + urgentAlertTexts.joinToString("    \u2022    ")
                     p.style=Paint.Style.FILL;p.color=Color.rgb(255,90,90);p.alpha=255;p.textSize=S(18f)
-                    p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+                    p.typeface=Typeface.DEFAULT;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
                     val textWidth=p.measureText(tickerText)
                     // Enters fully off-screen right, exits fully off-screen left —
                     // "in and out of view" rather than just sliding within bounds.
@@ -186,7 +185,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                     c.drawText("\u25CF UPDATED",w-S(8f),pulseY-S(16f),p)
                 }
             }
-            p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.MONOSPACE;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+            p.style=Paint.Style.FILL;p.textSize=S(18f);p.typeface=Typeface.DEFAULT;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
             val gap = "     "
             val segmentWidths = marketPulseItems.map { (ticker, value, _) -> p.measureText("$ticker $value$gap") }
             val totalWidth = segmentWidths.sum()
@@ -213,15 +212,16 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
             }
         }
         p.style=Paint.Style.FILL;p.color=gold;p.alpha=255;p.textSize=S(10f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.18f
-        val brandX=X(if(wide)1180f else 660f); val brandY=Y(if(wide)775f else 1090f)
+        val brandX=X(if(wide)1250f else 705f); val brandY=Y(if(wide)775f else 1090f)
         c.drawText("357AT2026",brandX,brandY,p)
 
-        text(c,"DISCLAIMER",cx,brandY,S(13f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
+        val discY=brandY+S(16f)
+        text(c,"DISCLAIMER",cx,discY,S(13f),Color.rgb(255,160,25),Typeface.DEFAULT,.18f,true)
         p.textAlign=Paint.Align.CENTER;p.textSize=S(13f);p.letterSpacing=.18f
         val discWidth=p.measureText("DISCLAIMER")
-        hit+=RectF(cx-discWidth/2f-S(14f),brandY-S(22f),cx+discWidth/2f+S(14f),brandY+S(12f)) to "disclaimer"
+        hit+=RectF(cx-discWidth/2f-S(14f),discY-S(22f),cx+discWidth/2f+S(14f),discY+S(12f)) to "disclaimer"
 
-        val alertsX=X(if(wide)100f else 60f)
+        val alertsX=X(if(wide)25f else 15f)
         val dotR=S(3.5f); val dotCx=alertsX+dotR; val dotCy=brandY-S(3f)
         val dotBlink=(140+115*((0.5+0.5*sin(time*2.4)).coerceIn(0.0,1.0))).toInt()
         p.style=Paint.Style.FILL;p.color=alertsStatusColor;p.alpha=dotBlink
