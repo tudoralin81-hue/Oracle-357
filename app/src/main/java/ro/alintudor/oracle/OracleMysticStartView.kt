@@ -92,7 +92,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         // permanent tag right under the brand, not just a per-module banner.
         val demoActive = ro.alintudor.oracle.core.OracleDemo.active(context)
         if (demoActive) {
-            val badgeY = Y(if (wide) 116f else 145f)
+            val badgeY = Y(if (wide) 138f else 178f)
             p.textSize = S(8f); p.typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD); p.textAlign = Paint.Align.CENTER; p.letterSpacing = .2f
             val badgeText = "DEMO"; val badgeW = p.measureText(badgeText)
             p.style = Paint.Style.FILL; p.color = Color.argb(60, 255, 160, 25)
