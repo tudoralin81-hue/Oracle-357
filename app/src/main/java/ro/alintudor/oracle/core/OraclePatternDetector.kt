@@ -172,7 +172,7 @@ object OraclePatternDetector {
         if (avgPrice <= 0.0) return null
         val hPct = slope(recentHighs) / avgPrice * 100.0
         val lPct = slope(recentLows) / avgPrice * 100.0
-        val flat = 0.15
+        val flat = 0.35
         val span = minOf(recentHighs.first().index, recentLows.first().index) to maxOf(recentHighs.last().index, recentLows.last().index)
         val allMarkers = (recentHighs + recentLows).sortedBy { it.index }.map { it.index to it.price }
         return when {
@@ -219,25 +219,36 @@ object OraclePatternDetector {
 
     // --- 7. Flag/Pennant — a sharp "pole" move followed by a tight consolidation ---
     private fun detectFlag(candles: List<OracleOhlcvPoint>): OracleChartPattern? {
-        val poleWindow = 8; val flagWindow = 7
-        val poleStart = candles.size - poleWindow - flagWindow
-        if (poleStart < 0) return null
-        val poleEndIndex = candles.size - flagWindow - 1
-        val poleBegin = candles[poleStart].close
-        val poleEnd = candles[poleEndIndex].close
-        if (poleBegin <= 0.0) return null
-        val poleMovePct = (poleEnd - poleBegin) / poleBegin * 100.0
-        if (kotlin.math.abs(poleMovePct) < 8.0) return null
-        val flagCandles = candles.takeLast(flagWindow)
-        val flagHighPoint = flagCandles.maxByOrNull { it.high }!!
-        val flagLowPoint = flagCandles.minByOrNull { it.low }!!
-        val flagRangePct = (flagHighPoint.high - flagLowPoint.low) / poleEnd * 100.0
-        if (flagRangePct > kotlin.math.abs(poleMovePct) * 0.5) return null
-        val bullish = poleMovePct > 0
-        val flagHighIdx = candles.indexOf(flagHighPoint); val flagLowIdx = candles.indexOf(flagLowPoint)
-        return OracleChartPattern(if (bullish) "FLAG_BULLISH" else "FLAG_BEARISH", if (bullish) "Bull Flag" else "Bear Flag", bullish,
-            poleStart, candles.size - 1,
-            "Sharp %.1f%% move, then a tight %.1f%% consolidation — a %s continuation setup if it breaks the same direction.".format(poleMovePct, flagRangePct, if (bullish) "bullish" else "bearish"),
-            listOf(poleStart to poleBegin, poleEndIndex to poleEnd, flagHighIdx to flagHighPoint.high, flagLowIdx to flagLowPoint.low).sortedBy { it.first })
+        // A real flag doesn't land on one exact candle count, so try a small
+        // range of pole/flag window sizes and keep the tightest (most
+        // convincing) match rather than requiring one rigid shape.
+        var best: OracleChartPattern? = null
+        var bestRatio = Double.MAX_VALUE
+        for (poleWindow in 5..12) {
+            for (flagWindow in 4..10) {
+                val poleStart = candles.size - poleWindow - flagWindow
+                if (poleStart < 0) continue
+                val poleEndIndex = candles.size - flagWindow - 1
+                val poleBegin = candles[poleStart].close
+                val poleEnd = candles[poleEndIndex].close
+                if (poleBegin <= 0.0) continue
+                val poleMovePct = (poleEnd - poleBegin) / poleBegin * 100.0
+                if (kotlin.math.abs(poleMovePct) < 8.0) continue
+                val flagCandles = candles.takeLast(flagWindow)
+                val flagHighPoint = flagCandles.maxByOrNull { it.high }!!
+                val flagLowPoint = flagCandles.minByOrNull { it.low }!!
+                val flagRangePct = (flagHighPoint.high - flagLowPoint.low) / poleEnd * 100.0
+                val ratio = flagRangePct / kotlin.math.abs(poleMovePct)
+                if (ratio > 0.5 || ratio >= bestRatio) continue
+                bestRatio = ratio
+                val bullish = poleMovePct > 0
+                val flagHighIdx = candles.indexOf(flagHighPoint); val flagLowIdx = candles.indexOf(flagLowPoint)
+                best = OracleChartPattern(if (bullish) "FLAG_BULLISH" else "FLAG_BEARISH", if (bullish) "Bull Flag" else "Bear Flag", bullish,
+                    poleStart, candles.size - 1,
+                    "Sharp %.1f%% move, then a tight %.1f%% consolidation — a %s continuation setup if it breaks the same direction.".format(poleMovePct, flagRangePct, if (bullish) "bullish" else "bearish"),
+                    listOf(poleStart to poleBegin, poleEndIndex to poleEnd, flagHighIdx to flagHighPoint.high, flagLowIdx to flagLowPoint.low).sortedBy { it.first })
+            }
+        }
+        return best
     }
 }
