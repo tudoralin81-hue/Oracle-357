@@ -1113,7 +1113,7 @@ class OracleMysticActivity : Activity() {
      *  same rule as every other journal — with the hidden performance
      *  check against the +10% / 1\u20133-day target. */
     private fun showUltraShortDialog() {
-        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195)
+        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195); val gold = Color.rgb(255, 205, 55)
         val store = ro.alintudor.oracle.core.OracleUltraShortJournalStore(this)
         val entries = store.load()
         val (hits, settled, rate) = store.stats()
