@@ -865,8 +865,6 @@ class OracleSimpleModule(private val host: OracleNativeModule, private val modul
                     isAllCaps = false
                     minHeight = 0
                     minimumHeight = 0
-                    minWidth = 0
-                    minimumWidth = 0
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     contentDescription = "Open $ticker in Analysis"
