@@ -32,16 +32,16 @@ object OracleFactorGrid {
     private fun label(host: OracleNativeModule, value: String, size: Float, face: Typeface, color: Int, bottom: Int): TextView =
         TextView(host.root.context).apply { text = value; textSize = size; typeface = face; setTextColor(color); setPadding(0, 0, 0, host.dp(bottom)) }
 
-    fun add(host: OracleNativeModule, parent: LinearLayout, title: String, values: List<Int>, maxValue: Int, silent: Boolean = false) {
+    fun add(host: OracleNativeModule, parent: LinearLayout, title: String, values: List<Int>, maxValue: Int, lo: Int, silent: Boolean = false) {
         if (values.isEmpty()) return
         parent.addView(label(host, title, 10f, Typeface.DEFAULT_BOLD, white, 5))
         val safeMax = maxValue.coerceAtLeast(1)
         val grid = LinearLayout(host.root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, host.dp(2), 0, host.dp(1)) }
         val columns = 6
-        // LO (Lucky Oracle) is one more cell after the factors. It is not a
-        // factor value or weight but the random nudge on the final score, so it
-        // gets a constant rendering that shows it is in play without
-        // disclosing the draw (see loCell).
+        // LO is one more cell after the 17 factors — a real, per-ticker
+        // \u00b13 adjustment now (volatility-derived, see oracle_lo_from_volatility
+        // server-side), not a random draw, so its bar reflects the actual
+        // value like every other cell here instead of a fixed animation.
         val cellCount = values.size + 1
         val rows = (cellCount + columns - 1) / columns
         for (r in 0 until rows) {
@@ -56,7 +56,7 @@ object OracleFactorGrid {
                     }
                     i == values.size -> {
                         cell.addView(label(host, "LO", 8f, Typeface.DEFAULT, muted, 0))
-                        loCell(host, cell, silent)
+                        loCell(host, cell, lo, silent)
                     }
                 }
                 row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
@@ -146,8 +146,9 @@ object OracleFactorGrid {
      *  showing the random nudge is in play, never its value or sign. Same
      *  accelerating sweep as every other cell, in LO's own purple tones,
      *  settling on the fixed centre-lit band. */
-    private fun loCell(host: OracleNativeModule, parent: LinearLayout, silent: Boolean = false) {
+    private fun loCell(host: OracleNativeModule, parent: LinearLayout, lo: Int, silent: Boolean = false) {
         val loColor = Color.rgb(190, 150, 255)
+        val filledSegments = kotlin.math.round((lo.coerceIn(-3, 3) + 3) * 5.0 / 6.0).toInt().coerceIn(0, 5)
         val bar = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(3), 0, 0) }
         val segments = (0 until 5).map {
             View(host.root.context).also { v -> bar.addView(v, LinearLayout.LayoutParams(host.dp(7), host.dp(6)).apply { setMargins(host.dp(1), 0, host.dp(1), 0) }) }
@@ -160,9 +161,9 @@ object OracleFactorGrid {
             onStep = { step -> segments.forEachIndexed { i, seg -> if (i < step) paintOn(seg) else paintOff(seg) } },
             onSettle = {
                 segments.forEachIndexed { i, seg ->
-                    val centre = i == 2
-                    seg.background = OracleNativeModule.rounded(if (centre) loColor else Color.rgb(58, 48, 82), host.dp(1), loColor, if (centre) 0 else host.dp(1))
-                    seg.alpha = if (centre) 0.95f else 0.55f
+                    val lit = i < filledSegments
+                    seg.background = OracleNativeModule.rounded(if (lit) loColor else Color.rgb(58, 48, 82), host.dp(1), loColor, if (lit) 0 else host.dp(1))
+                    seg.alpha = if (lit) 0.95f else 0.55f
                 }
             }
         )
