@@ -83,12 +83,25 @@ object OracleTickerScoreCache {
     fun refresh(c: Context, tickers: Collection<String>, maxFetches: Int = 10) {
         var fetches = 0
         val fresh = ArrayList<OracleTickerScore>()
+        val token = runCatching { OracleAuthStore(c).token() }.getOrNull()?.takeIf { it.isNotBlank() && !OracleDemo.active(c) }
         for (t in tickers.map { it.trim().uppercase(Locale.US) }.filter { it.isNotBlank() }.distinct()) {
             if (!isStale(c, t)) continue
             if (fetches >= maxFetches) break
             fetches++
-            val candles = runCatching { OracleMarketData.fetchDaily(t, "1y") }.getOrDefault(emptyList())
-            fromCandles(t, candles)?.let { fresh += it }
+            val fromServer = token?.let { tok ->
+                runCatching {
+                    val response = OracleApiClient.getUniverseScan(tok, t).getOrNull() ?: return@runCatching null
+                    val item = response.optJSONArray("items")?.let { arr -> (0 until arr.length()).map { arr.optJSONObject(it) }.firstOrNull() } ?: return@runCatching null
+                    val score = item.optInt("baseScore", -1).takeIf { it in 0..100 } ?: return@runCatching null
+                    val price = item.optDouble("price", 0.0).takeIf { it > 0.0 } ?: return@runCatching null
+                    OracleTickerScore(t, score, OracleGrowthEngine.ratingFor(score), price, System.currentTimeMillis())
+                }.getOrNull()
+            }
+            val scored = fromServer ?: run {
+                val candles = runCatching { OracleMarketData.fetchDaily(t, "1y") }.getOrDefault(emptyList())
+                fromCandles(t, candles)
+            }
+            scored?.let { fresh += it }
         }
         put(c, fresh)
     }

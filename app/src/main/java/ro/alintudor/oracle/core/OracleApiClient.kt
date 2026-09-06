@@ -106,6 +106,16 @@ object OracleApiClient {
         readResponse(connection("/growth-picks", "GET", token))
     }
 
+    /** Stage 1: one ticker's server-side scan for today's anchor, if it's in
+     *  the server's ~954-ticker universe and already scanned. Used by
+     *  Watchlist so a saved ticker inside that universe gets scored for
+     *  free from the server's existing work, instead of the phone fetching
+     *  a year of its own candles and recomputing — falls back to that local
+     *  path only for tickers outside the universe or not yet scanned. */
+    fun getUniverseScan(token: String, ticker: String): Result<JSONObject> = runCatching {
+        readResponse(connection("/universe-scan?ticker=${java.net.URLEncoder.encode(ticker, "UTF-8")}", "GET", token))
+    }
+
     fun saveData(token: String, type: String, payload: String): Result<Unit> = runCatching {
         val connection = connection("/data/$type", "POST", token)
         connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
