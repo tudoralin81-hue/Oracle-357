@@ -135,6 +135,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
                 val emptySpeed = 55f // px/sec, slower than the pulse row — this is a calm state, not something to watch
                 p.style=Paint.Style.FILL;p.color=Color.rgb(150,160,182);p.alpha=255;p.textSize=S(18f)
                 p.typeface=Typeface.DEFAULT;p.textAlign=Paint.Align.LEFT;p.letterSpacing=.02f
+                val segment = "No active alerts          "
                 val segmentWidth = p.measureText(segment)
                 if (segmentWidth > 0f) {
                     val scrollX = (time.toFloat() * emptySpeed) % segmentWidth
