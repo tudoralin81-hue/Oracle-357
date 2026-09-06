@@ -478,7 +478,7 @@ class OracleMysticActivity : Activity() {
             setOnClickListener {
                 val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Oracle backup code", code))
-                Toast.makeText(this, "Copied.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@OracleMysticActivity, "Copied.", Toast.LENGTH_SHORT).show()
             }
         })
         card.addView(TextView(this).apply {
