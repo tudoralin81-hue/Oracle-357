@@ -891,11 +891,19 @@ class OracleMysticActivity : Activity() {
             hero.setUrgentAlerts(urgent)
         }
         runCatching {
-            val pulse = ro.alintudor.oracle.core.OracleTickerScoreCache.all(this).values
-                .sortedByDescending { it.score }
-                .take(30)
-                .map { Triple(it.ticker, it.score.toString(), it.score >= 50) }
-            hero.setMarketPulse(pulse)
+            val cachedTop = ro.alintudor.oracle.core.OracleTopTickersCache.cached(this)
+            hero.setMarketPulse(cachedTop.map { (ticker, score) -> Triple(ticker, score.toString(), score >= 50) })
+            if (ro.alintudor.oracle.core.OracleTopTickersCache.isStale(this)) {
+                Thread {
+                    ro.alintudor.oracle.core.OracleTopTickersCache.refresh(this)
+                    val refreshed = ro.alintudor.oracle.core.OracleTopTickersCache.cached(this)
+                    if (refreshed.isNotEmpty()) {
+                        runOnUiThread {
+                            if (!isFinishing) hero.setMarketPulse(refreshed.map { (ticker, score) -> Triple(ticker, score.toString(), score >= 50) })
+                        }
+                    }
+                }.start()
+            }
         }
         runCatching {
             hero.setUnreadMessages(ro.alintudor.oracle.core.OracleInboxStore(this).unreadCount())

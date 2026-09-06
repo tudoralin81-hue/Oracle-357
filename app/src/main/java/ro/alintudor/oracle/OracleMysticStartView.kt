@@ -115,12 +115,12 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         val introScale=if(introElapsed<introDuration){val t=(introElapsed/introDuration).toFloat();1f+0.65f*(1f-t)*(1f-t)}else 1f
         text(c,"SEE MORE.  KNOW FIRST.",cx,Y(if(wide)330f else 430f),S(15f)*introScale,white,Typeface.DEFAULT,.25f,true)
         line(c,X(if(wide)385f else 220f),Y(if(wide)348f else 449f),X(if(wide)895f else 500f),Y(if(wide)348f else 449f),gold,125,.7f); diamond(c,cx,Y(if(wide)348f else 449f),S(4f),gold)
-        hit.clear(); if(wide)drawCards(c,101f,420f,250f,125f,26f,time,true) else drawCards(c,10f,680f,165f,132f,13f,time,false)
+        hit.clear(); if(wide)drawCards(c,101f,405f,250f,125f,26f,time,true) else drawCards(c,10f,655f,165f,132f,13f,time,false)
         // Shared background band under both ticker rows — reads as one
         // "ticker board" rather than text floating loose on the starfield.
         run {
             val bandTop = Y(if (wide) 724f else 973f); val bandBottom = Y(if (wide) 780f else 1036f)
-            p.style=Paint.Style.FILL;p.color=Color.argb(14,210,214,222)
+            p.style=Paint.Style.FILL;p.color=Color.argb(7,210,214,222)
             c.drawRect(0f, bandTop, w, bandBottom, p)
         }
         run {

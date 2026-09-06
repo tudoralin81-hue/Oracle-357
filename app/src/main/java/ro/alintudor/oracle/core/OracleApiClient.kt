@@ -124,6 +124,15 @@ object OracleApiClient {
         readResponse(connection("/universe-scan?ticker=${java.net.URLEncoder.encode(ticker, "UTF-8")}", "GET", token))
     }
 
+    /** Same endpoint, no ticker filter — the server returns every ticker it
+     *  scanned today (its whole ~954-name universe), not just ones this
+     *  account has personally looked at. Used for the START screen's
+     *  top-30-by-score ticker tape, which is deliberately supposed to have
+     *  no relationship to this user's own Watchlist/Portfolio/Alerts. */
+    fun getFullUniverseScan(token: String): Result<JSONObject> = runCatching {
+        readResponse(connection("/universe-scan", "GET", token))
+    }
+
     fun saveData(token: String, type: String, payload: String): Result<Unit> = runCatching {
         val connection = connection("/data/$type", "POST", token)
         connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
