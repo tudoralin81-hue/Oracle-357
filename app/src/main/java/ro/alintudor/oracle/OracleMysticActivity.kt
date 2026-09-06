@@ -1107,6 +1107,84 @@ class OracleMysticActivity : Activity() {
      *  them in a scrollable dialog with an Approve/Revoke action per row —
      *  the same list and the same two actions the WordPress admin "Oracle
      *  Users" page already has, just reachable without leaving the app. */
+    /** Owner-only, experimental. Shows today's UltraShort pick (if the
+     *  private ULTRA_SHORT weights found one that beats the real SHORT
+     *  pick) with its full argumentation, then the journal — newest-first,
+     *  same rule as every other journal — with the hidden performance
+     *  check against the +10% / 1\u20133-day target. */
+    private fun showUltraShortDialog() {
+        val panel = Color.rgb(7, 14, 28); val muted = Color.rgb(165, 174, 195)
+        val store = ro.alintudor.oracle.core.OracleUltraShortJournalStore(this)
+        val entries = store.load()
+        val (hits, settled, rate) = store.stats()
+        val scroll = ScrollView(this).apply { setBackgroundColor(panel) }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)) }
+
+        list.addView(TextView(this).apply {
+            text = if (settled > 0) "TRACK RECORD: $hits of $settled hit +10% \u2014 ${String.format("%.0f", rate)}%"
+                   else "TRACK RECORD: no settled entries yet"
+            textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(gold); setPadding(0, 0, 0, dp(14))
+        })
+
+        val today = entries.firstOrNull { android.text.format.DateUtils.isToday(it.recommendedAt) }
+        if (today != null) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 90, 90)) }
+            }
+            card.addView(TextView(this).apply { text = "TODAY \u2014 ${today.ticker}"; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
+            card.addView(TextView(this).apply {
+                text = "Score ${today.score}/100 vs SHORT's ${today.shortScoreBeaten}/100 \u2014 entry \$${String.format("%.2f", today.entryPrice)}"
+                textSize = 12f; setTextColor(muted); setPadding(0, dp(4), 0, dp(10))
+            })
+            if (today.patterns.isNotEmpty()) {
+                card.addView(TextView(this).apply { text = "CHART PATTERNS"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(gold); letterSpacing = 0.1f })
+                today.patterns.forEach { pat ->
+                    card.addView(TextView(this).apply { text = "\u2022 $pat"; textSize = 11f; setTextColor(Color.rgb(210, 216, 230)); setPadding(0, dp(2), 0, 0) })
+                }
+                card.addView(android.view.View(this), LinearLayout.LayoutParams(-1, dp(10)))
+            }
+            card.addView(TextView(this).apply { text = "17 FACTOR COMPONENTS"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD; setTextColor(gold); letterSpacing = 0.1f })
+            val names = ro.alintudor.oracle.nativeui.OracleFactorGrid.NAMES
+            today.components.entries.toList().forEachIndexed { i, (_, v) ->
+                card.addView(TextView(this).apply {
+                    text = "${names.getOrElse(i) { "?" }}: ${v.toInt()}"; textSize = 10.5f; setTextColor(Color.rgb(200, 208, 222)); setPadding(0, dp(1), 0, 0)
+                })
+            }
+            list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        } else {
+            list.addView(TextView(this).apply {
+                text = "Nothing today \u2014 either no ULTRA_SHORT weights loaded, or nothing beat the real SHORT pick."
+                textSize = 12f; setTextColor(muted); setPadding(0, 0, 0, dp(16))
+            })
+        }
+
+        if (entries.isNotEmpty()) {
+            list.addView(TextView(this).apply { text = "HISTORY \u2022 ${entries.size}"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(muted); letterSpacing = 0.1f; setPadding(0, 0, 0, dp(8)) })
+            entries.forEach { e ->
+                val statusColor = when (e.targetHit) { true -> Color.rgb(105, 245, 35); false -> Color.rgb(255, 90, 90); null -> Color.rgb(255, 205, 55) }
+                val statusText = when (e.targetHit) { true -> "HIT"; false -> "MISS"; null -> "WATCHING" }
+                val latestPrice = e.day3Price ?: e.day1Price
+                val returnText = latestPrice?.let { " \u2014 ${String.format("%+.1f", (it / e.entryPrice - 1.0) * 100.0)}%" } ?: ""
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8))
+                    background = GradientDrawable().apply { setColor(Color.rgb(6, 10, 20)); cornerRadius = dp(9).toFloat(); setStroke(dp(1), statusColor) }
+                }
+                val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                top.addView(TextView(this).apply { text = "${e.ticker}  \u00b7  ${e.score}/100$returnText"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(0, -2, 1f))
+                top.addView(TextView(this).apply { text = statusText; textSize = 9f; typeface = Typeface.DEFAULT_BOLD; setTextColor(statusColor) })
+                row.addView(top)
+                row.addView(TextView(this).apply {
+                    text = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(e.recommendedAt))
+                    textSize = 10f; setTextColor(muted); setPadding(0, dp(2), 0, 0)
+                })
+                list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            }
+        }
+        scroll.addView(list)
+        android.app.AlertDialog.Builder(this).setTitle("UltraShort").setView(scroll).setPositiveButton("Close", null).show()
+    }
+
     private fun showUserManagementDialog() {
         val token = OracleAuthStore(this).token()
         if (token.isBlank()) { Toast.makeText(this, "Not logged in.", Toast.LENGTH_SHORT).show(); return }
@@ -1495,6 +1573,17 @@ class OracleMysticActivity : Activity() {
             textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
         })
         card.addView(toolButton("CHANGE PIN", Color.rgb(255, 170, 40)) { showChangePinDialog() }, LinearLayout.LayoutParams(-1, -2))
+
+        // --- UltraShort: experimental, owner-only ------------------------------
+        card.addView(TextView(this).apply {
+            text = "ULTRASHORT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
+        })
+        card.addView(TextView(this).apply {
+            text = "Experimental. Only ever appears when today's scan finds something that beats the real SHORT pick under your private ULTRA_SHORT weights — target: +10% within 1\u20133 trading days."
+            textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+        })
+        card.addView(toolButton("VIEW ULTRASHORT", Color.rgb(255, 90, 90)) { showUltraShortDialog() }, LinearLayout.LayoutParams(-1, -2))
 
         card.addView(TextView(this).apply {
             text = "\u2190 Back to Tools"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(28), 0, 0)

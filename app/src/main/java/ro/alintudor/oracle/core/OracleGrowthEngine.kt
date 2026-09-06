@@ -156,6 +156,44 @@ object OracleGrowthEngine {
     fun hasFreshFullScan(context: Context):Boolean =
         readScanCache(context, OracleMarketCalendar.growthAnchor(System.currentTimeMillis())).size >= 200
 
+    // -----------------------------------------------------------------
+    // ULTRASHORT — owner-only, experimental. Scans the SAME cached
+    // candidates today's real SHORT pick came from, but weighted by a
+    // separate "ULTRA_SHORT" profile the owner adds to their own private
+    // GrowthLocal-emergency.json — never shipped in the app, exactly like
+    // SHORT/MEDIUM/LONG. Absent that file, this is entirely inert: no
+    // computation runs, nothing is stored, nothing is shown. Deliberately
+    // does NOT lower the bar for what counts as a signal — it only ever
+    // surfaces a candidate that scores HIGHER than today's actual SHORT
+    // pick under this profile, on the same real components every other
+    // horizon is scored from.
+    // -----------------------------------------------------------------
+    data class UltraShortResult(
+        val ticker: String, val price: Double, val score: Int, val shortScore: Int,
+        val components: Map<String, Double>, val computedAt: Long
+    )
+
+    fun computeUltraShort(context: Context, todayShortTicker: String, todayShortScore: Int): UltraShortResult? {
+        val weights = OracleGrowthEmergency.activeWeights("ULTRA_SHORT", null) ?: return null
+        if (weights.size != keys.size) return null
+        val anchor = OracleMarketCalendar.growthAnchor(System.currentTimeMillis())
+        val candidates = readScanCache(context, anchor)
+        if (candidates.isEmpty()) return null
+        val total = weights.sum().takeIf { it > 0 } ?: return null
+        var best: C? = null; var bestScore = -1
+        for (c in candidates) {
+            if (c.ticker == todayShortTicker) continue // the comparison itself, not a candidate against itself
+            var raw = 0.0
+            for ((i, k) in keys.withIndex()) raw += (c.components[k] ?: 50.0) * weights[i]
+            var score = Math.round(raw / total).toInt().coerceIn(0, 100)
+            score = if (score >= 97) score - 3 else if (score >= 92) score - 1 else score
+            if (score > bestScore) { bestScore = score; best = c }
+        }
+        val winner = best ?: return null
+        if (bestScore <= todayShortScore) return null
+        return UltraShortResult(winner.ticker, winner.price, bestScore, todayShortScore, winner.components, System.currentTimeMillis())
+    }
+
     /**
      * Scans the ENTIRE universe and caches every candidate. Background only —
      * takes minutes, must never be called on the UI thread. Results are written

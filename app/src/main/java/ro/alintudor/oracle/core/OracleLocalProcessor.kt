@@ -63,6 +63,31 @@ object OracleLocalProcessor {
             repository.saveGrowth(growth)
             OracleGrowthLog.log(repository.context, "FREEZE", "New snapshot saved and frozen for this trading day: ${growth.joinToString(", ") { "${it.horizon}=${it.ticker} ${it.score}" }}")
             runCatching { ro.alintudor.oracle.widget.OracleGrowthWidgetProvider.updateAll(repository.context) }
+            // Owner-only, entirely inert for everyone else (no ULTRA_SHORT
+            // weights loaded = computeUltraShort() returns null immediately).
+            if (OracleAdminAccess.isOwnerAccount(repository.context)) {
+                runCatching {
+                    val short = growth.firstOrNull { it.horizon == "SHORT" }
+                    if (short != null) {
+                        val result = OracleGrowthEngine.computeUltraShort(repository.context, short.ticker, short.score)
+                        if (result != null) {
+                            val candles = runCatching { OracleMarketData.fetchDaily(result.ticker, "6mo") }.getOrDefault(emptyList())
+                            val patterns = runCatching { OraclePatternDetector.detect(candles).map { it.label } }.getOrDefault(emptyList())
+                            OracleUltraShortJournalStore(repository.context).record(
+                                OracleUltraShortEntry(
+                                    ticker = result.ticker, entryPrice = result.price, score = result.score,
+                                    shortScoreBeaten = result.shortScore, components = result.components,
+                                    patterns = patterns, recommendedAt = result.computedAt
+                                )
+                            )
+                            OracleGrowthLog.log(repository.context, "ULTRASHORT", "${result.ticker} scored ${result.score} vs SHORT's ${result.shortScore} \u2014 recorded")
+                        }
+                    }
+                    OracleUltraShortJournalStore(repository.context).updateMonitoring { ticker ->
+                        runCatching { OracleMarketData.fetchDaily(ticker, "5d").lastOrNull()?.close }.getOrNull()
+                    }
+                }.onFailure { OracleGrowthLog.log(repository.context, "ULTRASHORT", "computation failed: ${it.javaClass.simpleName}: ${it.message}") }
+            }
             growth
         }
 

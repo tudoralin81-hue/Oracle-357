@@ -106,7 +106,12 @@ object OracleGrowthEmergency {
      *  nothing already loaded is disturbed. */
     fun importFrom(context: Context, text: String): String? {
         val parsed = runCatching { parse(text) }.getOrNull() ?: return null
-        if (parsed.horizonWeights.keys != setOf("SHORT", "MEDIUM", "LONG")) return null
+        // ULTRA_SHORT is optional — a file with just the required three is
+        // still valid, exactly as before. Only reject a truly wrong shape:
+        // missing one of the three required horizons, or an unrecognized key.
+        val requiredKeys = setOf("SHORT", "MEDIUM", "LONG")
+        if (!parsed.horizonWeights.keys.containsAll(requiredKeys)) return null
+        if (!(parsed.horizonWeights.keys - requiredKeys).all { it == "ULTRA_SHORT" }) return null
         if (parsed.horizonWeights.values.any { it.size != parsed.factorKeys.size }) return null
         val stamped = parsed.copy(loadedAt = System.currentTimeMillis())
         cached = stamped
@@ -133,7 +138,8 @@ object OracleGrowthEmergency {
         val factorKeys = root.getJSONArray("factorKeys").toStringList()
         val weightsObj = root.getJSONObject("horizonWeights")
         val horizonWeights = mutableMapOf<String, IntArray>()
-        for (h in listOf("SHORT", "MEDIUM", "LONG")) {
+        for (h in listOf("SHORT", "MEDIUM", "LONG", "ULTRA_SHORT")) {
+            if (!weightsObj.has(h)) continue
             val arr = weightsObj.getJSONArray(h)
             horizonWeights[h] = IntArray(arr.length()) { arr.getInt(it) }
         }
