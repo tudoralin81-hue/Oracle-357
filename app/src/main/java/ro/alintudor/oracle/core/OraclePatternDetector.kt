@@ -132,7 +132,7 @@ object OraclePatternDetector {
         for (i in 0 until recent.size - 2) {
             val ls = recent[i]; val head = recent[i + 1]; val rs = recent[i + 2]
             if (head.price <= ls.price * 1.02 || head.price <= rs.price * 1.02) continue
-            if (pctDiff(ls.price, rs.price) > 6.0) continue
+            if (pctDiff(ls.price, rs.price) > 3.0) continue
             val necklinePts = lows.filter { it.index in ls.index..rs.index }
             if (necklinePts.size < 2 || pctDiff(necklinePts.minOf { it.price }, necklinePts.maxOf { it.price }) > 5.0) continue
             if (candles.size - 1 - rs.index > 15) continue
@@ -151,7 +151,7 @@ object OraclePatternDetector {
         for (i in 0 until recent.size - 2) {
             val ls = recent[i]; val head = recent[i + 1]; val rs = recent[i + 2]
             if (head.price >= ls.price * 0.98 || head.price >= rs.price * 0.98) continue
-            if (pctDiff(ls.price, rs.price) > 6.0) continue
+            if (pctDiff(ls.price, rs.price) > 3.0) continue
             val necklinePts = highs.filter { it.index in ls.index..rs.index }
             if (necklinePts.size < 2 || pctDiff(necklinePts.minOf { it.price }, necklinePts.maxOf { it.price }) > 5.0) continue
             if (candles.size - 1 - rs.index > 15) continue
