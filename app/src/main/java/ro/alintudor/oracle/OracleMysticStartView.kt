@@ -120,7 +120,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         // "ticker board" rather than text floating loose on the starfield.
         run {
             val bandTop = Y(if (wide) 724f else 973f); val bandBottom = Y(if (wide) 780f else 1036f)
-            p.style=Paint.Style.FILL;p.color=Color.argb(38,210,214,222)
+            p.style=Paint.Style.FILL;p.color=Color.argb(14,210,214,222)
             c.drawRect(0f, bandTop, w, bandBottom, p)
         }
         run {
@@ -213,7 +213,7 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         // in demo (no account, nothing could ever have arrived).
         if (!demoActive) {
             p.color=if(unreadMessages>0) Color.rgb(255,205,45) else Color.rgb(150,160,182);p.textSize=S(14f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.14f
-            val messagesLabel=if(unreadMessages>0) "\u2709\uFE0F  MESSAGES ($unreadMessages)" else "\u2709\uFE0F  MESSAGES"
+            val messagesLabel=if(unreadMessages>0) "\u2709  MESSAGES ($unreadMessages)" else "\u2709  MESSAGES"
             c.drawText(messagesLabel,brandX,toolsY,p)
             val messagesWidth=p.measureText(messagesLabel)
             hit+=RectF(brandX-messagesWidth-S(10f),toolsY-S(20f),brandX+S(10f),toolsY+S(14f)) to "messages"
