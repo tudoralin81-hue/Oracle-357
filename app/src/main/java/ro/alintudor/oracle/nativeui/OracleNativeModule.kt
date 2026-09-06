@@ -90,7 +90,7 @@ class OracleNativeModule(
         // App icon next to the build number — the same mark the login/boot
         // screens use, small enough here to just anchor the version line.
         val buildRow = LinearLayout(context).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
-        buildRow.addView(ImageView(context).apply { setImageResource(ro.alintudor.oracle.R.drawable.ic_oracle); scaleType=ImageView.ScaleType.CENTER_INSIDE }, LinearLayout.LayoutParams(dp(17),dp(17)).apply{ setMargins(0,0,dp(5),0) })
+        buildRow.addView(ImageView(context).apply { setImageResource(ro.alintudor.oracle.R.drawable.ic_oracle); scaleType=ImageView.ScaleType.CENTER_INSIDE }, LinearLayout.LayoutParams(dp(17),dp(17)).apply{ setMargins(0,dp(3),dp(5),0) })
         buildRow.addView(TextView(context).apply { text=ro.alintudor.oracle.core.OracleBuildInfo.label(title);textSize=10f;typeface=Typeface.DEFAULT_BOLD;letterSpacing=.10f;setTextColor(Color.rgb(25,205,255));gravity=Gravity.CENTER;includeFontPadding=true })
         center.addView(buildRow)
         header.addView(center,LinearLayout.LayoutParams(0,dp(76),1f))

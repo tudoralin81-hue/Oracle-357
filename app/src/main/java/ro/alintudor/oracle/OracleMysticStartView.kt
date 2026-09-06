@@ -119,14 +119,19 @@ class OracleMysticStartView(context: Context, private val onModule: (String) -> 
         p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
         c.drawText(serverStatusText,serverDotCx+dotR+S(6f),brandY,p)
 
-        val toolsY=brandY+S(30f)
+        val toolsY=brandY+S(32f)
+        val modulesDotCx=alertsX+dotR; val modulesDotCy=toolsY-S(3f)
+        p.style=Paint.Style.FILL;p.color=Color.rgb(105,245,35);p.alpha=255
+        c.drawCircle(modulesDotCx,modulesDotCy,dotR,p)
+        p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT_BOLD,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        c.drawText("ALL MODULES ACTIVE",modulesDotCx+dotR+S(6f),toolsY,p)
         // Demo: this same slot becomes the exit door instead of TOOLS — TOOLS
         // itself is closed to a visitor, so there is no point pointing at it.
-        p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(11f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.LEFT;p.letterSpacing=.14f
+        p.color=if(demoActive) Color.rgb(255,110,110) else Color.rgb(150,160,182);p.textSize=S(14f);p.typeface=Typeface.create(Typeface.DEFAULT,Typeface.BOLD);p.textAlign=Paint.Align.RIGHT;p.letterSpacing=.14f
         val toolsLabel=if(demoActive) "\uD83D\uDD13  EXIT DEMO" else "\uD83D\uDD27  TOOLS"
-        c.drawText(toolsLabel,alertsX,toolsY,p)
+        c.drawText(toolsLabel,brandX,toolsY,p)
         val toolsWidth=p.measureText(toolsLabel)
-        hit+=RectF(alertsX-S(10f),toolsY-S(18f),alertsX+toolsWidth+S(10f),toolsY+S(12f)) to "backup"
+        hit+=RectF(brandX-toolsWidth-S(10f),toolsY-S(20f),brandX+S(10f),toolsY+S(14f)) to "backup"
 
         postInvalidateDelayed(32L)
     }

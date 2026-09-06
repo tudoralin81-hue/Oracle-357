@@ -87,7 +87,7 @@ class OracleGrowthJournalStore(private val context: Context) {
             )
             values.forEachIndexed { i, value -> canvas.drawText(value.take(15), colX[i], y, bodyPaint) }
             y += 13f
-            canvas.drawText("${item.company} • ${item.sector} • Momentum 5D ${signed(item.momentum5D)} / 20D ${signed(item.momentum20D)}", margin, y, mutedPaint)
+            canvas.drawText("${item.company} • ${item.sector} • Momentum 5D ${signed(item.momentum5D)} / 20D ${signed(item.momentum20D)} • Src: ${if (item.computedLocally) "L" else "S"}", margin, y, mutedPaint)
             y += 15f
         }
 
@@ -126,6 +126,7 @@ class OracleGrowthJournalStore(private val context: Context) {
                     put("referencePrice", (item.referencePrice ?: item.currentPrice)?.takeIf { it > 0.0 } ?: org.json.JSONObject.NULL)
                     put("weights", org.json.JSONArray().apply { item.weights.forEach { put(it) } })
                     put("newsTitle", item.newsTitle); put("newsSource", item.newsSource); put("referenceTimestamp", item.referenceTimestamp)
+                    put("computedLocally", item.computedLocally)
                 })
             }
         }
@@ -142,7 +143,8 @@ class OracleGrowthJournalStore(private val context: Context) {
                 o.optInt("score"), o.optString("signal"), o.optString("risk"), o.optDouble("allocationMax"),
                 o.optDouble("forecastPct"), o.optDouble("momentum5D"), o.optDouble("momentum20D"),
                 List(w.length()) { n -> w.optInt(n) }, o.optString("newsTitle"), o.optString("newsSource"), o.optLong("referenceTimestamp"),
-                referencePrice = if (o.isNull("referencePrice")) null else o.optDouble("referencePrice").takeIf { it.isFinite() && it > 0.0 }
+                referencePrice = if (o.isNull("referencePrice")) null else o.optDouble("referencePrice").takeIf { it.isFinite() && it > 0.0 },
+                computedLocally = o.optBoolean("computedLocally", false)
             )
         }
     }.getOrDefault(emptyList())

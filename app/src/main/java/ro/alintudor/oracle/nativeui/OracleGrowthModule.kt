@@ -370,7 +370,15 @@ class OracleGrowthModule(private val host: OracleNativeModule) {
             card.addView(text("▣  ${if (source.isBlank()) "NEWS" else source}", 10f, Typeface.DEFAULT_BOLD, cyan, 0, 5))
             card.addView(text(newsTitle, 11f, Typeface.DEFAULT, white, 0, 4))
         }
-        card.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 8))
+        val footer = LinearLayout(host.root.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, host.dp(8), 0, 0) }
+        footer.addView(text("This data is informational and does not constitute investment advice.", 9f, Typeface.DEFAULT, Color.rgb(125, 135, 155), 0, 0), LinearLayout.LayoutParams(0, -2, 1f))
+        // Small, deliberately unobtrusive provenance marker: which path
+        // actually produced this specific card — S(erver) or L(ocal
+        // fallback) — not a general Growth-screen banner, a per-card fact
+        // that stays true to how *this* recommendation was computed even
+        // if the overall mode changes later.
+        footer.addView(text(if (item.computedLocally) "L" else "S", 11f, Typeface.DEFAULT_BOLD, if (item.computedLocally) orange else cyan, 6, 0))
+        card.addView(footer)
         host.content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, host.dp(9)) })
 
         // Entrance: fade + rise in, staggered per card so they don't all pop at

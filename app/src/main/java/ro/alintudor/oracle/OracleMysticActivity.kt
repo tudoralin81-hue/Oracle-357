@@ -905,7 +905,7 @@ class OracleMysticActivity : Activity() {
 
         val pushStatus = TextView(this).apply { textSize = 12f; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
         card.addView(TextView(this).apply {
-            text = "SEND TEST NOTIFICATION"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "\uD83D\uDD14  SEND TEST NOTIFICATION"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(75, 225, 255))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(75, 225, 255)) }
             setPadding(0, dp(14), 0, dp(14))
@@ -944,7 +944,7 @@ class OracleMysticActivity : Activity() {
             textSize = 11f; setTextColor(muted); setPadding(0, 0, 0, dp(14))
         })
         card.addView(TextView(this).apply {
-            text = "DISABLE BATTERY OPTIMIZATION FOR ORACLE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "\uD83D\uDD0B  DISABLE BATTERY OPTIMIZATION FOR ORACLE"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(105, 245, 35))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(105, 245, 35)) }
             setPadding(0, dp(14), 0, dp(14))
@@ -968,26 +968,10 @@ class OracleMysticActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2))
         card.addView(batteryStatus)
 
-        // --- Admin Only entry point — only exists in the UI for the owner's
-        // own account; absent (not just hidden) for anyone else logged in. ---
-        if (ro.alintudor.oracle.core.OracleAdminAccess.isOwnerAccount(this)) {
-            card.addView(TextView(this).apply {
-                text = "ADMIN ONLY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setTextColor(gold); setPadding(0, dp(28), 0, dp(6))
-            })
-            card.addView(TextView(this).apply {
-                text = "Growth engine log, history, server communication, and the local emergency fallback file."
-                textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
-            })
-            card.addView(TextView(this).apply {
-                text = "ADMIN ONLY \u2192"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setTextColor(Color.rgb(255, 170, 40))
-                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 170, 40)) }
-                setPadding(0, dp(14), 0, dp(14))
-                isClickable = true; isFocusable = true
-                setOnClickListener { promptAdminAccess() }
-            }, LinearLayout.LayoutParams(-1, -2))
-        }
+        // --- Admin Only entry point moved to the very end of this screen,
+        // separated from everything else (see below LOG OUT) — it's the
+        // owner's own tooling, not part of a regular user's flow through
+        // this page, so it shouldn't sit in the middle of it. ---
 
         card.addView(TextView(this).apply {
             text = "ACCOUNT"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
@@ -997,7 +981,7 @@ class OracleMysticActivity : Activity() {
         // redirects to confirmExitDemo() before this point whenever the demo
         // is active, so a real logged-in session is the only case left.
         card.addView(TextView(this).apply {
-            text = "LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            text = "\uD83D\uDEAA  LOG OUT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setTextColor(Color.rgb(255, 110, 110))
             background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 110, 110)) }
             setPadding(0, dp(14), 0, dp(14))
@@ -1019,6 +1003,29 @@ class OracleMysticActivity : Activity() {
                     .show()
             }
         }, LinearLayout.LayoutParams(-1, -2))
+
+        if (ro.alintudor.oracle.core.OracleAdminAccess.isOwnerAccount(this)) {
+            // A real visual divider, not just spacing — this is deliberately
+            // set apart from the rest of TOOLS, which every user sees.
+            card.addView(android.view.View(this).apply { setBackgroundColor(Color.rgb(40, 48, 68)) },
+                LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(30); bottomMargin = dp(2) })
+            card.addView(TextView(this).apply {
+                text = "ADMIN ONLY"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(gold); setPadding(0, dp(14), 0, dp(6))
+            })
+            card.addView(TextView(this).apply {
+                text = "Growth engine log, history, server communication, and the local emergency fallback file."
+                textSize = 11f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(dp(6), 0, dp(6), dp(10))
+            })
+            card.addView(TextView(this).apply {
+                text = "\uD83D\uDD11  ADMIN ONLY \u2192"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setTextColor(Color.rgb(255, 170, 40))
+                background = GradientDrawable().apply { setColor(panel); cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.rgb(255, 170, 40)) }
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true; isFocusable = true
+                setOnClickListener { promptAdminAccess() }
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
 
         card.addView(TextView(this).apply {
             text = "← Back"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(muted); setPadding(0, dp(24), 0, 0)
